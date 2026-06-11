@@ -33,6 +33,9 @@ limits, and confidence. The LLM can only phrase validated facts.
 - Recent batch scoring now uses typed `analysis.json` for core scoring
   components when available and records any markdown fallback source and reason
   in batch summaries.
+- Query and stats optimization candidate scoring now use typed analyzer
+  evidence for the full analyzer JSON path and record safe fallback labels when
+  they remain on legacy rendered facts.
 - Report validation rejects unsupported skew, host-tail, runtime metric, and
   root-cause claims.
 - Browser presenters render analyzer facts through allowlisted, raw-free

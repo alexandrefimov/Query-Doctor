@@ -35,6 +35,12 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   source and fallback reason in batch JSON and Markdown summaries. Query and
   stats optimization candidate scoring still read the existing rendered facts
   while their typed migrations are staged separately.
+- Query and stats optimization candidate scoring now prefer typed analyzer
+  evidence from `analysis.json` for impact, planning/opportunity, runtime
+  counter-signal, and metadata-gap inputs when the full analyzer contract is
+  present. Candidate JSON records safe evidence-source and fallback-reason
+  labels when incomplete analyzer JSON falls back to the legacy rendered-facts
+  path.
 - The public README now starts new users with three explicit first paths:
   one exported Impala text profile, the synthetic public demo, or a minimal
   read-only Cloudera Manager Recent scan. Detailed Trino and Spark preview

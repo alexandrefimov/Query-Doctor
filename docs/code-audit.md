@@ -149,8 +149,13 @@ High-priority Impala architecture backlog:
   scoring components and score reasons, records markdown fallback source and
   reason in batch summaries, and keeps renderer-to-parser characterization
   coverage so the fallback remains deliberate. Query and stats optimization
-  candidate scoring still read rendered facts and need equivalent typed
-  migration work before the Markdown coupling is closed.
+  candidate scoring now also prefer typed analyzer evidence for impact,
+  planning/opportunity, runtime counter-signal, and metadata-gap inputs when
+  the full analyzer JSON contract is present; their candidate JSON records safe
+  evidence-source and fallback-reason labels for legacy rendered-facts fallback.
+  Report prompt assembly, browser Details/presenters, and any remaining
+  analyzer consumers still need equivalent typed migration or contract guards
+  before the Markdown coupling is closed.
 - Add characterization over representative fixtures before replacing any
   remaining Markdown parser or score source, so behavior changes are deliberate
   and reviewable.
