@@ -85,6 +85,15 @@ Query Doctor is not:
 | Reports and optimizer | Python-owned facts, validation, and explicit selected-case actions; no automatic batch LLM jobs. |
 | Trino and Spark | Bounded raw-free preview/compact surfaces only. They are not production engine support, live Recent scans, Details/trusted report output, optimizer behavior, or Query Doctor-generated SQL. |
 
+Trino preview surfaces are offline or compact raw-free imports and checks only:
+sanitized evidence packages, bounded local compact imports, explicit
+source-contract checks, and bounded pruned QueryInfo paths documented in the
+engine docs. They do not provide live collection, Details/trusted report
+output, optimizer behavior, live metadata collection, or Query Doctor-generated
+Trino SQL. Spark compact support surfaces are limited to bounded compact
+History Server intake, compact evidence-package build/validation, and compact
+diagnosis; there is no public Spark engine support.
+
 Future Big Data SQL/lakehouse live collectors, broader providers, prepared
 event/log sources, and Cluster Doctor workflows remain roadmap seams, not
 current support. For the detailed Trino and Spark preview command catalog, use

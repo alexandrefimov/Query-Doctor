@@ -31,8 +31,9 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   read-only Cloudera Manager Recent scan. Detailed Trino and Spark preview
   command catalogs moved out of the root README entry path behind the new
   [engines README](engines/README.md) and existing engine docs, while the root
-  README keeps only the production-support boundary and links to the engine
-  support matrix.
+  README keeps only the production-support boundary, explicit Trino offline and
+  Spark no-public-support guard wording, and links to the engine support
+  matrix.
 - `query-doctor-analyze` now has an explicit one-profile entry path for local
   exported Apache Impala text profiles: `--profile-text`, `--query-id`, and
   `--out` stage a redacted collector-shaped case, write `analysis_facts.md`

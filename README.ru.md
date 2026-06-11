@@ -85,6 +85,23 @@ Query Doctor это не:
 | Reports and optimizer | Python-owned facts, validation и explicit selected-case actions; без automatic batch LLM jobs. |
 | Trino and Spark | Только bounded raw-free preview/compact surfaces. Это не production engine support, не live Recent scans, не Details/trusted report output, не optimizer behavior и не Query Doctor-generated SQL. |
 
+Trino preview surfaces остаются offline/local boundary, а не public support:
+bounded local pruned QueryInfo import принимает one explicit compact sanitized
+local pruned QueryInfo JSON через `query-doctor-trino-query-info-pruned-import`
+после source-contract checks. `query-doctor-trino-coordinator-query-info-pruned-probe`
+и `query-doctor-trino-coordinator-query-info-pruned-import` могут использовать
+`--auth-header-file`, но safe output не печатает auth header paths или values,
+не делает network read вне explicit bounded probe/import, reject-ит raw
+QueryInfo fields вроде Query ID, query text, session fields, endpoint URLs,
+object names и stage/task detail, и не дает live collection,
+Details/trusted report output, optimizer behavior или Query Doctor-generated
+Trino SQL.
+
+Spark compact support surfaces остаются только compact History Server intake,
+compact evidence-package build/validation и compact diagnosis; no public Spark
+engine support, без Recent scans, Details/trusted report output, optimizer
+behavior, raw event logs или Spark job execution.
+
 Будущие Big Data SQL/lakehouse live collectors, более широкие providers,
 подготовленные event/log sources и Cluster Doctor workflows остаются roadmap
 seams, а не текущей поддержкой. Detailed Trino/Spark preview command catalog:
