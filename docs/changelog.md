@@ -57,6 +57,12 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   cases in the web corpus instead of forcing recollection, so those staged cases
   can be opened from the local UI by entering the same Query ID. Browser profile
   upload remains out of scope for this trust-boundary slice.
+- Known Query ID analysis can now use a configured local `manual_profile_dir`
+  as a web profile inbox: when a matching exported text profile file exists,
+  the web workflow stages and analyzes it through the same bounded redacted
+  manual-profile path without running CM or direct-Impala collection. Manual-only
+  configurations fail closed when the matching file is absent instead of
+  silently falling back to live collection.
 - Roadmap and customer-readiness docs now make the near-term adoption gate
   explicit: five external or design-partner Impala diagnostic runs with useful
   feedback, a visible one-profile first-value path before full Recent setup,

@@ -36,6 +36,12 @@ from query_doctor.web.config import (
     metadata_configured,
     optional_config_string,
 )
+from query_doctor.web.manual_profile_inbox import (
+    MISSING_MANUAL_PROFILE_MESSAGE,
+    analyze_manual_profile_from_directory,
+    live_query_collection_configured,
+    manual_profile_file_for_query,
+)
 from query_doctor.web.job_workers import (
     REPORT_VALIDATION_EXIT_CODE,
     REPORT_VALIDATION_FAILURE_MESSAGE,
@@ -189,9 +195,21 @@ def run_query_id_analysis(
 
     update_progress(progress, 1)
     expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
-    if expected_case_dir.exists():
+    manual_profile_path = manual_profile_file_for_query(validated_query_id, settings)
+    if manual_profile_path is not None:
+        case_dir = analyze_manual_profile_from_directory(
+            validated_query_id,
+            manual_profile_path,
+            expected_case_dir,
+            redact_identifiers,
+            settings,
+            runner,
+            subprocess_env,
+            progress=progress,
+            cancel_check=cancel_check,
+        )
+    elif expected_case_dir.exists() and case_uses_manual_profile_text(expected_case_dir):
         ensure_complete_existing_case(expected_case_dir)
-    if expected_case_dir.exists() and case_uses_manual_profile_text(expected_case_dir):
         case_dir = analyze_existing_query_case(
             expected_case_dir,
             settings,
@@ -200,7 +218,11 @@ def run_query_id_analysis(
             progress=progress,
             cancel_check=cancel_check,
         )
+    elif settings.manual_profile_dir is not None and not live_query_collection_configured(settings):
+        raise WebError(MISSING_MANUAL_PROFILE_MESSAGE)
     else:
+        if expected_case_dir.exists():
+            ensure_complete_existing_case(expected_case_dir)
         case_dir = collect_analyze_and_replace_query_case(
             validated_query_id,
             expected_case_dir,

@@ -140,7 +140,7 @@ Use the smallest path that matches the access you have.
 
 | Door | Use when | Starts from |
 | --- | --- | --- |
-| One exported profile | You can get one Impala Web UI text profile, but cannot grant live access yet. | `query-doctor-analyze --profile-text` |
+| One exported profile | You can get one Impala Web UI text profile, but cannot grant live access yet. | `query-doctor-analyze --profile-text` or `query-doctor-web` with `manual_profile_dir` |
 | Synthetic demo | You want a read-only local click-through with no real data. | `query-doctor-web --public-demo` |
 | Minimal CM scan | You have read-only Cloudera Manager access for an Impala service. | `query-doctor-web` or `query-doctor-batch-recent` |
 
@@ -169,6 +169,14 @@ profile-v2 payloads remain outside this entry path.
 To inspect the same staged case in the local UI, start `query-doctor-web`,
 choose `One Query ID`, and enter the same Query ID. Known Query ID analysis
 reuses complete manual-profile staged cases instead of recollecting them.
+
+You can also configure a local profile inbox for the web UI. Put the exported
+text profile in `manual_profile_dir` using the Query ID slug as the file name
+(for example, replace the Query ID separator with `_` and save
+`<query-id-slug>.txt`), start `query-doctor-web`, choose `One Query ID`, and
+enter the original Query ID. The web path stages and analyzes the local file
+through the same text-only, bounded, redacted analyzer path; it does not upload
+the raw profile through the browser.
 
 ### Door 2: Run The Synthetic Demo
 

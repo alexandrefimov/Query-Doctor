@@ -208,6 +208,10 @@ def validate_web_startup_config(
     env = os.environ if env is None else env
     config_values = load_web_local_config(config_path, cwd=cwd)
     clusters = build_web_cluster_configs(config_values)
+    config_base_dir = resolve_config_path_value(Path(config_path), base_dir=cwd).parent
+    manual_only_profile_dir = configured_manual_profile_dir(config_values, base_dir=config_base_dir)
+    if manual_only_profile_dir is not None:
+        validate_manual_profile_dir(manual_only_profile_dir)
     clusters_to_validate = clusters or (
         WebClusterConfig(
             key="default",
@@ -219,6 +223,7 @@ def validate_web_startup_config(
             ca_bundle=optional_config_string(config_values, "ca_bundle"),
             insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify")
             is True,
+            manual_profile_dir=manual_only_profile_dir,
             query_profile_source=first_string_value(
                 optional_config_string(config_values, "query_profile_source"),
                 DEFAULT_QUERY_PROFILE_SOURCE,
@@ -229,9 +234,17 @@ def validate_web_startup_config(
     )
     missing: list[str] = []
     cm_clusters = [
-        cluster for cluster in clusters_to_validate if cluster.query_profile_source != "impala"
+        cluster
+        for cluster in clusters_to_validate
+        if cluster.query_profile_source != "impala" and not cluster_is_manual_only(cluster)
     ]
     for cluster in clusters_to_validate:
+        if cluster.manual_profile_dir is not None:
+            validate_manual_profile_dir(
+                resolve_config_path_value(cluster.manual_profile_dir, base_dir=config_base_dir)
+            )
+        if cluster_is_manual_only(cluster):
+            continue
         if cluster.query_profile_source == "impala":
             if not cluster.impala_profile_hosts:
                 raise WebError(
@@ -292,6 +305,41 @@ def validate_web_startup_config(
     return warnings
 
 
+def configured_manual_profile_dir(
+    config_values: dict[str, object],
+    *,
+    base_dir: Path,
+) -> Path | None:
+    path = optional_config_path(config_values, "manual_profile_dir")
+    if path is None:
+        return None
+    return resolve_config_path_value(path, base_dir=base_dir)
+
+
+def resolve_config_path_value(path: Path, *, base_dir: Path) -> Path:
+    expanded = path.expanduser()
+    return expanded if expanded.is_absolute() else base_dir / expanded
+
+
+def validate_manual_profile_dir(path: Path) -> None:
+    try:
+        if not path.is_dir() or not os.access(path, os.R_OK):
+            raise WebError("Configured manual_profile_dir is not a readable local directory.")
+    except OSError as exc:
+        raise WebError("Configured manual_profile_dir is not available.") from exc
+
+
+def cluster_is_manual_only(cluster: WebClusterConfig) -> bool:
+    return bool(cluster.manual_profile_dir) and not any(
+        (
+            cluster.cm_url,
+            cluster.cm_cluster,
+            cluster.cm_service,
+            cluster.impala_profile_hosts,
+        )
+    )
+
+
 def validate_public_demo_settings(settings: WebSettings) -> None:
     if not settings.public_demo:
         return
@@ -305,6 +353,7 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.cm_cluster,
             settings.cm_service,
             settings.cm_username,
+            settings.manual_profile_dir,
             settings.impala_profile_hosts,
             settings.prometheus_url,
             settings.metadata_coordinator,
@@ -322,6 +371,11 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
 def optional_config_string(config_values: dict[str, object], key: str) -> str | None:
     value = config_values.get(key)
     return value if isinstance(value, str) and value else None
+
+
+def optional_config_path(config_values: dict[str, object], key: str) -> Path | None:
+    value = optional_config_string(config_values, key)
+    return Path(value).expanduser() if value else None
 
 
 def optional_config_int(config_values: dict[str, object], key: str) -> int | None:
@@ -478,6 +532,7 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             optional_config_string(config_values, "ca_bundle"),
         ),
         insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify") is True,
+        manual_profile_dir=optional_config_path(config_values, "manual_profile_dir"),
         clusters=clusters,
         active_cluster_key=clusters[0].key if clusters else None,
         port=first_int_value(

@@ -76,6 +76,7 @@ ALLOWED_CONFIG_KEYS = {
     "krb5ccname",
     "language",
     "limit",
+    "manual_profile_dir",
     "optimizer_llm_base_url",
     "optimizer_llm_chat_path",
     "optimizer_llm_model",
@@ -177,6 +178,7 @@ CLUSTER_CONFIG_KEYS = {
     "insecure_skip_verify",
     "krb5ccname",
     "label",
+    "manual_profile_dir",
     "metadata_auth",
     "metadata_ca_cert",
     "metadata_coordinator",
@@ -434,6 +436,8 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError("Config field recent_scan_timezone must be a non-empty string.")
         if key == "language":
             raise ConfigError("Config field language must be a non-empty string.")
+        if key == "manual_profile_dir":
+            raise ConfigError("Config field manual_profile_dir must be a non-empty string.")
         return None
     if key == "krb5ccname":
         if not isinstance(value, str):
@@ -456,6 +460,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "impala_kerberos_service_name",
         "impala_profile_scheme",
         "language",
+        "manual_profile_dir",
         "optimizer_model",
         "out",
         "pool",

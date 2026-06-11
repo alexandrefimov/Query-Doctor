@@ -320,6 +320,19 @@ settings such as `recent_parallelism` and `recent_metadata_jobs` are intended
 as local config defaults or explicit request overrides, not normal per-scan
 browser choices.
 
+## Manual Profile Inbox
+
+| Field | Type | Scope | Notes |
+| --- | --- | --- | --- |
+| `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path and does not upload raw profile text through the browser. |
+
+`manual_profile_dir` is a local-first fallback for one exported profile. It
+does not enable Recent scans, Running scans, Cloudera Manager metrics/events,
+direct impalad collection, metadata collection, report generation, or optimizer
+actions by itself. When it is the only configured source, Known Query ID fails
+closed if the matching profile file is absent instead of falling back to live
+collection.
+
 ## Direct Impala Profiles
 
 | Field | Type | Scope | Notes |
