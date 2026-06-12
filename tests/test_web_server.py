@@ -9968,6 +9968,50 @@ def test_web_query_id_analysis_manual_profile_only_missing_file_does_not_collect
         )
 
     assert "No matching local exported profile" in str(exc.value)
+    assert "replace the ':' separator with '_'" in str(exc.value)
+    assert ".txt" in str(exc.value)
+
+
+def test_web_query_id_analysis_incomplete_manual_profile_case_has_actionable_message(
+    tmp_path,
+):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    case_dir.mkdir(parents=True)
+    (case_dir / "query_metadata.json").write_text(
+        json.dumps({"profile_source": "manual_profile_text"}),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+
+    def fake_runner(cmd, **_kwargs):
+        raise AssertionError(f"incomplete manual case must not run subprocess: {cmd}")
+
+    with pytest.raises(module.WebError) as exc:
+        module.run_query_id_analysis(
+            "abc:def",
+            "analysis",
+            False,
+            settings,
+            runner=fake_runner,
+        )
+
+    message = str(exc.value)
+    assert "Existing local manual-profile case is incomplete" in message
+    assert "configured manual profile directory" in message
+    assert "replace ':' with '_'" in message
+    assert "remove the incomplete local case" in message
+    assert "Re-run analysis to regenerate required artifacts" not in message
+    assert "profile_digest.md" not in message
+    assert "query_metadata.json" not in message
+    assert str(case_dir) not in message
+    assert "case_dir" not in message
 
 
 def test_web_query_id_analysis_can_collect_direct_impala_profile_without_cm_credentials(

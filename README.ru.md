@@ -146,7 +146,7 @@ environment variables или local env files.
 
 | Дверь | Когда подходит | С чего начать |
 | --- | --- | --- |
-| Один экспортированный профиль | Можно получить один текстовый профиль из Impala Web UI, но live access пока недоступен. | `query-doctor-analyze --profile-text` |
+| Один экспортированный профиль | Можно получить один текстовый профиль из Impala Web UI, но live access пока недоступен. | `query-doctor-analyze --profile-text` или `query-doctor-web` с `manual_profile_dir` |
 | Synthetic demo | Нужно read-only local click-through без реальных данных. | `query-doctor-web --public-demo` |
 | Minimal CM scan | Есть read-only Cloudera Manager access к Impala service. | `query-doctor-web` или `query-doctor-batch-recent` |
 
@@ -177,6 +177,15 @@ profile содержит собственный Query ID header, этот Query 
 Чтобы открыть staged case в local UI, запустите `query-doctor-web`, выберите
 `One Query ID` и введите тот же Query ID. Known Query ID analysis переиспользует
 complete manual-profile staged cases вместо recollection.
+
+Также можно настроить local profile inbox для web UI. Положите exported text
+profile в `manual_profile_dir`, назвав файл slug-версией Query ID: замените
+разделитель Query ID на `_` и сохраните как `<query-id-slug>.txt`. Затем
+запустите `query-doctor-web`, выберите `One Query ID` и введите исходный Query
+ID. Web path staged/analyzed этот local file через тот же text-only, bounded,
+redacted analyzer path; профиль не загружается через browser. Если файл
+содержит embedded Query ID другого запроса, staging fail-closed до замены
+существующего case.
 
 ### Дверь 2: synthetic demo
 

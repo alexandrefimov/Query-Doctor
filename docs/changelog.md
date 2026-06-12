@@ -64,6 +64,9 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   `Query (id=...)` forms. Mismatched profiles fail closed before writing or
   replacing a case, and staged metadata records whether the embedded Query ID
   was verified.
+- Manual-profile inbox docs and recovery messages now explain the Query ID slug
+  recipe for web use, add the inbox path to the in-app Help and Russian README,
+  and give incomplete manual-profile cases a non-circular recovery message.
 - Known Query ID analysis can now use a configured local `manual_profile_dir`
   as a web profile inbox: when a matching exported text profile file exists,
   the web workflow stages and analyzes it through the same bounded redacted

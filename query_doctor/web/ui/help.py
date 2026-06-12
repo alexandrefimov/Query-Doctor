@@ -133,6 +133,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 
 <h3>Known Query ID</h3>
 <p>Known Query ID is for one explicit query ID. Use the shared Cluster selector above What to analyze, then enter the Query ID and run analysis. {known_query_boundary}</p>
+<p>If you have one exported Impala text profile instead of live access, configure <code>manual_profile_dir</code> as a local profile inbox. Name the file with the Query ID slug by replacing <code>:</code> with <code>_</code>, for example <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>, then enter the original Query ID. The browser does not upload the profile; the server stages it through the bounded redacted analyzer path.</p>
 </div>
 </details>
 
@@ -353,6 +354,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <p>Running now использует такую же форму результатов и Details, но сканирует только running queries на момент запуска. Профили могут быть неполными, поэтому уверенность ниже, чем для completed-query analysis.</p>
 <h3>Known Query ID</h3>
 <p>Known Query ID анализирует один явный query ID. Используйте общий Cluster selector, введите Query ID и запустите analysis. {known_query_boundary}</p>
+<p>Если вместо live access есть один exported Impala text profile, настройте <code>manual_profile_dir</code> как local profile inbox. Назовите файл slug-версией Query ID: замените <code>:</code> на <code>_</code>, например <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>, затем введите исходный Query ID. Browser не загружает profile; server staged его через bounded redacted analyzer path.</p>
 </div>
 </details>
 

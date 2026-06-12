@@ -28,7 +28,8 @@ MANUAL_PROFILE_FILENAME_SUFFIXES = (".txt", ".profile", ".log", ".md", ".text", 
 MISSING_MANUAL_PROFILE_MESSAGE = (
     "No matching local exported profile was found for that Query ID. "
     "Place an exported Impala text profile in the configured manual profile directory "
-    "using the Query ID slug as the file name."
+    "using the Query ID slug as the file name: replace the ':' separator with '_' "
+    "and use a text-profile suffix such as .txt."
 )
 ProgressFunc = Callable[[int], None]
 

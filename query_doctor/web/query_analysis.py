@@ -65,6 +65,12 @@ MISSING_IMPALA_PROFILE_SOURCE_MESSAGE = (
     "Impala profile source is not configured for this web session. Add "
     "impala_profile_hosts to the local config or switch cluster_type back to cm."
 )
+INCOMPLETE_MANUAL_PROFILE_CASE_MESSAGE = (
+    "Existing local manual-profile case is incomplete. Put the exported profile "
+    "back in the configured manual profile directory using the Query ID slug file "
+    "name (replace ':' with '_'), then rerun analysis, or remove the incomplete "
+    "local case before retrying."
+)
 ProgressFunc = Callable[[int], None]
 
 
@@ -209,7 +215,10 @@ def run_query_id_analysis(
             cancel_check=cancel_check,
         )
     elif expected_case_dir.exists() and case_uses_manual_profile_text(expected_case_dir):
-        ensure_complete_existing_case(expected_case_dir)
+        try:
+            ensure_complete_existing_case(expected_case_dir)
+        except WebError as exc:
+            raise WebError(INCOMPLETE_MANUAL_PROFILE_CASE_MESSAGE) from exc
         case_dir = analyze_existing_query_case(
             expected_case_dir,
             settings,
