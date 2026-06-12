@@ -20,6 +20,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Details now folds validated selected-case optimizer recommendations, manual
+  optimizer guidance, or a safe link to a validated SQL draft into the same
+  Recommended change area as deterministic analyzer action cards. Report and
+  optimizer generation/validation pipelines remain separate, and SQL drafts are
+  not copied into the summary action surface.
 - Known Query ID analysis now generates and validates the deterministic Python
   report as part of the explicit analysis submit job. LLM narratives and Query
   Optimizer actions remain explicit selected-case actions, and Recent/Running

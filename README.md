@@ -77,6 +77,9 @@ Query Doctor is not:
 - Presents Details as an analyst decision page: why the query matters, where to
   inspect, what to try, how to verify a comparable rerun, and what evidence is
   missing.
+- Folds validated selected-case optimizer guidance into the same Recommended
+  change area when available, while report and optimizer generation remain
+  separate explicit actions.
 - Generates trusted reports only after deterministic normalization,
   sanitization, and validation.
 - Provides a separate read-only Query Optimizer workflow for pasted SQL review,

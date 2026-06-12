@@ -2217,6 +2217,10 @@ html[data-theme=dark] select.input {
   margin:0
 }
 
+.action-plan-panel .action-candidate-list+.action-candidate-list {
+  margin-top:10px
+}
+
 .action-plan-panel .action-candidate-card li {
   margin:0
 }
@@ -2336,6 +2340,13 @@ html[data-theme=dark] select.input {
   color:var(--text)
 }
 
+.action-candidate-section .action-optimizer-point-list {
+  margin:0;
+  padding-left:18px;
+  color:var(--text);
+  line-height:1.45
+}
+
 .action-candidate-section--change,.action-candidate-section--verify {
   padding:10px 11px;
   border:1px solid var(--border);
@@ -2407,6 +2418,18 @@ html[data-theme=dark] select.input {
   color:var(--muted);
   font-size:12px;
   line-height:1.55
+}
+
+.action-optimizer-card {
+  border:1px solid var(--border);
+  border-left:3px solid var(--green);
+  background:var(--surface)
+}
+
+.action-optimizer-link {
+  margin:0;
+  padding-top:10px;
+  border-top:1px solid var(--border)
 }
 
 .additional-action-candidates {

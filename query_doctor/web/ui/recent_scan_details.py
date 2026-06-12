@@ -45,6 +45,7 @@ from query_doctor.web.ui.llm_actions import (
     OptimizedQueryActionView,
     OPTIMIZER_RESULT_ANCHOR_ID,
     actions_section_id,
+    optimizer_output_label,
     render_llm_actions_block,
 )
 from query_doctor.web.ui.metadata_details import (
@@ -116,6 +117,15 @@ def render_recent_scan_case_detail_view(
     actions_id = actions_section_id(llm_enabled=llm_enabled)
     actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/{actions_id}"
     llm_report_view = present_report_action(llm_report_state) if llm_report_state else None
+    action_plan_html = render_case_action_plan(
+        view,
+        detail_base_path=detail_base_path,
+        optimized_query_state=optimized_query_state,
+        trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+        optimizer_manual_guidance=optimizer_manual_guidance,
+        language=language,
+    )
     return (
         f'<section class="panel batch-panel case-detail-panel" aria-label="{safe_details_title}">'
         f'<div class="breadcrumb"><a href="{safe_list_href}">{safe_workflow_title}</a><span>/</span>'
@@ -126,7 +136,7 @@ def render_recent_scan_case_detail_view(
         f'<a class="button primary" href="/#new-scan" data-open-new-scan>{html.escape(ui_text(language, "New scan", "Новый скан"))}</a>'
         f'<span class="badge blue">{html.escape(view.case_id)}</span></div></div>'
         f"{render_case_verdict(view, language=language)}"
-        f"{render_case_action_plan(view, detail_base_path=detail_base_path, language=language)}"
+        f"{action_plan_html}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
         f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, llm_report_view=llm_report_view, llm_report_action_url=llm_report_url, llm_report_open_url=llm_report_url, llm_report_export_url=llm_report_export_url, trusted_llm_report_html=trusted_llm_report_html, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"
@@ -508,6 +518,10 @@ def render_case_action_plan(
     view: RecentScanCaseDetailView,
     *,
     detail_base_path: str = "/batch/case",
+    optimized_query_state: OptimizedQueryActionView | None = None,
+    trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
+    optimizer_manual_guidance: str | None = None,
     language: str = "en",
 ) -> str:
     action_cards = render_action_candidate_decision_findings(
@@ -546,6 +560,13 @@ def render_case_action_plan(
             "</li>"
             "</ul>"
         )
+    optimizer_cards = render_optimizer_decision_guidance(
+        optimized_query_state,
+        trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+        optimizer_manual_guidance=optimizer_manual_guidance,
+        language=language,
+    )
     return (
         '<section id="action-plan" class="panel docs-panel action-plan-panel" '
         'aria-label="Recommended change">'
@@ -555,9 +576,124 @@ def render_case_action_plan(
         f"{html.escape(ui_text(language, 'Start with the primary path: why this query matters, where to inspect, what to try, and how to verify a comparable rerun.', 'Начните с основного пути: почему запрос важен, где проверить, что попробовать и как проверить сопоставимый повторный запуск.'))}"
         "</p>"
         f"{action_cards}"
+        f"{optimizer_cards}"
         "</div>"
         "</section>"
     )
+
+
+def render_optimizer_decision_guidance(
+    view: OptimizedQueryActionView | None,
+    *,
+    trusted_optimized_query: str | None,
+    trusted_optimizer_recommendations: str | None,
+    optimizer_manual_guidance: str | None,
+    language: str = "en",
+) -> str:
+    if view is None:
+        return ""
+    if trusted_optimizer_recommendations:
+        title = ui_text(
+            language,
+            "Optimizer recommendations",
+            "Рекомендации optimizer",
+        )
+        what = render_optimizer_guidance_points(trusted_optimizer_recommendations)
+        source = ui_text(
+            language,
+            "Validated optimizer guidance for this selected case.",
+            "Проверенное optimizer guidance для выбранного кейса.",
+        )
+        verify = ui_text(
+            language,
+            "Use the same comparable-rerun checks from the primary recommendation.",
+            "Используйте те же comparable-rerun проверки из основной рекомендации.",
+        )
+    elif optimizer_manual_guidance:
+        title = ui_text(
+            language,
+            "Manual optimizer review",
+            "Ручная optimizer-проверка",
+        )
+        what = render_optimizer_guidance_points(optimizer_manual_guidance)
+        source = ui_text(
+            language,
+            "Python-owned guidance is available because no trusted SQL draft is shown.",
+            "Python-owned guidance доступен, потому что trusted SQL draft не показан.",
+        )
+        verify = ui_text(
+            language,
+            "Validate any human rewrite before using it, then compare the rerun.",
+            "Проверьте любой human rewrite перед использованием, затем сравните rerun.",
+        )
+    elif trusted_optimized_query:
+        title = ui_text(
+            language,
+            "Validated optimizer draft available",
+            "Доступен валидированный optimizer draft",
+        )
+        output_label = optimizer_output_label(view.output_kind, language=language)
+        what = (
+            "<p>"
+            + html.escape(
+                ui_text(
+                    language,
+                    "Open the optimizer result to review the trusted draft. It was not executed and still requires owner review.",
+                    "Откройте optimizer result, чтобы проверить trusted draft. Он не выполнялся и все равно требует owner review.",
+                )
+            )
+            + "</p>"
+        )
+        source = ui_text(
+            language,
+            f"{output_label} passed deterministic validation.",
+            f"{output_label} прошел deterministic validation.",
+        )
+        verify = ui_text(
+            language,
+            "Review the draft before use and verify with a comparable rerun.",
+            "Проверьте draft перед использованием и подтвердите comparable rerun.",
+        )
+    else:
+        return ""
+    return (
+        '<ul class="reason-list action-candidate-list action-optimizer-list">'
+        '<li class="reason-card action-candidate-card action-optimizer-card">'
+        f"<strong>{html.escape(title)}</strong>"
+        '<div class="action-candidate-sections">'
+        '<section class="action-candidate-section action-candidate-section--why">'
+        f"<span>{html.escape(ui_text(language, 'Source', 'Источник'))}</span>"
+        f"<p>{html.escape(source)}</p>"
+        "</section>"
+        '<section class="action-candidate-section action-candidate-section--change">'
+        f"<span>{html.escape(ui_text(language, 'What to review', 'Что проверить'))}</span>"
+        f"{what}"
+        "</section>"
+        '<section class="action-candidate-section action-candidate-section--verify">'
+        f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
+        f"<p>{html.escape(verify)}</p>"
+        "</section>"
+        "</div>"
+        '<p class="helper action-optimizer-link">'
+        f'<a href="#{OPTIMIZER_RESULT_ANCHOR_ID}">'
+        f"{html.escape(ui_text(language, 'Open optimizer result', 'Открыть optimizer result'))}"
+        "</a>"
+        "</p>"
+        "</li>"
+        "</ul>"
+    )
+
+
+def render_optimizer_guidance_points(text: str, *, max_items: int = 4) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    items = []
+    for line in lines[:max_items]:
+        if line.startswith(("- ", "* ")):
+            line = line[2:].strip()
+        items.append(f"<li>{html.escape(line)}</li>")
+    return '<ul class="action-optimizer-point-list">' + "".join(items) + "</ul>"
 
 
 def render_technical_details(view: RecentScanCaseDetailView) -> str:
