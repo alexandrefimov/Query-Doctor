@@ -17,9 +17,11 @@ engine.
 - New users can start from one exported Impala text profile without Cloudera
   Manager, Kerberos, direct impalad access, Prometheus, network collectors, or
   an LLM.
-- `query-doctor-analyze --profile-text --query-id --out` stages a redacted,
-  collector-shaped local case, writes deterministic `analysis_facts.md` and
-  `analysis.json`, and analyzes the case without live collection.
+- `query-doctor-analyze --profile-text --out` stages a redacted,
+  collector-shaped local case from the Query ID embedded in the exported
+  profile, writes deterministic `analysis_facts.md` and `analysis.json`, and
+  analyzes the case without live collection. `--query-id` remains available for
+  profile exports without a readable Query ID header.
 - `query-doctor-web` can read a configured `manual_profile_dir` as a local
   profile inbox. Entering the matching Known Query ID stages and analyzes the
   profile through the same redacted path, then renders Details and Python
@@ -37,7 +39,8 @@ engine.
 - Manual-profile intake is text-only and local-directory based. Browser upload
   of raw profiles remains out of scope.
 - Manual-profile staging always redacts through the collector-shaped profile
-  path and records whether an embedded Query ID was verified.
+  path, derives the case Query ID from the profile header when available, and
+  records whether an embedded Query ID was verified.
 - Embedded Query ID mismatch fails closed before writing or replacing a case.
   Both `Query ID:` and `Query (id=...)` text forms are checked.
 - Manual-only web configurations fail closed when the matching inbox file is
@@ -127,9 +130,10 @@ The 0.7.0 release candidate should be validated with:
 
 - Upgrade with `pip install --upgrade query-doctor` after 0.7.0 is published.
 - For the one-profile path, export one Apache Impala text profile, run
-  `query-doctor-analyze --profile-text <profile.txt> --query-id <id> --out
-  <case-dir>`, or configure `manual_profile_dir` and enter the same Query ID in
-  `query-doctor-web`.
+  `query-doctor-analyze --profile-text <profile.txt> --out <case-dir>`, or
+  configure `manual_profile_dir` and enter the same Query ID in
+  `query-doctor-web`. Add `--query-id <id>` only when the exported profile lacks
+  a readable Query ID header.
 - Regenerate the local demo pack with `query-doctor-demo --out <demo-dir>
   --overwrite`; use the printed `QUERY_DOCTOR_ACTION_OUTCOMES_PATH` value when
   launching `query-doctor-web`.

@@ -111,21 +111,29 @@ def read_manual_profile_text(profile_path: Path, *, max_bytes: int) -> str:
 def stage_manual_profile_case(
     *,
     profile_text_path: Path,
-    query_id: str,
+    query_id: str | None,
     out_dir: Path,
     redact_identifiers: bool = False,
     redact_hosts: bool = True,
     max_profile_bytes: int = DEFAULT_MAX_PROFILE_BYTES,
 ) -> Path:
     """Stage one local exported Impala text profile as a collector-shaped case."""
-    validated_query_id = validate_cm_query_id_path_segment(query_id)
     profile_text = read_manual_profile_text(profile_text_path, max_bytes=max_profile_bytes)
     profile_query_id = extract_query_id_from_profile_text(profile_text)
+    if query_id:
+        validated_query_id = validate_cm_query_id_path_segment(query_id)
+    elif profile_query_id:
+        validated_query_id = validate_cm_query_id_path_segment(profile_query_id)
+    else:
+        raise ManualProfileIntakeError(
+            "Profile text does not include a Query ID. Provide --query-id or export "
+            "a text profile with a Query ID header."
+        )
     profile_query_id_verified = profile_query_id == validated_query_id
     if profile_query_id is not None and not profile_query_id_verified:
         raise ManualProfileIntakeError(
             "Profile Query ID does not match --query-id. Select the matching exported profile "
-            "or rename the correct inbox file and rerun analysis."
+            "or rerun with the Query ID from that profile."
         )
     statement = extract_statement_from_profile_text(profile_text)
     summary = CMQuerySummary(query_id=validated_query_id, statement=statement)
@@ -177,7 +185,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--query-id",
-        help="Explicit Impala Query ID for --profile-text staging.",
+        help=(
+            "Explicit Impala Query ID for --profile-text staging. Optional when "
+            "the exported text profile includes a Query ID header."
+        ),
     )
     parser.add_argument(
         "--out",
@@ -244,8 +255,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.profile_text:
         if args.input:
             parser.error("positional input cannot be combined with --profile-text")
-        if not args.query_id:
-            parser.error("--profile-text requires --query-id")
         if args.out is None:
             parser.error("--profile-text requires --out")
     elif not args.input:

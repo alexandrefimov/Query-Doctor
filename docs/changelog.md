@@ -79,13 +79,15 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   Spark no-public-support guard wording, and links to the engine support
   matrix.
 - `query-doctor-analyze` now has an explicit one-profile entry path for local
-  exported Apache Impala text profiles: `--profile-text`, `--query-id`, and
-  `--out` stage a redacted collector-shaped case, write `analysis_facts.md`
-  plus `analysis.json`, and print the case directory without any network
-  collection. Known Query ID analysis now reuses complete manual-profile staged
-  cases in the web corpus instead of forcing recollection, so those staged cases
-  can be opened from the local UI by entering the same Query ID. Browser profile
-  upload remains out of scope for this trust-boundary slice.
+  exported Apache Impala text profiles: `--profile-text` and `--out` stage a
+  redacted collector-shaped case from the Query ID embedded in the profile,
+  write `analysis_facts.md` plus `analysis.json`, and print the case directory
+  without any network collection. `--query-id` remains available for profile
+  exports without a readable Query ID header. Known Query ID analysis now reuses
+  complete manual-profile staged cases in the web corpus instead of forcing
+  recollection, so those staged cases can be opened from the local UI by
+  entering the same Query ID. Browser profile upload remains out of scope for
+  this trust-boundary slice.
 - Manual-profile staging now verifies an embedded profile Query ID when the
   exported text profile includes one, covering both `Query ID:` and
   `Query (id=...)` forms. Mismatched profiles fail closed before writing or
