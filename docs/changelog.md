@@ -21,6 +21,11 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- Package and release-gate workflows now run an installed-wheel one-profile
+  smoke that stages one exported Impala text profile through the installed CLI,
+  opens the manual-profile web inbox path from a temporary launch directory, and
+  renders Details plus a validated Python report without CM, Kerberos, network
+  collectors, Prometheus, or LLM.
 - Manual-profile intake is now documented in the safety contract as a text-only,
   no-browser-upload, fail-closed local boundary. Web startup errors now point
   one-profile users to `manual_profile_dir` when CM settings are absent, and the
