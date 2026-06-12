@@ -17,6 +17,7 @@ import pytest
 from command_test_support import command_args, command_uses_role
 from web_server_test_support import REPO_DIR, load_web_module, write_complete_collected_case
 from query_doctor.optimizer.defaults import BUILTIN_OPTIMIZER_MODEL
+from query_doctor.web.manual_profile_inbox import manual_profile_file_for_query
 from query_doctor.web.ui import layout
 
 
@@ -499,7 +500,7 @@ def test_web_batch_clean_details_hide_optimizer_action(tmp_path):
     store = module.WebJobStore()
     calls = []
 
-    def fake_runner(cmd, **kwargs):
+    def fake_runner(cmd, **_kwargs):
         calls.append(cmd)
         raise AssertionError("runner should not be called")
 
@@ -9897,6 +9898,148 @@ def test_web_query_id_analysis_stages_matching_manual_profile_from_directory_wit
     assert len(calls) == 1
     assert command_uses_role(calls[0], "analyze")
     assert progress_stages == [0, 1, 2, 3, 4]
+
+
+def test_web_query_id_analysis_prefers_manual_profile_over_configured_live_collector(
+    tmp_path,
+):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    profile_dir = tmp_path / "profile-inbox"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "abc_def.txt"
+    profile_path.write_text("Query Runtime Profile\nQuery ID: abc:def\n", encoding="utf-8")
+    final_case_dir = tmp_path / "cm-corpus" / "abc_def"
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+        manual_profile_dir=profile_dir,
+        cm_url="https://cm.example.invalid",
+        cm_cluster="cluster",
+        cm_service="impala",
+        timeout_sec=99,
+    )
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        if command_uses_role(cmd, "collect_cm") or command_uses_role(cmd, "collect_impala_profile"):
+            raise AssertionError("manual profile inbox must take precedence over live collection")
+        if command_uses_role(cmd, "analyze"):
+            args = command_args(cmd, "analyze")
+            assert args[args.index("--profile-text") + 1] == str(profile_path.resolve())
+            assert args[args.index("--query-id") + 1] == "abc:def"
+            out_dir = Path(args[args.index("--out") + 1])
+            staged_case_dir = out_dir / "abc_def"
+            write_complete_collected_case(staged_case_dir)
+            (staged_case_dir / "cm_metadata.json").write_text(
+                json.dumps({"profile_source": "manual_profile_text"}),
+                encoding="utf-8",
+            )
+            (staged_case_dir / "analysis_facts.md").write_text(
+                "\n".join(
+                    [
+                        "- Parsed operators: 3",
+                        "- Cardinality anomalies: 1",
+                        "- Memory anomalies: 0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout=f"Output case directory: {staged_case_dir}\n",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    result = module.run_query_id_analysis(
+        "abc:def",
+        "analysis",
+        False,
+        settings,
+        runner=fake_runner,
+    )
+
+    assert result.query_id == "abc:def"
+    assert final_case_dir.is_dir()
+    assert len(calls) == 1
+    assert command_uses_role(calls[0], "analyze")
+
+
+def test_manual_profile_file_for_query_uses_deterministic_suffix_order(tmp_path):
+    module = load_web_module()
+
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    profile_dir = tmp_path / "profile-inbox"
+    profile_dir.mkdir()
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+        manual_profile_dir=profile_dir,
+    )
+    slug = "abc_def"
+    suffixes = (".profile", ".log", ".md", ".text", "")
+    for suffix in suffixes:
+        (profile_dir / f"{slug}{suffix}").write_text(
+            f"Query Runtime Profile\nQuery ID: abc:def\nsuffix={suffix or '<none>'}\n",
+            encoding="utf-8",
+        )
+
+    assert (
+        manual_profile_file_for_query("abc:def", settings)
+        == (profile_dir / "abc_def.profile").resolve()
+    )
+
+    (profile_dir / "abc_def.txt").write_text(
+        "Query Runtime Profile\nQuery ID: abc:def\nsuffix=.txt\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        manual_profile_file_for_query("abc:def", settings)
+        == (profile_dir / "abc_def.txt").resolve()
+    )
+
+
+def test_manual_profile_file_for_query_ignores_symlink_escape(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    profile_dir = tmp_path / "profile-inbox"
+    profile_dir.mkdir()
+    outside_profile = tmp_path / "outside-profile.txt"
+    outside_profile.write_text("Query Runtime Profile\nQuery ID: abc:def\n", encoding="utf-8")
+    inbox_link = profile_dir / "abc_def.txt"
+    try:
+        inbox_link.symlink_to(outside_profile)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is not supported in this test environment: {exc}")
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+        manual_profile_dir=profile_dir,
+    )
+
+    def fake_runner(cmd, **_kwargs):
+        raise AssertionError(f"escaped manual profile must not run subprocess: {cmd}")
+
+    with pytest.raises(module.WebError) as exc:
+        module.run_query_id_analysis(
+            "abc:def",
+            "analysis",
+            False,
+            settings,
+            runner=fake_runner,
+        )
+
+    assert "No matching local exported profile" in str(exc.value)
 
 
 def test_web_query_id_analysis_rejects_misnamed_manual_profile_without_replacing_case(

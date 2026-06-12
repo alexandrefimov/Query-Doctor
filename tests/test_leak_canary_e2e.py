@@ -5,6 +5,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -154,6 +155,13 @@ def test_manual_profile_inbox_known_query_details_leak_canary(tmp_path):
         job=store.get(analysis_job.job_id),
     )
     assert detail_status == 200
+    detail_route = route_get_request(
+        f"/query/details/{quote(QUERY_ID, safe='')}",
+        settings,
+        store,
+    )
+    assert detail_route is not None
+    assert detail_route.status == 200
 
     report_job = store.create_query_report(QUERY_ID, report_variant=REPORT_VARIANT_PYTHON)
     run_specific_query_report_job(
@@ -193,6 +201,7 @@ def test_manual_profile_inbox_known_query_details_leak_canary(tmp_path):
                 SinkPolicy("public"),
             ),
             TextSink("Known Query Details HTML", detail_html, SinkPolicy("public")),
+            TextSink("Known Query Details route HTML", detail_route.body, SinkPolicy("public")),
             TextSink(
                 "Known Query Details HTML with report",
                 detail_with_report_html,
@@ -208,6 +217,7 @@ def test_manual_profile_inbox_known_query_details_leak_canary(tmp_path):
                 analysis_status_json,
                 report_status_json,
                 detail_html,
+                detail_route.body,
                 detail_with_report_html,
                 report_html,
             ]

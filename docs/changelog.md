@@ -27,7 +27,9 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   salted synthetic markers, classifies generated case sinks fail-closed, and
   includes negative controls for unclassified sinks and disabled host redaction.
   It also covers the configured `manual_profile_dir` web inbox path through
-  Known Query ID job status, Details, and validated report rendering.
+  Known Query ID job status, route-level Details, and validated report
+  rendering, with inbox precedence, symlink-containment, and deterministic
+  suffix-order guards.
 - Added a renderer-to-parser characterization guard for Recent batch scoring:
   structured analyzer facts are rendered through the production markdown
   renderer, then parsed and scored to pin the current markdown contract before
