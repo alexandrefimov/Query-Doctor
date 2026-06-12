@@ -23,27 +23,38 @@ the English source, the English document wins.
 
 See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 
-## Start Here
+## Start Here For Users
 
 - [../README.md](../README.md): demo-first public overview, install path,
   support boundaries, and safety summary.
 - [../README.ru.md](../README.ru.md): Russian companion for the public project
   README.
-- [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
-- [codex-handoff.md](codex-handoff.md): public-safe agent baseline.
-- [public-documentation-boundary.md](public-documentation-boundary.md): split
-  committed public docs from ignored local agent notes.
-- [safety-contract.md](safety-contract.md): canonical trust and redaction
-  contract.
+- [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
+  and public demo storyline.
+- [configuration.md](configuration.md): local JSON configuration reference for
+  Cloudera Manager, manual-profile inbox, direct Impala, Prometheus, metadata,
+  and LLM routing.
 - [security-model.md](security-model.md): public security, privacy, and
   demo-sharing overview for users and external reviewers.
-- [engine-redaction-note-v1.md](engine-redaction-note-v1.md): shared raw-free
-  evidence-package redaction note schema for package-style engine intake.
+- [safety-contract.md](safety-contract.md): canonical trust and redaction
+  contract.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
   truth for current engine support status, fixture/research boundaries, and
   second-engine promotion gates.
 - [engines/README.md](engines/README.md): index for detailed Trino and Spark
   preview/research docs and command catalogs.
+
+## Start Here For Contributors And Agents
+
+- [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
+- [codex-handoff.md](codex-handoff.md): public-safe agent baseline.
+- [public-documentation-boundary.md](public-documentation-boundary.md): split
+  committed public docs from ignored local agent notes.
+- [code-map.md](code-map.md): code ownership lookup.
+- [test-matrix.md](test-matrix.md): focused validation matrix.
+- [code-audit.md](code-audit.md): open code risks and review baseline.
+- [engine-redaction-note-v1.md](engine-redaction-note-v1.md): shared raw-free
+  evidence-package redaction note schema for package-style engine intake.
 - [customer-readiness-priorities.md](customer-readiness-priorities.md):
   near-term Impala-first customer-readiness backlog for demo, config, docs,
   UI, and validation focus.

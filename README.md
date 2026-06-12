@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-11
+Last reviewed: 2026-06-12
 
 Language: English | [Russian](README.ru.md)
 
@@ -25,6 +25,22 @@ Python owns facts. LLM owns wording only.
 Recent scan is the flagship workflow. Query ID diagnosis is secondary for one
 known Impala query. Query Optimizer is separate, read-only, and does not execute
 or echo submitted SQL.
+
+## Quickstart
+
+```bash
+python -m pip install query-doctor
+QUERY_ID="aaaaaaaaaaaaaaaa:0000000000000001"
+query-doctor-analyze \
+  --profile-text ./exported-impala-profile.txt \
+  --query-id "$QUERY_ID" \
+  --out cases/cm-corpus
+query-doctor-web --corpus-dir cases/cm-corpus
+```
+
+This first path needs one exported Impala text profile and no Cloudera Manager,
+Kerberos, browser upload, Prometheus, or LLM. See [Pick A First Path](#pick-a-first-path)
+for the demo and Cloudera Manager options.
 
 ## What It Is / Is Not
 

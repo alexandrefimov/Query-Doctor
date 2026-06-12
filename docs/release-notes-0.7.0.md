@@ -24,7 +24,8 @@ engine.
   profile inbox. Entering the matching Known Query ID stages and analyzes the
   profile through the same redacted path, then renders Details and Python
   reports from deterministic artifacts.
-- The root README now starts with three first paths: one exported profile, the
+- The root README now gives a short one-profile Quickstart before the trust
+  boundary details, then separates three first paths: one exported profile, the
   synthetic public demo, or a minimal read-only Cloudera Manager Recent scan.
 - Package and release workflows now include an installed-wheel one-profile
   smoke. The smoke verifies CLI staging, manual-profile web analysis, Details
