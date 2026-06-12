@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,10 +10,17 @@ import pytest
 
 from query_doctor.cli import analyze_profile, batch_recent, report
 from query_doctor.report.prompt_contract import build_prompt
+from query_doctor.web.case_files import expected_case_dir_for_query
 from query_doctor.web.command_builders import PYTHON_REPORT_NAME, REPORT_VARIANT_PYTHON
-from query_doctor.web.jobs import WebJobStore
+from query_doctor.web.job_workers import run_specific_query_report_job
+from query_doctor.web.jobs import WebJobStore, render_job_status_json
 from query_doctor.web.models import WebSettings
+from query_doctor.web.query_analysis import run_query_id_analysis
 from query_doctor.web.routes import route_get_request
+from query_doctor.web.specific_query_pages import (
+    render_specific_query_detail_for_request,
+    render_specific_query_report_for_request,
+)
 from query_doctor.web.trusted_artifacts import write_batch_case_report_validation_marker
 
 
@@ -100,6 +108,112 @@ def test_full_pipeline_leak_canary_stays_out_of_public_and_local_sinks(tmp_path)
         ]
     )
     assert_browser_visible_text_is_generic_raw_free(tmp_path, detail_html + "\n" + report_html)
+
+
+def test_manual_profile_inbox_known_query_details_leak_canary(tmp_path):
+    raw_profile = write_raw_canary_profile(tmp_path)
+    profile_dir = tmp_path / "profile-inbox"
+    profile_dir.mkdir()
+    profile_slug = QUERY_ID.replace(":", "_")
+    inbox_profile = profile_dir / f"{profile_slug}.txt"
+    inbox_profile.write_text(raw_profile.read_text(encoding="utf-8"), encoding="utf-8")
+    settings = WebSettings(
+        config=tmp_path / "cm-config.json",
+        repo_dir=REPO_ROOT,
+        corpus_dir=tmp_path / "cm-corpus",
+        manual_profile_dir=profile_dir,
+        no_llm=True,
+        timeout_sec=90,
+    )
+    store = WebJobStore()
+    progress_stages: list[int] = []
+
+    result = run_query_id_analysis(
+        QUERY_ID,
+        "analysis",
+        True,
+        settings,
+        progress=progress_stages.append,
+    )
+    case_dir = expected_case_dir_for_query(QUERY_ID, settings)
+    assert result.query_id == QUERY_ID
+    assert result.case["query_id"] == QUERY_ID
+    assert "case_dir" not in result.case
+    assert "case_index" not in result.case
+    assert case_dir.is_dir()
+    assert progress_stages == [0, 1, 2, 3, 4]
+
+    analysis_job = store.create(QUERY_ID, "analysis")
+    store.complete(analysis_job.job_id, result)
+    analysis_status_json = render_job_status_json(store.get(analysis_job.job_id))
+
+    detail_status, detail_html = render_specific_query_detail_for_request(
+        settings,
+        QUERY_ID,
+        store,
+        job=store.get(analysis_job.job_id),
+    )
+    assert detail_status == 200
+
+    report_job = store.create_query_report(QUERY_ID, report_variant=REPORT_VARIANT_PYTHON)
+    run_specific_query_report_job(
+        report_job.job_id,
+        QUERY_ID,
+        case_dir,
+        settings,
+        store,
+        subprocess.run,
+        REPORT_VARIANT_PYTHON,
+    )
+    report_status_json = render_job_status_json(store.get(report_job.job_id))
+    report_page_status, report_html = render_specific_query_report_for_request(
+        settings,
+        QUERY_ID,
+        report_variant=REPORT_VARIANT_PYTHON,
+    )
+    assert report_page_status == 200
+    detail_with_report_status, detail_with_report_html = render_specific_query_detail_for_request(
+        settings,
+        QUERY_ID,
+        store,
+        job=store.get(report_job.job_id),
+    )
+    assert detail_with_report_status == 200
+
+    assert_generated_case_sinks_clean(
+        case_dir,
+        required_paths=CASE_SINK_POLICIES.keys(),
+    )
+    assert_text_sinks_clean(
+        [
+            TextSink("Known Query job status JSON", analysis_status_json, SinkPolicy("public")),
+            TextSink(
+                "Known Query report job status JSON",
+                report_status_json,
+                SinkPolicy("public"),
+            ),
+            TextSink("Known Query Details HTML", detail_html, SinkPolicy("public")),
+            TextSink(
+                "Known Query Details HTML with report",
+                detail_with_report_html,
+                SinkPolicy("public"),
+            ),
+            TextSink("Known Query report HTML", report_html, SinkPolicy("public")),
+        ]
+    )
+    assert_browser_visible_text_is_generic_raw_free(
+        tmp_path,
+        "\n".join(
+            [
+                analysis_status_json,
+                report_status_json,
+                detail_html,
+                detail_with_report_html,
+                report_html,
+            ]
+        ),
+        extra_forbidden_fragments=(profile_slug, inbox_profile.name, raw_profile.name),
+    )
 
 
 def test_leak_canary_fails_closed_for_unclassified_generated_file(tmp_path):
@@ -315,7 +429,12 @@ def assert_no_forbidden_markers(
     assert not hits, f"forbidden leak-canary marker(s) in {label}: {', '.join(hits)}"
 
 
-def assert_browser_visible_text_is_generic_raw_free(tmp_path: Path, text: str) -> None:
+def assert_browser_visible_text_is_generic_raw_free(
+    tmp_path: Path,
+    text: str,
+    *,
+    extra_forbidden_fragments: tuple[str, ...] = (),
+) -> None:
     forbidden_fragments = (
         str(tmp_path),
         "case_dir",
@@ -326,6 +445,7 @@ def assert_browser_visible_text_is_generic_raw_free(tmp_path: Path, text: str) -
         "raw stderr",
         "qwen3-coder",
         "ollama",
+        *extra_forbidden_fragments,
     )
     leaked = [fragment for fragment in forbidden_fragments if fragment in text]
     assert not leaked, f"browser-visible raw/internal fragment(s): {leaked}"
