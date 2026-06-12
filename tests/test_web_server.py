@@ -794,6 +794,7 @@ def test_web_settings_defaults_to_localhost_without_config(tmp_path):
     assert settings.port == 8765
     assert settings.model == module.DEFAULT_MODEL
     assert settings.optimizer_model == module.DEFAULT_OPTIMIZER_MODEL
+    assert settings.corpus_dir == tmp_path / module.DEFAULT_CORPUS_DIR
 
 
 def test_web_parse_args_accepts_metadata_options():

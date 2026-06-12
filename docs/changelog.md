@@ -25,7 +25,9 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   `corpus_dir`, so one-profile web inbox runs can keep generated Query ID cases
   in a user-chosen workspace instead of relying on the default
   `cases/cm-corpus` location. Relative config values resolve from the config
-  file; relative CLI values resolve from the current directory.
+  file; relative CLI values resolve from the current directory. When unset, the
+  web default now resolves under the launch directory instead of the installed
+  package or source-tree root.
 - Added a full-pipeline leak-canary regression baseline for manual-profile
   intake, deterministic analysis, scoring, report prompt assembly, trusted
   Python report output, and browser Details/report rendering. The test uses

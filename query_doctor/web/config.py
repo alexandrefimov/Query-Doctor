@@ -331,7 +331,7 @@ def configured_corpus_dir(
     if config_value is not None:
         config_base_dir = resolve_config_path_value(config_path, base_dir=cwd).parent
         return resolve_config_path_value(config_value, base_dir=config_base_dir)
-    return DEFAULT_CORPUS_DIR
+    return resolve_config_path_value(DEFAULT_CORPUS_DIR, base_dir=cwd)
 
 
 def resolve_config_path_value(path: Path, *, base_dir: Path) -> Path:

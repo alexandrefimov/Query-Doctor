@@ -194,6 +194,8 @@ config file and keep generated cases outside the source tree:
 Then start `query-doctor-web --config ./query-doctor-one-profile.json`.
 Relative `corpus_dir` values in config resolve from the config file; the
 `--corpus-dir` CLI flag resolves relative paths from the current directory.
+When neither is set, the web UI stores generated Query ID cases under
+`./cases/cm-corpus` from the directory where you started `query-doctor-web`.
 
 ### Door 2: Run The Synthetic Demo
 
