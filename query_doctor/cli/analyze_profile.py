@@ -45,6 +45,7 @@ from query_doctor.cm.client import DEFAULT_MAX_PROFILE_BYTES, validate_cm_query_
 from query_doctor.cm.models import CMAdapterError, CMQuerySummary, OutputError
 from query_doctor.cm.profile_collection import write_collected_case
 from query_doctor.cm.profile_parsing import (
+    extract_query_id_from_profile_text,
     extract_statement_from_profile_text,
     merge_profile_summary_metadata,
 )
@@ -119,6 +120,13 @@ def stage_manual_profile_case(
     """Stage one local exported Impala text profile as a collector-shaped case."""
     validated_query_id = validate_cm_query_id_path_segment(query_id)
     profile_text = read_manual_profile_text(profile_text_path, max_bytes=max_profile_bytes)
+    profile_query_id = extract_query_id_from_profile_text(profile_text)
+    profile_query_id_verified = profile_query_id == validated_query_id
+    if profile_query_id is not None and not profile_query_id_verified:
+        raise ManualProfileIntakeError(
+            "Profile Query ID does not match --query-id. Select the matching exported profile "
+            "or rename the correct inbox file and rerun analysis."
+        )
     statement = extract_statement_from_profile_text(profile_text)
     summary = CMQuerySummary(query_id=validated_query_id, statement=statement)
     summary, profile_warnings = merge_profile_summary_metadata(summary, profile_text)
@@ -138,6 +146,7 @@ def stage_manual_profile_case(
             "profile_json_probe_enabled": False,
             "profile_docs_probe_enabled": False,
             "profile_docs_fetch_attempt_count": 0,
+            "profile_query_id_verified": profile_query_id_verified,
         },
         warnings=warnings,
         redact=True,

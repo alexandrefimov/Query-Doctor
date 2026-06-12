@@ -59,6 +59,11 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   cases in the web corpus instead of forcing recollection, so those staged cases
   can be opened from the local UI by entering the same Query ID. Browser profile
   upload remains out of scope for this trust-boundary slice.
+- Manual-profile staging now verifies an embedded profile Query ID when the
+  exported text profile includes one, covering both `Query ID:` and
+  `Query (id=...)` forms. Mismatched profiles fail closed before writing or
+  replacing a case, and staged metadata records whether the embedded Query ID
+  was verified.
 - Known Query ID analysis can now use a configured local `manual_profile_dir`
   as a web profile inbox: when a matching exported text profile file exists,
   the web workflow stages and analyzes it through the same bounded redacted

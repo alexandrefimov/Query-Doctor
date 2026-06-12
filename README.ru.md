@@ -170,7 +170,9 @@ query-doctor-analyze \
 `analysis_facts.md` и `analysis.json`, затем печатает output case directory.
 Используйте `--redact-identifiers`, если staged local artifacts могут быть
 переданы наружу. Manual profile intake принимает только exported text profiles;
-JSON, Thrift и profile-v2 payloads остаются вне этого entry path.
+JSON, Thrift и profile-v2 payloads остаются вне этого entry path. Если exported
+profile содержит собственный Query ID header, этот Query ID должен совпадать с
+`--query-id` до записи local case.
 
 Чтобы открыть staged case в local UI, запустите `query-doctor-web`, выберите
 `One Query ID` и введите тот же Query ID. Known Query ID analysis переиспользует

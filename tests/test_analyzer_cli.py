@@ -61,6 +61,31 @@ def run_analyzer(case_dir: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def run_profile_text_analyzer(
+    profile: Path,
+    *,
+    query_id: str = "aaaaaaaaaaaaaaaa:0000000000000001",
+    out_dir: Path,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "query_doctor.cli.analyze_profile",
+            "--profile-text",
+            str(profile),
+            "--query-id",
+            query_id,
+            "--out",
+            str(out_dir),
+        ],
+        cwd=str(REPO_DIR),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
 def copy_minimal_case(tmp_path):
     src_case = REPO_DIR / "tests" / "fixtures" / "minimal_case"
     case_dir = tmp_path / "case"
@@ -132,23 +157,7 @@ def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
     profile.write_text(raw_exported_profile_text(), encoding="utf-8")
     out_dir = tmp_path / "cm-corpus"
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "query_doctor.cli.analyze_profile",
-            "--profile-text",
-            str(profile),
-            "--query-id",
-            "aaaaaaaaaaaaaaaa:0000000000000001",
-            "--out",
-            str(out_dir),
-        ],
-        cwd=str(REPO_DIR),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
 
     assert result.returncode == 0, result.stderr + result.stdout
     case_dir = out_dir / "aaaaaaaaaaaaaaaa_0000000000000001"
@@ -164,6 +173,7 @@ def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
     assert metadata["profile_source"] == "manual_profile_text"
     assert metadata["profile_response_format"] == "text"
     assert metadata["profile_fetch_attempt_count"] == 0
+    assert metadata["profile_query_id_verified"] is True
     assert metadata["user"] == "<user>"
     assert metadata["pool"] == "<pool>"
     warnings = (case_dir / "collection_warnings.txt").read_text(encoding="utf-8")
@@ -176,28 +186,60 @@ def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
     assert len(analysis_json["operators"]) >= 1
 
 
+def test_analyzer_profile_text_accepts_query_header_id_form(tmp_path):
+    profile = tmp_path / "raw-exported-profile.txt"
+    profile.write_text(
+        raw_exported_profile_text().replace(
+            "Query Runtime Profile\nQuery ID: aaaaaaaaaaaaaaaa:0000000000000001\n",
+            "Query (id=aaaaaaaaaaaaaaaa:0000000000000001)\n",
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    metadata = json.loads(
+        (out_dir / "aaaaaaaaaaaaaaaa_0000000000000001" / "query_metadata.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert metadata["query_id"] == "aaaaaaaaaaaaaaaa:0000000000000001"
+    assert metadata["profile_query_id_verified"] is True
+
+
+def test_analyzer_profile_text_rejects_mismatched_profile_query_id_without_writing_case(
+    tmp_path,
+):
+    profile = tmp_path / "wrong-exported-profile.txt"
+    mismatched_profile_query_id = "bbbbbbbbbbbbbbbb:0000000000000002"
+    requested_query_id = "aaaaaaaaaaaaaaaa:0000000000000001"
+    profile.write_text(
+        raw_exported_profile_text().replace(requested_query_id, mismatched_profile_query_id),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(
+        profile,
+        query_id=requested_query_id,
+        out_dir=out_dir,
+    )
+
+    assert result.returncode == 2
+    assert "Profile Query ID does not match --query-id" in result.stderr
+    assert mismatched_profile_query_id not in result.stderr
+    assert requested_query_id not in result.stderr
+    assert not out_dir.exists()
+
+
 def test_analyzer_profile_text_rejects_json_payload_without_writing_case(tmp_path):
     profile = tmp_path / "profile.json"
     profile.write_text('{"profile": "raw json"}\n', encoding="utf-8")
     out_dir = tmp_path / "cm-corpus"
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "query_doctor.cli.analyze_profile",
-            "--profile-text",
-            str(profile),
-            "--query-id",
-            "aaaaaaaaaaaaaaaa:0000000000000001",
-            "--out",
-            str(out_dir),
-        ],
-        cwd=str(REPO_DIR),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
 
     assert result.returncode == 2
     assert "exported text profiles only" in result.stderr

@@ -9899,6 +9899,49 @@ def test_web_query_id_analysis_stages_matching_manual_profile_from_directory_wit
     assert progress_stages == [0, 1, 2, 3, 4]
 
 
+def test_web_query_id_analysis_rejects_misnamed_manual_profile_without_replacing_case(
+    tmp_path,
+):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    profile_dir = tmp_path / "profile-inbox"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "abc_def.txt"
+    requested_query_id = "abc:def"
+    mismatched_profile_query_id = "wrong:def"
+    profile_path.write_text(
+        f"Query Runtime Profile\nQuery ID: {mismatched_profile_query_id}\n",
+        encoding="utf-8",
+    )
+    final_case_dir = tmp_path / "cm-corpus" / "abc_def"
+    write_complete_collected_case(final_case_dir)
+    existing_facts = final_case_dir / "analysis_facts.md"
+    existing_facts.write_text("existing safe facts\n", encoding="utf-8")
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=REPO_DIR,
+        corpus_dir=tmp_path / "cm-corpus",
+        manual_profile_dir=profile_dir,
+        timeout_sec=30,
+    )
+
+    with pytest.raises(module.WebError) as exc:
+        module.run_query_id_analysis(
+            requested_query_id,
+            "analysis",
+            False,
+            settings,
+        )
+
+    message = str(exc.value)
+    assert "Manual profile analysis failed with exit code 2" in message
+    assert requested_query_id not in message
+    assert mismatched_profile_query_id not in message
+    assert existing_facts.read_text(encoding="utf-8") == "existing safe facts\n"
+    assert not list((tmp_path / "cm-corpus").glob(".query-refresh-*"))
+
+
 def test_web_query_id_analysis_manual_profile_only_missing_file_does_not_collect(tmp_path):
     module = load_web_module()
     config = tmp_path / "cm-config.json"

@@ -324,7 +324,7 @@ browser choices.
 
 | Field | Type | Scope | Notes |
 | --- | --- | --- | --- |
-| `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path and does not upload raw profile text through the browser. |
+| `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path and does not upload raw profile text through the browser. If the file contains an embedded Query ID for a different query, staging fails closed before replacing any existing case. |
 
 `manual_profile_dir` is a local-first fallback for one exported profile. It
 does not enable Recent scans, Running scans, Cloudera Manager metrics/events,

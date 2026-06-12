@@ -18,6 +18,10 @@ PROFILE_SQL_STATEMENT_RE = re.compile(
 PROFILE_SUMMARY_FIELD_RE = re.compile(
     r"(?im)^\s*(?P<name>Start Time|End Time|Query Type|Query State|Query Status|User|Pool|Request Pool|Resource Pool|Admission Pool)\s*:\s*(?P<value>.+?)\s*$"
 )
+PROFILE_QUERY_ID_RE = re.compile(
+    r"(?im)^\s*(?:Query\s+ID\s*:\s*|Query\s*\(\s*id\s*=\s*)"
+    r"(?P<query_id>[A-Za-z0-9]+:[A-Za-z0-9]+)\s*\)?\s*$"
+)
 
 
 def extract_statement_from_profile_text(profile_text: str) -> str | None:
@@ -27,6 +31,15 @@ def extract_statement_from_profile_text(profile_text: str) -> str | None:
         return None
     statement = match.group("statement").strip()
     return statement or None
+
+
+def extract_query_id_from_profile_text(profile_text: str) -> str | None:
+    text = profile_details_text(profile_text)
+    match = PROFILE_QUERY_ID_RE.search(text)
+    if not match:
+        return None
+    query_id = match.group("query_id").strip()
+    return query_id or None
 
 
 def profile_details_text(profile_text: str) -> str:

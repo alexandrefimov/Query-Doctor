@@ -164,7 +164,9 @@ redacts users, hosts, credentials, and common secret forms by default, writes
 `analysis_facts.md` plus `analysis.json`, and prints the output case directory.
 Use `--redact-identifiers` when the staged local artifacts may be shared. The
 manual profile intake accepts exported text profiles only; JSON, Thrift, and
-profile-v2 payloads remain outside this entry path.
+profile-v2 payloads remain outside this entry path. If the exported profile
+contains its own Query ID header, that Query ID must match `--query-id` before
+the local case is written.
 
 To inspect the same staged case in the local UI, start `query-doctor-web`,
 choose `One Query ID`, and enter the same Query ID. Known Query ID analysis
@@ -176,7 +178,8 @@ text profile in `manual_profile_dir` using the Query ID slug as the file name
 `<query-id-slug>.txt`), start `query-doctor-web`, choose `One Query ID`, and
 enter the original Query ID. The web path stages and analyzes the local file
 through the same text-only, bounded, redacted analyzer path; it does not upload
-the raw profile through the browser.
+the raw profile through the browser. If the file contains an embedded Query ID
+for a different query, staging fails closed before replacing any existing case.
 
 ### Door 2: Run The Synthetic Demo
 
