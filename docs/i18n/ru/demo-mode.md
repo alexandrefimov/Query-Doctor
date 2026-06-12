@@ -22,7 +22,20 @@ diagnostic signals, unknown-but-useful limitations, direct Impala compatibility
 outcome gate проходил для admission/runtime workload aggregate. В git попадает
 только safe aggregate summary, а не generated local outcome records.
 
-Канонический public-demo запуск использует dedicated temp output path:
+Основной public-demo запуск:
+
+```bash
+query-doctor-web --public-demo
+```
+
+`--public-demo` сам генерирует fresh synthetic pack в system temp directory,
+подключает `batch_summary.json` и synthetic `action_outcomes.jsonl`, включает
+Python-only mode, игнорирует default local config discovery и owner-source env,
+отклоняет explicitly loaded CM/Impala/Prometheus/metadata/source-owner settings
+и блокирует все POST routes.
+
+Если нужно вручную посмотреть или переиспользовать generated pack, используйте
+dedicated temp output path:
 
 ```bash
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
@@ -40,19 +53,8 @@ cases ведут к case Action card, где безопасно записыва
 
 ## Read-only public demo
 
-Для public-style read-only demo запускайте одну команду:
-
-```bash
-query-doctor-web --public-demo
-```
-
-`--public-demo` сам генерирует fresh synthetic pack в system temp directory,
-подключает `batch_summary.json` и synthetic `action_outcomes.jsonl`, включает
-Python-only mode, игнорирует default local config discovery и owner-source env,
-отклоняет explicitly loaded CM/Impala/Prometheus/metadata/source-owner settings
-и блокирует все POST routes. Снаружи остается click-through GET UI по synthetic
-pack, без collection, report generation, optimizer actions, uploads, job
-cancellation и feedback writes.
+Снаружи остается click-through GET UI по synthetic pack, без collection, report
+generation, optimizer actions, uploads, job cancellation и feedback writes.
 
 ## Safety
 

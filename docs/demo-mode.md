@@ -7,9 +7,22 @@ Language: English | [Russian](i18n/ru/demo-mode.md)
 Query Doctor can generate a local synthetic demo pack that works without
 Cloudera Manager, Impala, network access, or LLM calls.
 
-Generate the pack under a dedicated `query-doctor-*` temp directory. The
-generator refuses repository paths, generic temp roots, and unsafe shallow
-output paths:
+For the public-style read-only demo, run one command:
+
+```bash
+query-doctor-web --public-demo
+```
+
+`--public-demo` generates a fresh synthetic pack under the system temp
+directory, points the web UI at its `batch_summary.json` and synthetic
+`action_outcomes.jsonl`, forces Python-only mode, ignores default local config
+discovery and owner-source environment hints, rejects explicitly loaded CM,
+direct Impala, Prometheus, metadata, or owner-source settings, and blocks every
+POST route with a safe read-only response.
+
+If you need to inspect or reuse the generated pack manually, generate it under
+a dedicated `query-doctor-*` temp directory. The generator refuses repository
+paths, generic temp roots, and unsafe shallow output paths:
 
 ```bash
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
@@ -62,21 +75,9 @@ evidence.
 
 ## Read-Only Public Demo
 
-For the public-style read-only demo, run one command:
-
-```bash
-query-doctor-web --public-demo
-```
-
-`--public-demo` generates a fresh synthetic pack under the system temp
-directory, points the web UI at its `batch_summary.json` and synthetic
-`action_outcomes.jsonl`, forces Python-only mode, ignores default local config
-discovery and owner-source environment hints, rejects explicitly loaded CM,
-direct Impala, Prometheus, metadata, or owner-source settings, and blocks every
-POST route with a safe read-only response. The published GET UI remains the
-same synthetic demo, but external users cannot start collection, generate
-reports, run optimizer actions, submit uploads, cancel jobs, or write
-action-outcome feedback.
+The published GET UI remains the same synthetic demo, but external users cannot
+start collection, generate reports, run optimizer actions, submit uploads,
+cancel jobs, or write action-outcome feedback.
 
 The default bind remains `127.0.0.1:8765`. Do not use ordinary local mode with
 real local config, Kerberos material, cluster credentials, or generated cases

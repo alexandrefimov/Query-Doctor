@@ -20,7 +20,13 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
-- No changes yet.
+- Known Query ID analysis now generates and validates the deterministic Python
+  report as part of the explicit analysis submit job. LLM narratives and Query
+  Optimizer actions remain explicit selected-case actions, and Recent/Running
+  scans still do not auto-run report or optimizer work.
+- The root README and demo-mode docs now present `query-doctor-web
+  --public-demo` as the primary synthetic demo startup, with the lower-level
+  manual demo-pack commands kept as an advanced reuse/inspection path.
 
 ## 0.7.0 - 2026-06-12
 

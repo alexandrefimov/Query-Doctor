@@ -142,7 +142,9 @@ def test_manual_profile_inbox_known_query_details_leak_canary(tmp_path):
     assert "case_dir" not in result.case
     assert "case_index" not in result.case
     assert case_dir.is_dir()
-    assert progress_stages == [0, 1, 2, 3, 4]
+    assert progress_stages == [0, 1, 2, 3, 4, 5]
+    assert (case_dir / PYTHON_REPORT_NAME).is_file()
+    assert (case_dir / "diagnosis_python.validated.json").is_file()
 
     analysis_job = store.create(QUERY_ID, "analysis")
     store.complete(analysis_job.job_id, result)

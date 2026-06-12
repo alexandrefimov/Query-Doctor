@@ -26,6 +26,7 @@ from query_doctor.web.case_files import (
     resolve_under_repo,
 )
 from query_doctor.web.command_builders import (
+    REPORT_VARIANT_PYTHON,
     append_web_cm_args,
     build_analyzer_command,
     build_query_id_analyzer_command,
@@ -45,6 +46,7 @@ from query_doctor.web.manual_profile_inbox import (
 from query_doctor.web.job_workers import (
     REPORT_VALIDATION_EXIT_CODE,
     REPORT_VALIDATION_FAILURE_MESSAGE,
+    generate_validated_report_artifact,
 )
 from query_doctor.web.models import WebError, WebQueryAnalysisResult, WebResult, WebSettings
 from query_doctor.web.subprocesses import (
@@ -198,6 +200,20 @@ def run_query_id_analysis(
     update_progress(progress, 0)
     validated_query_id = validate_query_id(query_id)
     subprocess_env = effective_subprocess_env(settings)
+    report_generated = False
+
+    def generate_python_report(case_dir: Path) -> None:
+        update_progress(progress, 3)
+        generate_validated_report_artifact(
+            case_dir,
+            settings,
+            runner,
+            label="Query Doctor Known Query ID Python report generation",
+            report_variant=REPORT_VARIANT_PYTHON,
+            cancel_check=cancel_check,
+        )
+        if cancel_check is not None and cancel_check():
+            raise WebError("Analysis was stopped by the user.")
 
     update_progress(progress, 1)
     expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
@@ -213,7 +229,9 @@ def run_query_id_analysis(
             subprocess_env,
             progress=progress,
             cancel_check=cancel_check,
+            post_analyze=generate_python_report,
         )
+        report_generated = True
     elif expected_case_dir.exists() and case_uses_manual_profile_text(expected_case_dir):
         try:
             ensure_complete_existing_case(expected_case_dir)
@@ -241,20 +259,25 @@ def run_query_id_analysis(
             subprocess_env,
             progress=progress,
             cancel_check=cancel_check,
+            post_analyze=generate_python_report,
         )
+        report_generated = True
     if cancel_check is not None and cancel_check():
         raise WebError("Analysis was stopped by the user.")
     collection_status = "ok"
     analysis_status = "ok"
 
-    update_progress(progress, 3)
+    if not report_generated:
+        generate_python_report(case_dir)
+
+    update_progress(progress, 4)
     summary_case = build_query_id_summary_case(
         validated_query_id,
         case_dir,
         collection_status=collection_status,
         analysis_status=analysis_status,
     )
-    update_progress(progress, 4)
+    update_progress(progress, 5)
     return WebQueryAnalysisResult(query_id=validated_query_id, case=summary_case)
 
 
@@ -427,6 +450,7 @@ def collect_analyze_and_replace_query_case(
     subprocess_env: dict[str, str],
     progress: ProgressFunc | None = None,
     cancel_check: CancelCheck | None = None,
+    post_analyze: Callable[[Path], None] | None = None,
 ) -> Path:
     corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
     staging_root = corpus_dir / f".query-refresh-{uuid.uuid4().hex}"
@@ -460,6 +484,8 @@ def collect_analyze_and_replace_query_case(
             raise WebError("Analysis was stopped by the user.")
         if analyzed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+        if post_analyze is not None:
+            post_analyze(case_dir)
         return replace_case_dir_after_success(case_dir, expected_case_dir)
     finally:
         if staging_root.exists():

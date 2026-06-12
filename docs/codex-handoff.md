@@ -26,8 +26,9 @@ local exclude-only note files, not in committed documentation.
 - Query ID diagnosis is secondary for one known query.
 - Query Optimizer is separate for pasted SQL analysis and deterministic
   candidate guidance.
-- Validated reports and Query Optimizer outcomes are generated only by explicit
-  selected-case actions.
+- Known Query ID analysis may generate the deterministic Python report as part
+  of its explicit submit job. LLM reports and Query Optimizer outcomes remain
+  explicit selected-case actions.
 
 ## Safety Baseline
 

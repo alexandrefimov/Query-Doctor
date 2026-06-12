@@ -144,7 +144,8 @@ Future source seam:
 
 - Web UI - localhost-oriented диагностический surface.
 - Recent scan является primary workflow.
-- Known Query ID - secondary mode внутри Diagnose.
+- Known Query ID - secondary mode внутри Diagnose; explicit submit-job готовит
+  deterministic Python report, а LLM/optimizer actions остаются явными.
 - Query Optimizer остается separate read-only workflow.
 - Details pages объединяют deterministic facts, runtime context, optional
   metrics/events context, explicit report action и explicit optimizer action.

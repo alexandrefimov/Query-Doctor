@@ -39,8 +39,9 @@ class JobProgressView:
 WEB_PROGRESS_STEPS = (
     JobProgressStep("Checking Query ID", ("Checking Query ID",), 4),
     JobProgressStep("Collecting or reusing profile", ("Collecting or reusing profile",), 24),
-    JobProgressStep("Analyzing profile", ("Analyzing profile",), 62),
-    JobProgressStep("Preparing deterministic result", ("Preparing deterministic result",), 86),
+    JobProgressStep("Analyzing profile", ("Analyzing profile",), 56),
+    JobProgressStep("Generating Python report", ("Generating Python report",), 76),
+    JobProgressStep("Preparing deterministic result", ("Preparing deterministic result",), 90),
     JobProgressStep("Done", ("Done",), 100),
 )
 BATCH_PROGRESS_STEPS = (
