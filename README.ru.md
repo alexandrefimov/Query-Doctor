@@ -25,10 +25,8 @@ Recent scan - основной workflow. Диагностика по Query ID в
 
 ```bash
 python -m pip install query-doctor
-QUERY_ID="aaaaaaaaaaaaaaaa:0000000000000001"
 query-doctor-analyze \
   --profile-text ./exported-impala-profile.txt \
-  --query-id "$QUERY_ID" \
   --out cases/cm-corpus
 query-doctor-web --corpus-dir cases/cm-corpus
 ```
@@ -174,10 +172,8 @@ Kerberos, metadata collection, Prometheus или LLM provider и не загру
 profile через browser.
 
 ```bash
-QUERY_ID="aaaaaaaaaaaaaaaa:0000000000000001"
 query-doctor-analyze \
   --profile-text ./exported-impala-profile.txt \
-  --query-id "$QUERY_ID" \
   --out cases/cm-corpus
 ```
 
@@ -186,13 +182,14 @@ query-doctor-analyze \
 `analysis_facts.md` и `analysis.json`, затем печатает output case directory.
 Используйте `--redact-identifiers`, если staged local artifacts могут быть
 переданы наружу. Manual profile intake принимает только exported text profiles;
-JSON, Thrift и profile-v2 payloads остаются вне этого entry path. Если exported
-profile содержит собственный Query ID header, этот Query ID должен совпадать с
-`--query-id` до записи local case.
+JSON, Thrift и profile-v2 payloads остаются вне этого entry path. CLI берет
+Query ID из header внутри exported profile. Если в профиле нет читаемого Query
+ID header, добавьте `--query-id <query-id>`; если оба значения есть, они
+должны совпасть до записи local case.
 
 Чтобы открыть staged case в local UI, запустите `query-doctor-web`, выберите
-`One Query ID` и введите тот же Query ID. Known Query ID analysis переиспользует
-complete manual-profile staged cases вместо recollection.
+`One Query ID` и введите Query ID из этого профиля. Known Query ID analysis
+переиспользует complete manual-profile staged cases вместо recollection.
 
 Также можно настроить local profile inbox для web UI. Положите exported text
 profile в `manual_profile_dir`, назвав файл slug-версией Query ID: замените

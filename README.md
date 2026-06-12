@@ -30,10 +30,8 @@ or echo submitted SQL.
 
 ```bash
 python -m pip install query-doctor
-QUERY_ID="aaaaaaaaaaaaaaaa:0000000000000001"
 query-doctor-analyze \
   --profile-text ./exported-impala-profile.txt \
-  --query-id "$QUERY_ID" \
   --out cases/cm-corpus
 query-doctor-web --corpus-dir cases/cm-corpus
 ```
@@ -168,10 +166,8 @@ Kerberos, metadata collection, Prometheus, or an LLM provider, and does not
 upload the raw profile through the browser.
 
 ```bash
-QUERY_ID="aaaaaaaaaaaaaaaa:0000000000000001"
 query-doctor-analyze \
   --profile-text ./exported-impala-profile.txt \
-  --query-id "$QUERY_ID" \
   --out cases/cm-corpus
 ```
 
@@ -180,13 +176,15 @@ redacts users, hosts, credentials, and common secret forms by default, writes
 `analysis_facts.md` plus `analysis.json`, and prints the output case directory.
 Use `--redact-identifiers` when the staged local artifacts may be shared. The
 manual profile intake accepts exported text profiles only; JSON, Thrift, and
-profile-v2 payloads remain outside this entry path. If the exported profile
-contains its own Query ID header, that Query ID must match `--query-id` before
-the local case is written.
+profile-v2 payloads remain outside this entry path. The CLI uses the Query ID
+header from the exported profile. If the profile lacks a readable Query ID
+header, add `--query-id <query-id>`; if both are present, they must match
+before the local case is written.
 
 To inspect the same staged case in the local UI, start `query-doctor-web`,
-choose `One Query ID`, and enter the same Query ID. Known Query ID analysis
-reuses complete manual-profile staged cases instead of recollecting them.
+choose `One Query ID`, and enter the Query ID from that profile. Known Query ID
+analysis reuses complete manual-profile staged cases instead of recollecting
+them.
 
 You can also configure a local profile inbox for the web UI. Put the exported
 text profile in `manual_profile_dir` using the Query ID slug as the file name

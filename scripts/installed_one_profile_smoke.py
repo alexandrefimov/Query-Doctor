@@ -252,8 +252,6 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
             str(analyze),
             "--profile-text",
             str(profile_text),
-            "--query-id",
-            args.query_id,
             "--out",
             str(cli_out),
             "--redact-identifiers",

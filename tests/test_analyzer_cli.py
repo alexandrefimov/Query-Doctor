@@ -30,14 +30,13 @@ def test_analyzer_cli_module_owns_cli_helpers():
         [
             "--profile-text",
             "exported-profile.txt",
-            "--query-id",
-            "aaaaaaaaaaaaaaaa:0000000000000001",
             "--out",
             "cases/cm-corpus",
         ]
     )
     assert manual_args.input is None
     assert str(manual_args.profile_text) == "exported-profile.txt"
+    assert manual_args.query_id is None
     assert (
         analyze_profile.resolve_paths(REPO_DIR / "tests" / "fixtures" / "minimal_case", None)[
             0
@@ -64,9 +63,10 @@ def run_analyzer(case_dir: Path) -> subprocess.CompletedProcess[str]:
 def run_profile_text_analyzer(
     profile: Path,
     *,
-    query_id: str = "aaaaaaaaaaaaaaaa:0000000000000001",
+    query_id: Optional[str] = None,
     out_dir: Path,
 ) -> subprocess.CompletedProcess[str]:
+    query_args = ["--query-id", query_id] if query_id is not None else []
     return subprocess.run(
         [
             sys.executable,
@@ -74,8 +74,7 @@ def run_profile_text_analyzer(
             "query_doctor.cli.analyze_profile",
             "--profile-text",
             str(profile),
-            "--query-id",
-            query_id,
+            *query_args,
             "--out",
             str(out_dir),
         ],
@@ -184,6 +183,48 @@ def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
     analysis_json = json.loads((case_dir / "analysis.json").read_text(encoding="utf-8"))
     assert analysis_json["query_context"]["profile_source"] == "manual_profile_text"
     assert len(analysis_json["operators"]) >= 1
+
+
+def test_analyzer_profile_text_allows_explicit_query_id_when_profile_header_missing(tmp_path):
+    profile = tmp_path / "raw-exported-profile.txt"
+    profile.write_text(
+        raw_exported_profile_text().replace(
+            "Query ID: aaaaaaaaaaaaaaaa:0000000000000001\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(
+        profile,
+        query_id="aaaaaaaaaaaaaaaa:0000000000000001",
+        out_dir=out_dir,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    case_dir = out_dir / "aaaaaaaaaaaaaaaa_0000000000000001"
+    metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["query_id"] == "aaaaaaaaaaaaaaaa:0000000000000001"
+    assert metadata["profile_query_id_verified"] is False
+
+
+def test_analyzer_profile_text_requires_query_id_when_profile_header_missing(tmp_path):
+    profile = tmp_path / "raw-exported-profile.txt"
+    profile.write_text(
+        raw_exported_profile_text().replace(
+            "Query ID: aaaaaaaaaaaaaaaa:0000000000000001\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
+
+    assert result.returncode == 2
+    assert "Profile text does not include a Query ID" in result.stderr
+    assert not out_dir.exists()
 
 
 def test_analyzer_profile_text_accepts_query_header_id_form(tmp_path):
