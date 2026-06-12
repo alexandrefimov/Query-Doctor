@@ -113,36 +113,24 @@ compatibility limitation. Stage skew и task-duration signals должны ос�
 `unknown`, пока accepted stage summaries или task-summary quantiles не дадут
 достаточно raw-free evidence.
 
-## Текущий live checkpoint
+## Граница readiness evidence
 
-На Spark 4.1 live checkpoint от 2026-06-05 безопасное состояние такое:
+Representative Spark evidence может показать, что bounded one-application
+History Server intake остается raw-free и warning-free для compact summaries,
+но это остается evidence только для compact intake contract. Это не readiness
+для Spark production support, Recent scans, Details/trusted reports, optimizer
+behavior, broad live collection, raw event-log reads или fixture promotion.
 
-- completed Spark 4.1-family application удалось свести через dev-only
-  one-application handoff wrapper, используя bounded History Server summary
-  endpoints;
-- handoff summary остался raw-free и показал accepted collection: все шесть
-  top-level endpoints читаются, source warnings отсутствуют, source contract
-  равен `spark_history_server_compact_v1`, Spark version family равна
-  `spark_4_1`, а no-support boundary остался неизменным;
-- тот же handoff дал `attention_areas=1` и
-  `supported_attention_areas=0`; это допустимо как evidence raw-free intake,
-  но не является readiness для Spark support или fixture promotion;
-- штатный cluster History Server может быть доступен, но возвращать пустой
-  список applications, если его собственный event-log filesystem reader
-  неисправен. Это infrastructure/source-coverage gap, а не причина читать raw
-  event logs из Query Doctor или расширять product collection;
-- operator-controlled temporary History Server в той же authorized environment
-  можно использовать как local validation target, но private endpoints,
-  selectors, ports, event-log locations и output paths не должны попадать в
-  committed docs или prompts.
+`same_application` handoff без selected SQL execution может суммировать
+readable application-level jobs, stages, scheduler delay, spill и
+task-duration context без raw selectors в compact output. SQL-execution
+specific timing, failure category и exact query linkage всё еще требуют
+accepted SQL execution evidence и остаются `unknown` без него.
 
-Application-only Spark 4.1 linkage gap из этого checkpoint теперь закрыт для
-compact application-level summaries. `same_application` handoff без selected
-SQL execution может оставаться warning-free, когда SQL execution-list endpoint
-недоступен, и при этом суммировать readable application-level jobs, stages,
-scheduler delay, spill и task-duration context без raw selectors в compact
-output. SQL-execution-specific timing, failure category и exact query linkage
-всё еще требуют accepted SQL execution evidence и остаются `unknown` без него.
+Live validation notes, private endpoints, selectors, ports, event-log
+locations, output paths и one-run checkpoint details должны оставаться вне
+committed docs и prompts. Public docs фиксируют только durable
+source-coverage behavior, support boundaries и sanitization requirements.
 
 ## Sanitization checklist
 

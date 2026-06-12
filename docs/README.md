@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-06-12
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -23,31 +23,41 @@ the English source, the English document wins.
 
 See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 
-## Start Here
+## Start Here For Users
 
 - [../README.md](../README.md): demo-first public overview, install path,
   support boundaries, and safety summary.
 - [../README.ru.md](../README.ru.md): Russian companion for the public project
   README.
+- [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
+  and public demo storyline.
+- [configuration.md](configuration.md): local JSON configuration reference for
+  Cloudera Manager, manual-profile inbox, direct Impala, Prometheus, metadata,
+  and LLM routing.
+- [security-model.md](security-model.md): public security, privacy, and
+  demo-sharing overview for users and external reviewers.
+- [safety-contract.md](safety-contract.md): canonical trust and redaction
+  contract.
+- [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
+  truth for current engine support status, fixture/research boundaries, and
+  second-engine promotion gates.
+- [engines/README.md](engines/README.md): index for detailed Trino and Spark
+  preview/research docs and command catalogs.
+
+## Start Here For Contributors And Agents
+
 - [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
 - [codex-handoff.md](codex-handoff.md): public-safe agent baseline.
 - [public-documentation-boundary.md](public-documentation-boundary.md): split
   committed public docs from ignored local agent notes.
-- [safety-contract.md](safety-contract.md): canonical trust and redaction
-  contract.
-- [security-model.md](security-model.md): public security, privacy, and
-  demo-sharing overview for users and external reviewers.
+- [code-map.md](code-map.md): code ownership lookup.
+- [test-matrix.md](test-matrix.md): focused validation matrix.
+- [code-audit.md](code-audit.md): open code risks and review baseline.
 - [engine-redaction-note-v1.md](engine-redaction-note-v1.md): shared raw-free
   evidence-package redaction note schema for package-style engine intake.
-- [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
-  truth for current engine support status, fixture/research boundaries, and
-  second-engine promotion gates.
 - [customer-readiness-priorities.md](customer-readiness-priorities.md):
   near-term Impala-first customer-readiness backlog for demo, config, docs,
   UI, and validation focus.
-- [cloudera-test-cluster-request.md](cloudera-test-cluster-request.md):
-  public-safe read-only Cloudera Manager plus Impala test-cluster outreach
-  template.
 - [repository-simplification-audit.md](repository-simplification-audit.md):
   conservative docs, scripts, and tests classification before cleanup.
 
@@ -70,6 +80,9 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
+- [release-notes-0.7.0.md](release-notes-0.7.0.md): curated 0.7.0 release
+  notes for one-profile intake, installed-wheel release gates, typed scoring,
+  and Impala-first adoption readiness.
 - [release-notes-0.6.0.md](release-notes-0.6.0.md): curated 0.6.0 release
   notes for bounded Spark compact intake, Trino raw-free handoff gates, and
   Impala diagnostic-loop calibration.
@@ -111,6 +124,7 @@ Status legend:
 | [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
 | [engine-redaction-note-v1.md](engine-redaction-note-v1.md) | active | Shared raw-free evidence-package redaction note schema for package-style engine intake. |
+| [engines/README.md](engines/README.md) | reference | Index for detailed Trino and Spark preview/research docs and command catalogs. |
 | [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
 | [upstream-impala-ai-analyzer.md](upstream-impala-ai-analyzer.md) | active | Upstream Impala AI analyzer alignment and Query Doctor differentiation. |
@@ -118,7 +132,6 @@ Status legend:
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
 | [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | active | Current engine support status, normalized fact coverage, fixture/research boundaries, and second-engine support gaps. |
 | [customer-readiness-priorities.md](customer-readiness-priorities.md) | active | Near-term Impala-first customer-readiness backlog for demo, config, docs, UI, and validation focus. |
-| [cloudera-test-cluster-request.md](cloudera-test-cluster-request.md) | reference | Public-safe read-only Cloudera Manager plus Impala test-cluster outreach template. |
 | [repository-simplification-audit.md](repository-simplification-audit.md) | active | Conservative docs, scripts, and tests classification before cleanup. |
 | [research/upstream-watch.md](research/upstream-watch.md) | reference | Upstream and adjacent-market watch loop for diagnostic signals across the query stack. |
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
@@ -148,6 +161,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [release-notes-0.7.0.md](release-notes-0.7.0.md) | reference | Curated 0.7.0 release notes. |
 | [release-notes-0.6.0.md](release-notes-0.6.0.md) | reference | Curated 0.6.0 release notes. |
 | [release-notes-0.5.0.md](release-notes-0.5.0.md) | reference | Curated 0.5.0 release notes. |
 | [release-notes-0.4.3.md](release-notes-0.4.3.md) | reference | Curated 0.4.3 release notes. |

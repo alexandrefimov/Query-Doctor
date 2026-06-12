@@ -13,6 +13,21 @@ def optimizer_case_dirs() -> list[Path]:
     return sorted(path for path in FIXTURES_DIR.iterdir() if path.is_dir())
 
 
+def write_case_from_optimizer_fixture(tmp_path: Path, fixture_name: str) -> Path:
+    fixture_dir = FIXTURES_DIR / fixture_name
+    case_dir = tmp_path / fixture_name
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text(
+        (fixture_dir / "analysis_facts.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (case_dir / "original_query.sql").write_text(
+        (fixture_dir / "source.sql").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    return case_dir
+
+
 @pytest.mark.parametrize("case_dir", optimizer_case_dirs(), ids=lambda path: path.name)
 def test_optimizer_benchmark_fixture_contract(case_dir: Path):
     expected = json.loads((case_dir / "expected.json").read_text(encoding="utf-8"))
@@ -74,3 +89,30 @@ def test_optimizer_benchmark_fixture_contract(case_dir: Path):
         raise AssertionError(
             f"unsupported expected optimizer output kind: {expected['expected_output_kind']}"
         )
+
+
+def test_optimizer_safe_source_visibility_forces_recommendations_for_draft_fixture(tmp_path):
+    case_dir = write_case_from_optimizer_fixture(tmp_path, "single_cte_predicate_pushdown")
+
+    result = optimize_query.main([str(case_dir), "--source-visibility", "safe", "--no-llm"])
+
+    marker = json.loads((case_dir / "optimized_query.validated.json").read_text(encoding="utf-8"))
+    assert result == 0
+    assert marker["output_kind"] == "recommendations_only"
+    assert marker["fallback_reason"] == "source_visibility_safe"
+    assert marker["risk_mode"] == "recommendations_only"
+    assert "source_visibility_safe_blocks_sql_draft" in marker["risk_reasons"]
+    assert (case_dir / "optimized_query_recommendations.md").is_file()
+    assert not (case_dir / "optimized_query.sql").exists()
+
+
+def test_optimizer_owner_raw_source_visibility_preserves_draft_fixture(tmp_path):
+    case_dir = write_case_from_optimizer_fixture(tmp_path, "single_cte_predicate_pushdown")
+
+    result = optimize_query.main([str(case_dir), "--source-visibility", "owner_raw", "--no-llm"])
+
+    marker = json.loads((case_dir / "optimized_query.validated.json").read_text(encoding="utf-8"))
+    assert result == 0
+    assert marker["output_kind"] == "sql_draft"
+    assert marker["risk_mode"] in {"rewrite_allowed", "conservative_rewrite"}
+    assert (case_dir / "optimized_query.sql").is_file()

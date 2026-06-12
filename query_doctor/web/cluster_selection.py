@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
+from pathlib import Path
 from typing import Mapping
 
 from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE, normalize_cm_metrics_profile
@@ -60,6 +61,7 @@ def has_top_level_cluster_config(config_values: Mapping[str, object]) -> bool:
             "cm_url",
             "cluster",
             "service",
+            "manual_profile_dir",
             "query_profile_source",
             "impala_profile_hosts",
         )
@@ -108,6 +110,7 @@ def build_web_cluster_config(
             string_value(values, "ca_bundle"), string_value(defaults, "ca_bundle")
         ),
         insecure_skip_verify=first_bool(values, defaults, "insecure_skip_verify", default=False),
+        manual_profile_dir=first_path(values, defaults, "manual_profile_dir"),
         cm_metrics_profile=cm_metrics_profile,
         query_profile_source=first_string(
             string_value(values, "query_profile_source"),
@@ -302,6 +305,15 @@ def first_string_tuple(
     return ()
 
 
+def first_path(
+    values: Mapping[str, object],
+    defaults: Mapping[str, object],
+    key: str,
+) -> Path | None:
+    value = first_string(string_value(values, key), string_value(defaults, key))
+    return Path(value).expanduser() if value else None
+
+
 def default_cluster_key(settings: WebSettings) -> str:
     if settings.active_cluster_key and any(
         cluster.key == settings.active_cluster_key for cluster in settings.clusters
@@ -346,6 +358,7 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 cm_username=cluster.cm_username,
                 ca_bundle=cluster.ca_bundle,
                 insecure_skip_verify=cluster.insecure_skip_verify,
+                manual_profile_dir=cluster.manual_profile_dir,
                 cm_metrics_profile=cluster.cm_metrics_profile,
                 query_profile_source=cluster.query_profile_source,
                 impala_profile_hosts=cluster.impala_profile_hosts,

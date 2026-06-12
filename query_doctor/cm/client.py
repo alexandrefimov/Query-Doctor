@@ -303,10 +303,10 @@ def build_cm_profile_text_request(
 def validate_cm_query_id_path_segment(query_id: str) -> str:
     normalized_query_id = normalize_optional_string(query_id)
     if not normalized_query_id:
-        raise CMAdapterError("CM profile text request requires a query id.")
+        raise CMAdapterError("Impala Query ID path usage requires a query id.")
     if not CM_QUERY_ID_PATH_RE.fullmatch(normalized_query_id):
         raise CMAdapterError(
-            "CM profile text request requires query id shape "
+            "Impala Query ID path usage requires query id shape "
             "[A-Za-z0-9]+:[A-Za-z0-9]+ for path usage."
         )
     return normalized_query_id

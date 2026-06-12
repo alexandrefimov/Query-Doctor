@@ -62,6 +62,7 @@ class WebClusterConfig:
     cm_username: str | None = None
     ca_bundle: str | None = None
     insecure_skip_verify: bool = False
+    manual_profile_dir: Path | None = None
     cm_metrics_profile: str = DEFAULT_CM_METRICS_PROFILE
     query_profile_source: str = DEFAULT_QUERY_PROFILE_SOURCE
     impala_profile_hosts: tuple[str, ...] = ()
@@ -108,6 +109,7 @@ class WebSettings:
     cm_username: str | None = None
     ca_bundle: str | None = None
     insecure_skip_verify: bool = False
+    manual_profile_dir: Path | None = None
     cm_metrics_profile: str = DEFAULT_CM_METRICS_PROFILE
     clusters: tuple[WebClusterConfig, ...] = ()
     active_cluster_key: str | None = None

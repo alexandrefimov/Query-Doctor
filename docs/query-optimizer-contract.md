@@ -143,9 +143,11 @@ Execution:
 
 Allowed trusted result:
 
-- one read-only `SELECT` or `WITH` draft; or
+- one read-only `SELECT` or `WITH` draft when the current web source policy is
+  `source_visibility=owner_raw`; or
 - a recommendations-only / no-rewrite outcome when Python decides a trusted SQL
-  draft is too risky, too unsupported, too long, or not materially useful.
+  draft is disallowed by source policy, too risky, too unsupported, too long,
+  or not materially useful.
 
 Rejected or unsafe result:
 
@@ -416,7 +418,11 @@ trusted under recommendations-only or no-rewrite markers.
 
 Current behavior:
 
-- low-risk case and validator passes: show validated optimized draft;
+- low-risk case, `source_visibility=owner_raw`, and validator passes: show
+  validated optimized draft;
+- default `source_visibility=safe`: show no SQL draft and provide trusted
+  recommendations-only fallback, even if a validated draft artifact exists from
+  an earlier owner-raw session;
 - high-risk case: show no trusted SQL draft and provide deterministic
   recommendations-only fallback;
 - no-benefit case: show no trusted SQL draft and provide a `no_rewrite` outcome;
@@ -451,7 +457,8 @@ Details may show safe optimizer status fields:
 
 Details must not show:
 
-- source SQL unless it is the trusted validated draft itself;
+- source SQL unless it is the trusted validated draft itself and the current
+  source policy is `source_visibility=owner_raw`;
 - partial draft;
 - raw LLM text;
 - local paths;

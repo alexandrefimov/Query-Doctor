@@ -126,6 +126,7 @@ HUMAN_REVIEW_RISK_REASONS = {
     "nested_query_body_validation_not_proven",
     "set_operations",
     "sql_payload_too_large_for_safe_rewrite",
+    "source_visibility_safe_blocks_sql_draft",
     "too_many_ctes_for_safe_rewrite",
     "too_many_top_level_joins_for_safe_rewrite",
 }
@@ -166,6 +167,7 @@ def build_summary(
     )
     primary_distribution = case_primary_bottleneck_distribution(cases)
     primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
+    scoring_distribution = scoring_evidence_source_distribution(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
     include_source_coordinates = config.source_visibility == "owner_raw" and bool(
@@ -231,6 +233,7 @@ def build_summary(
         else max(0, inspected - selected_count),
         "case_primary_bottleneck_distribution": primary_distribution,
         "case_primary_unknown_breakdown": primary_unknown_breakdown,
+        "scoring_evidence_source_distribution": scoring_distribution,
         "optimizer_rewriteability_distribution": rewriteability_distribution,
         "optimizer_funnel": optimizer_funnel_summary,
         "top_reports": config.top_reports,
@@ -352,6 +355,33 @@ def case_primary_bottleneck_distribution(cases: list[CaseResult]) -> dict[str, o
         "mixed_rate": ratio(mixed_cases, total),
         "unknown_or_not_classified_rate": ratio(unknown_cases + not_classified_cases, total),
         "medium_or_better_confidence_rate": ratio(medium_or_better, total),
+    }
+
+
+def scoring_evidence_source_distribution(cases: list[CaseResult]) -> dict[str, object]:
+    source_counts = Counter(
+        safe_counter_label(case.scoring_evidence_source, default="not_scored") for case in cases
+    )
+    fallback_reason_counts = Counter(
+        safe_counter_label(case.scoring_fallback_reason)
+        for case in cases
+        if case.scoring_fallback_reason
+    )
+    fallback_cases = sum(
+        1
+        for case in cases
+        if case.scoring_evidence_source == "markdown_fallback" or bool(case.scoring_fallback_reason)
+    )
+    total = len(cases)
+    return {
+        "total_cases": total,
+        "source_counts": dict(sorted(source_counts.items())),
+        "analysis_json_cases": source_counts.get("analysis_json", 0),
+        "markdown_fallback_cases": source_counts.get("markdown_fallback", 0),
+        "not_scored_cases": source_counts.get("not_scored", 0),
+        "fallback_cases": fallback_cases,
+        "fallback_rate": ratio(fallback_cases, total),
+        "fallback_reason_counts": dict(sorted(fallback_reason_counts.items())),
     }
 
 
@@ -882,6 +912,8 @@ def _case_to_summary_base(
         "score": case.score,
         "score_severity": case_score_severity(case),
         "score_reasons": case.score_reasons,
+        "scoring_evidence_source": case.scoring_evidence_source,
+        "scoring_fallback_reason": case.scoring_fallback_reason,
         "query_optimization_candidate": case.query_optimization_candidate.to_dict()
         if case.query_optimization_candidate
         else None,
@@ -1184,6 +1216,30 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 "",
             ]
         )
+    scoring_distribution = summary.get("scoring_evidence_source_distribution")
+    if isinstance(scoring_distribution, dict):
+        source_counts = scoring_distribution.get("source_counts")
+        fallback_reason_counts = scoring_distribution.get("fallback_reason_counts")
+        lines.extend(
+            [
+                "## Scoring Evidence Source",
+                "",
+                f"- analysis JSON cases: {scoring_distribution.get('analysis_json_cases', 0)} / {scoring_distribution.get('total_cases', 0)}",
+                f"- markdown fallback cases: {scoring_distribution.get('markdown_fallback_cases', 0)} ({scoring_distribution.get('fallback_rate', 0.0)})",
+                f"- not scored cases: {scoring_distribution.get('not_scored_cases', 0)}",
+            ]
+        )
+        if isinstance(source_counts, dict) and source_counts:
+            rendered_sources = ", ".join(
+                f"{source}={count}" for source, count in sorted(source_counts.items())
+            )
+            lines.append(f"- sources: {rendered_sources}")
+        if isinstance(fallback_reason_counts, dict) and fallback_reason_counts:
+            rendered_reasons = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(fallback_reason_counts.items())
+            )
+            lines.append(f"- fallback reasons: {rendered_reasons}")
+        lines.append("")
     primary_distribution = summary.get("case_primary_bottleneck_distribution")
     if isinstance(primary_distribution, dict):
         label_counts = primary_distribution.get("label_counts")

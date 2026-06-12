@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "query-doctor"
-version = "0.6.0"
+version = "0.7.0"
 description = "Local-first Big Data query diagnostics focused today on Apache Impala."
 readme = "README.md"
 license = "Apache-2.0"

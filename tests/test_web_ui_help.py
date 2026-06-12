@@ -57,10 +57,17 @@ def test_web_help_page_renders_curated_static_help():
     assert (
         "Runtime context is collected automatically when the selected source supports it." in body
     )
+    assert "manual_profile_dir" in body
+    assert "local profile inbox" in body
+    assert "replacing <code>:</code> with <code>_</code>" in body
+    assert "aaaaaaaaaaaaaaaa_0000000000000001.txt" in body
+    assert "The browser does not upload the profile" in body
     assert "Running now" in body
     assert "Query Optimizer" not in body
     assert "Specific Query" not in body
     assert "Known Query ID analysis" in body
+    assert "manual_profile_dir" in body
+    assert "aaaaaaaaaaaaaaaa_0000000000000001.txt" in body
     assert "Python Report" in body
     assert "LLM narrative" in body
     assert "Query LLM optimizer" in body
@@ -180,6 +187,11 @@ def test_web_help_page_uses_configured_russian_language():
     assert "сфокусированный сегодня на Apache Impala production triage" in body
     assert "validated raw-free reports" in body
     assert "Детали Known Query ID" not in body
+    assert "manual_profile_dir" in body
+    assert "local profile inbox" in body
+    assert "замените <code>:</code> на <code>_</code>" in body
+    assert "aaaaaaaaaaaaaaaa_0000000000000001.txt" in body
+    assert "Browser не загружает profile" in body
     assert "Python-отчет" in body
     assert "LLM narrative" in body
     assert 'href="#workload-patterns"' in body

@@ -41,6 +41,85 @@ Finding:
 """
 
 
+def high_shape_analysis() -> dict[str, object]:
+    return {
+        "totals": {
+            "TotalTime": {"ms": 120_000},
+            "TotalBytesRead": {"bytes": 120 * 1024**3},
+            "TotalBytesSent": {"bytes": 55 * 1024**3},
+        },
+        "operators": [
+            {"operator_name": "HASH JOIN", "peak_mem_bytes": 20 * 1024**3},
+            {"operator_name": "EXCHANGE"},
+        ],
+        "top_operators_by_time": [{"operator_name": "EXCHANGE"}],
+        "top_operators_by_peak_memory": [
+            {"operator_name": "HASH JOIN", "peak_mem_bytes": 20 * 1024**3}
+        ],
+        "cardinality_anomalies": [
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 500},
+            {"operator_name": "AGGREGATE", "rows_actual_to_estimated_ratio": 40},
+            {"operator_name": "EXCHANGE", "rows_actual_to_estimated_ratio": 25},
+        ],
+        "memory_anomalies": [
+            {
+                "operator_name": "HASH JOIN",
+                "peak_mem_bytes": 20 * 1024**3,
+                "mem_ratio_human": "40.0x",
+            }
+        ],
+        "zero_row_estimate_gaps": [],
+        "zero_memory_estimate_gaps": [],
+        "query_context": {
+            "status": "succeeded",
+            "query_state": "FINISHED",
+            "duration_ms": 120_000,
+        },
+        "memory_pressure": {
+            "status": "supported",
+            "evidence_tier": "strong",
+            "finding_supported": True,
+            "spill_or_scratch_evidence_count": 1,
+        },
+        "metrics_correlation": {
+            "signals": [
+                {
+                    "key": "network_io_spike",
+                    "correlation_status": "correlated",
+                }
+            ],
+        },
+        "scan_skew": {"evidence_tier": "strong", "finding_supported": True},
+        "backend_tail": {"data_skew": "yes"},
+        "findings": [{"id": "large_intermediate_or_exchange_traffic"}],
+        "stats_metadata_quality": {
+            "status": "available",
+            "stats_primary_bottleneck": "not_supported_by_metadata",
+        },
+    }
+
+
+def renamed_markdown_without_optimization_labels() -> str:
+    return """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality issue count: 0
+- Memory issue count: 0
+
+## Runtime Context
+
+- elapsed: 2.00m
+- read footprint: 0 B
+- sent footprint: 0 B
+
+## Action Notes
+
+- No optimizer-owned markdown labels are present here.
+"""
+
+
 def expensive_no_shape_facts() -> str:
     return """
 # Query Doctor deterministic analysis facts
@@ -99,6 +178,35 @@ def test_expensive_query_with_scan_join_exchange_signal_is_high_candidate():
     assert "join row expansion or cardinality mismatch with join evidence" in result.reasons
     assert "large exchange volume before downstream processing" in result.reasons
     assert "join keys and join cardinality" in result.suggested_review_areas
+
+
+def test_analysis_json_drives_query_candidate_when_markdown_labels_change():
+    result = score_query_optimization_candidate(
+        renamed_markdown_without_optimization_labels(),
+        metadata_status="collected",
+        analysis=high_shape_analysis(),
+    )
+
+    assert result.tier == "high"
+    assert result.evidence_source == "analysis_json"
+    assert result.evidence_fallback_reason is None
+    assert "join row expansion or cardinality mismatch with join evidence" in result.reasons
+    assert "large exchange volume before downstream processing" in result.reasons
+    assert "spill pressure at shape-sensitive operator" in result.reasons
+    assert "data distribution" in result.suggested_review_areas
+
+
+def test_query_candidate_records_markdown_fallback_for_incomplete_analysis_json():
+    result = score_query_optimization_candidate(
+        high_shape_facts(),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis={"cardinality_anomalies": []},
+    )
+
+    assert result.tier == "medium"
+    assert result.evidence_source == "analysis_facts_md"
+    assert result.evidence_fallback_reason == "analysis_json_incomplete"
 
 
 def test_structural_recipe_adjacent_shapes_rank_below_actionable_adjacent_shapes():

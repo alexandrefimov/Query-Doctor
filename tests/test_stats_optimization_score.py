@@ -63,6 +63,82 @@ def stats_facts(
     return "\n".join(lines)
 
 
+def stats_candidate_analysis() -> dict[str, object]:
+    return {
+        "totals": {
+            "TotalTime": {"ms": 120_000},
+            "TotalBytesRead": {"bytes": 120 * 1024**3},
+            "TotalBytesSent": {"bytes": 55 * 1024**3},
+        },
+        "operators": [
+            {"operator_name": "HASH JOIN", "peak_mem_bytes": 20 * 1024**3},
+            {"operator_name": "EXCHANGE"},
+        ],
+        "top_operators_by_time": [{"operator_name": "EXCHANGE"}],
+        "top_operators_by_peak_memory": [
+            {"operator_name": "HASH JOIN", "peak_mem_bytes": 20 * 1024**3}
+        ],
+        "cardinality_anomalies": [
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 500},
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 100},
+            {"operator_name": "AGGREGATE", "rows_actual_to_estimated_ratio": 50},
+        ],
+        "memory_anomalies": [
+            {
+                "operator_name": "HASH JOIN",
+                "peak_mem_bytes": 20 * 1024**3,
+                "mem_ratio_human": "40.0x",
+            }
+        ],
+        "zero_row_estimate_gaps": [{"operator_name": "HASH JOIN"}],
+        "zero_memory_estimate_gaps": [],
+        "query_context": {
+            "status": "succeeded",
+            "query_state": "FINISHED",
+            "duration_ms": 120_000,
+        },
+        "memory_pressure": {
+            "status": "supported",
+            "evidence_tier": "strong",
+            "finding_supported": True,
+            "spill_or_scratch_evidence_count": 1,
+        },
+        "findings": [{"id": "large_intermediate_or_exchange_traffic"}],
+        "stats_metadata_quality": {
+            "status": "limited",
+            "table_stats": "missing/unknown",
+            "column_stats": "complete",
+            "tables_with_missing_table_stats": 1,
+            "tables_with_incomplete_column_stats": 0,
+            "partition_coverage": "available",
+            "join_filter_column_relevance": "covered",
+            "join_filter_columns_without_stats": 0,
+            "stats_primary_bottleneck": "candidate_supported",
+        },
+    }
+
+
+def renamed_stats_markdown_without_candidate_labels() -> str:
+    return "\n".join(
+        [
+            "# Query Doctor deterministic analysis facts",
+            "",
+            "## Summary",
+            "- Cardinality issue count: 0",
+            "- Memory issue count: 0",
+            "",
+            "## Runtime Context",
+            "- elapsed: 2.00m",
+            "- read footprint: 0 B",
+            "- sent footprint: 0 B",
+            "",
+            "## Metadata Notes",
+            "- table row coverage: available",
+            "- column coverage: complete",
+        ]
+    )
+
+
 def test_missing_table_stats_with_mismatch_and_join_exchange_is_high_candidate():
     result = score_stats_optimization_candidate(
         stats_facts(table_stats="missing/unknown", column_stats="available"),
@@ -76,6 +152,36 @@ def test_missing_table_stats_with_mismatch_and_join_exchange_is_high_candidate()
     assert result.speed_benefit in {"high", "medium"}
     assert "missing or unknown table/partition row-count stats" in result.reasons
     assert "estimate mismatch before expensive hash join" in result.reasons
+
+
+def test_analysis_json_drives_stats_candidate_when_markdown_labels_change():
+    result = score_stats_optimization_candidate(
+        renamed_stats_markdown_without_candidate_labels(),
+        metadata_status="collected",
+        analysis=stats_candidate_analysis(),
+    )
+
+    assert result.tier == "high"
+    assert result.need_type == "table_stats"
+    assert result.evidence_source == "analysis_json"
+    assert result.evidence_fallback_reason is None
+    assert "missing or unknown table/partition row-count stats" in result.reasons
+    assert "estimate mismatch before expensive hash join" in result.reasons
+    assert "spill or memory pressure follows planning-sensitive operators" in result.reasons
+    assert "no missing or incomplete stats evidence" not in result.counter_signals
+
+
+def test_stats_candidate_records_markdown_fallback_for_incomplete_analysis_json():
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="missing/unknown", column_stats="available"),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis={"cardinality_anomalies": []},
+    )
+
+    assert result.tier == "medium"
+    assert result.evidence_source == "analysis_facts_md"
+    assert result.evidence_fallback_reason == "analysis_json_incomplete"
 
 
 def test_unknown_table_stats_reason_preserves_unknown_wording():

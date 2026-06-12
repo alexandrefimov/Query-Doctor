@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-09
+Last updated: 2026-06-12
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -9,9 +9,10 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.6.0 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
-0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+For curated 0.7.0 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
+0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+[release-notes-0.6.0.md](release-notes-0.6.0.md),
 [release-notes-0.5.0.md](release-notes-0.5.0.md),
 [release-notes-0.4.3.md](release-notes-0.4.3.md),
 [release-notes-0.4.2.md](release-notes-0.4.2.md), and
@@ -19,8 +20,91 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ## Unreleased
 
+- No changes yet.
+
+## 0.7.0 - 2026-06-12
+
 ### Web UI And Documentation
 
+- Package and release-gate workflows now run an installed-wheel one-profile
+  smoke that stages one exported Impala text profile through the installed CLI,
+  opens the manual-profile web inbox path from a temporary launch directory, and
+  renders Details plus a validated Python report without CM, Kerberos, network
+  collectors, Prometheus, or LLM.
+- Manual-profile intake is now documented in the safety contract as a text-only,
+  no-browser-upload, fail-closed local boundary. Web startup errors now point
+  one-profile users to `manual_profile_dir` when CM settings are absent, and the
+  configuration guide includes a minimal manual-only web config example.
+- `query-doctor-web` now accepts `--corpus-dir`, and local config accepts
+  `corpus_dir`, so one-profile web inbox runs can keep generated Query ID cases
+  in a user-chosen workspace instead of relying on the default
+  `cases/cm-corpus` location. Relative config values resolve from the config
+  file; relative CLI values resolve from the current directory. When unset, the
+  web default now resolves under the launch directory instead of the installed
+  package or source-tree root.
+- Details-page optimizer SQL drafts are now explicitly gated by
+  `source_visibility=owner_raw`. The default `source_visibility=safe` policy
+  produces trusted recommendations/no-rewrite guidance instead and hides any
+  existing validated SQL draft artifact from browser rendering.
+- Added a full-pipeline leak-canary regression baseline for manual-profile
+  intake, deterministic analysis, scoring, report prompt assembly, trusted
+  Python report output, and browser Details/report rendering. The test uses
+  salted synthetic markers, classifies generated case sinks fail-closed, and
+  includes negative controls for unclassified sinks and disabled host redaction.
+  It also covers the configured `manual_profile_dir` web inbox path through
+  Known Query ID job status, route-level Details, and validated report
+  rendering, with inbox precedence, symlink-containment, and deterministic
+  suffix-order guards.
+- Added a renderer-to-parser characterization guard for Recent batch scoring:
+  structured analyzer facts are rendered through the production markdown
+  renderer, then parsed and scored to pin the current markdown contract before
+  the scoring path moves to typed analyzer facts.
+- Recent batch scoring now prefers typed `analysis.json` analyzer facts for
+  core scoring components and score reasons, with a recorded markdown fallback
+  source and fallback reason in batch JSON and Markdown summaries. Query and
+  stats optimization candidate scoring still read the existing rendered facts
+  while their typed migrations are staged separately.
+- Query and stats optimization candidate scoring now prefer typed analyzer
+  evidence from `analysis.json` for impact, planning/opportunity, runtime
+  counter-signal, and metadata-gap inputs when the full analyzer contract is
+  present. Candidate JSON records safe evidence-source and fallback-reason
+  labels when incomplete analyzer JSON falls back to the legacy rendered-facts
+  path.
+- The public README now starts new users with three explicit first paths:
+  one exported Impala text profile, the synthetic public demo, or a minimal
+  read-only Cloudera Manager Recent scan. Detailed Trino and Spark preview
+  command catalogs moved out of the root README entry path behind the new
+  [engines README](engines/README.md) and existing engine docs, while the root
+  README keeps only the production-support boundary, explicit Trino offline and
+  Spark no-public-support guard wording, and links to the engine support
+  matrix.
+- `query-doctor-analyze` now has an explicit one-profile entry path for local
+  exported Apache Impala text profiles: `--profile-text`, `--query-id`, and
+  `--out` stage a redacted collector-shaped case, write `analysis_facts.md`
+  plus `analysis.json`, and print the case directory without any network
+  collection. Known Query ID analysis now reuses complete manual-profile staged
+  cases in the web corpus instead of forcing recollection, so those staged cases
+  can be opened from the local UI by entering the same Query ID. Browser profile
+  upload remains out of scope for this trust-boundary slice.
+- Manual-profile staging now verifies an embedded profile Query ID when the
+  exported text profile includes one, covering both `Query ID:` and
+  `Query (id=...)` forms. Mismatched profiles fail closed before writing or
+  replacing a case, and staged metadata records whether the embedded Query ID
+  was verified.
+- Manual-profile inbox docs and recovery messages now explain the Query ID slug
+  recipe for web use, add the inbox path to the in-app Help and Russian README,
+  and give incomplete manual-profile cases a non-circular recovery message.
+- Known Query ID analysis can now use a configured local `manual_profile_dir`
+  as a web profile inbox: when a matching exported text profile file exists,
+  the web workflow stages and analyzes it through the same bounded redacted
+  manual-profile path without running CM or direct-Impala collection. Manual-only
+  configurations fail closed when the matching file is absent instead of
+  silently falling back to live collection.
+- Roadmap and customer-readiness docs now make the near-term adoption gate
+  explicit: five external or design-partner Impala diagnostic runs with useful
+  feedback, a visible one-profile first-value path before full Recent setup,
+  and a trust-architecture backlog for leak-canary coverage plus migrating
+  load-bearing consumers away from rendered `analysis_facts.md`.
 - Results `Scan context` now stays compact: coverage, important scan notes,
   table key, action outcome count, and top workload follow-up links remain
   visible, while the full workload digest, pool/owner breakdown, repeated group
@@ -48,9 +132,13 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   visible as `Scan context` with `Coverage`, and Help collapses only large
   topics. README screenshots were refreshed from the synthetic demo pack for
   the same UI wording.
-- Added a public-safe Cloudera test-cluster outreach template plus an initial
-  repository simplification audit for docs, scripts, tests, changelog
-  readability, and Russian-doc maintenance.
+- Recorded the need for read-only Impala/Cloudera Manager validation access and
+  added an initial repository simplification audit for docs, scripts, tests,
+  changelog readability, and Russian-doc maintenance. Partner-specific outreach
+  copy stays outside public documentation.
+- Spark readiness docs now record durable compact-intake boundaries instead of
+  one-run live checkpoint details; private endpoints, selectors, output paths,
+  and validation notes stay in local exclude-only notes.
 - Added an Impala-first customer-readiness priority note and a minimal
   Cloudera Manager config example so first-run setup can stay separate from
   advanced direct-Impala, Prometheus, metadata, and LLM routing options.

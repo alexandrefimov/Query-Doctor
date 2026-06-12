@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-06-09
+Last updated: 2026-06-11
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -88,9 +88,19 @@ is not a historical audit log. For engineering risks, use
 The near-term product priority is to make the existing Impala workflow easier
 to run, trust, and show before broadening Trino or Spark product surfaces. Use
 [customer-readiness-priorities.md](customer-readiness-priorities.md) as the
-working backlog for demo site planning, Cloudera/test-cluster outreach,
+working backlog for demo site planning, read-only Impala validation access,
 minimal configuration, documentation hygiene, Russian-doc review, UI/UX polish,
 and script/test role audit.
+
+The near-term adoption gate is five external or design-partner Impala
+diagnostic runs with useful feedback, using either one-profile diagnosis or a
+bounded Recent scan. Work that does not shorten the path to those runs should
+stay behind customer-readiness, trust-boundary, or support-boundary work.
+
+The cheapest first-value path should stay one profile to one diagnosis without
+requiring a full Cloudera Manager, Kerberos, metadata, Prometheus, or LLM setup.
+Recent scans remain the flagship production workflow, but the first operator
+experience should not require the broadest workflow to prove value.
 
 This focus does not remove bounded Trino or Spark contract work from the
 repository, but it keeps that work below product support and out of the main
@@ -117,6 +127,9 @@ automatic SQL rewriting.
 - The primary product value is ranking suspicious Recent queries, explaining
   which evidence is supported, not observed, or unknown, and routing operators
   toward a safe inspection/change/verification loop.
+- Results pages are routing and triage surfaces. Details and Workload Details
+  are the decision surfaces for why a query or repeated pattern matters, where
+  to inspect, what supported change direction to try, and how to verify it.
 - A trusted SQL draft is a useful outcome only when Python-owned facts,
   deterministic execution, and validation prove the rewrite boundary. It is not
   the flagship success metric.
@@ -150,6 +163,18 @@ automatic SQL rewriting.
   Query Doctor has proven enough value on Impala workloads.
 
 ## Success Metrics
+
+Customer-readiness metrics:
+
+- At least five external or design-partner Impala diagnostic runs produce
+  actionable feedback before any broad second-engine product surface is
+  promoted.
+- A first-time operator can reach a useful one-profile diagnosis without
+  configuring Cloudera Manager, Kerberos, metadata collection, Prometheus, or an
+  LLM provider.
+- Public demo, README, and setup paths make the one-profile entry path,
+  read-only synthetic demo, and bounded Recent scan relationship clear without
+  requiring new users to read the full documentation set.
 
 Primary diagnosis metrics:
 
@@ -216,6 +241,29 @@ Optimizer-specific metrics:
   groups without one specific safe review track, allowlisted review area,
   bounded change direction, workload metric, and compare/rerun verification
   wording are treated as audit blockers before recipe work.
+
+## Near-Term Trust Architecture Backlog
+
+- Keep the full-pipeline leak-canary regression baseline active and expand it
+  when new public or local sinks are added. The baseline synthetic salted case
+  flows through manual-profile intake, analysis, scoring, report prompt
+  assembly, trusted report output, and browser rendering, with generated sinks
+  classified fail-closed before marker checks run.
+- Move load-bearing analyzer consumers away from rendered
+  `analysis_facts.md`. `analysis.json` or a typed loader over the same
+  deterministic facts should become the consumed contract for scoring, prompt
+  facts, and web presenters; Markdown should be a render-only view.
+- During that migration, add renderer-to-parser contract tests so any remaining
+  Markdown parser fails loudly when renderer labels or summary shape change.
+- Characterize current scoring over representative fixtures before replacing a
+  parser or score source. The first slices should preserve behavior unless the
+  changed behavior is explicitly documented and tested.
+- A future claim-family registry can reduce duplicated report prompt and
+  validator policy, but it should follow the typed-fact migration rather than
+  precede it.
+- A behavioral engine seam should route one production Impala consumer through
+  the normalized fact boundary only after parity is proven. It must not promote
+  Trino, Spark, or another engine into product support by architecture alone.
 
 ## Safety Baseline
 

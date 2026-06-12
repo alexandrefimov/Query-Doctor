@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 
+from query_doctor.recent.optimization_evidence import OptimizationEvidence
+from query_doctor.recent.optimization_evidence import optimization_evidence_from_analysis
 from query_doctor.recent.query_optimization_score import (
     IMPACT_ORDER,
     dedupe_preserve_order,
@@ -17,6 +19,7 @@ from query_doctor.recent.query_optimization_score import (
     max_ratio_value,
     max_size_value,
     numeric_value,
+    optimization_evidence_fallback_reason,
     scoring_section_text,
 )
 
@@ -45,6 +48,8 @@ class StatsOptimizationCandidateScore:
     suggested_review_areas: tuple[str, ...]
     required_confirmation: tuple[str, ...]
     evidence_detail: tuple[str, ...] = ()
+    evidence_source: str = "analysis_facts_md"
+    evidence_fallback_reason: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -61,8 +66,15 @@ def score_stats_optimization_candidate(
     analysis: dict[str, object] | None = None,
 ) -> StatsOptimizationCandidateScore:
     facts = facts_text or ""
-    duration = duration_sec if duration_sec is not None else duration_seconds_value(facts)
-    impact_score, impact_reasons = stats_impact_signals(facts, duration)
+    evidence = optimization_evidence_from_analysis(analysis)
+    duration = (
+        duration_sec
+        if duration_sec is not None
+        else evidence.duration_sec
+        if evidence is not None
+        else duration_seconds_value(facts)
+    )
+    impact_score, impact_reasons = stats_impact_signals(facts, duration, evidence=evidence)
     metadata_score, metadata_reasons, metadata_kind = stats_metadata_evidence(
         facts,
         metadata_status=metadata_status,
@@ -71,7 +83,7 @@ def score_stats_optimization_candidate(
     important_column_evidence = important_column_stats_evidence(facts, analysis=analysis)
     mismatch_score, mismatch_reasons = estimate_mismatch_evidence(facts, analysis=analysis)
     planning_score, planning_reasons, review_areas = planning_dependent_evidence(
-        facts, analysis=analysis
+        facts, analysis=analysis, evidence=evidence
     )
     counter_signals, penalty = stats_counter_signals(
         facts,
@@ -83,6 +95,7 @@ def score_stats_optimization_candidate(
         has_metadata_evidence=metadata_score > 0,
         has_mismatch=mismatch_score > 0,
         has_planning_symptom=planning_score > 0,
+        evidence=evidence,
     )
 
     has_metadata_evidence = metadata_score > 0
@@ -165,6 +178,8 @@ def score_stats_optimization_candidate(
             "rerun under comparable load to confirm runtime improvement",
         ),
         evidence_detail=evidence_detail,
+        evidence_source="analysis_json" if evidence is not None else "analysis_facts_md",
+        evidence_fallback_reason=optimization_evidence_fallback_reason(analysis, evidence),
     )
 
 
@@ -189,7 +204,12 @@ def stats_optimization_sort_key(case_summary: dict[str, object]) -> tuple[object
     )
 
 
-def stats_impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[str]]:
+def stats_impact_signals(
+    facts: str,
+    duration_sec: float | None,
+    *,
+    evidence: OptimizationEvidence | None = None,
+) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
     if duration_sec is not None:
@@ -202,8 +222,12 @@ def stats_impact_signals(facts: str, duration_sec: float | None) -> tuple[int, l
         elif duration_sec >= 10:
             score += 7
             reasons.append("moderate runtime")
-    read_bytes = max_size_value(
-        facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+    read_bytes = (
+        evidence.read_bytes
+        if evidence is not None
+        else max_size_value(
+            facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+        )
     )
     if read_bytes >= 100 * 1024**3:
         score += 15
@@ -211,8 +235,12 @@ def stats_impact_signals(facts: str, duration_sec: float | None) -> tuple[int, l
     elif read_bytes >= 10 * 1024**3:
         score += 10
         reasons.append("material scan/read volume")
-    peak_memory = max_size_value(
-        facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak")
+    peak_memory = (
+        evidence.peak_memory_bytes
+        if evidence is not None
+        else max_size_value(
+            facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak")
+        )
     )
     if peak_memory >= 16 * 1024**3:
         score += 10
@@ -220,10 +248,18 @@ def stats_impact_signals(facts: str, duration_sec: float | None) -> tuple[int, l
     elif peak_memory >= 4 * 1024**3:
         score += 5
         reasons.append("material peak memory")
-    if has_supported_spill_scratch_evidence(facts):
+    spill_supported = (
+        evidence.spill_scratch_supported
+        if evidence is not None
+        else has_supported_spill_scratch_evidence(facts)
+    )
+    large_exchange = (
+        evidence.large_exchange if evidence is not None else large_exchange_evidence(facts)
+    )
+    if spill_supported:
         score += 15
         reasons.append("spill/scratch evidence")
-    if large_exchange_evidence(facts):
+    if large_exchange:
         score += 15
         reasons.append("large exchange/intermediate volume")
     return min(100, score), reasons
@@ -476,45 +512,84 @@ def planning_dependent_evidence(
     facts: str,
     *,
     analysis: dict[str, object] | None = None,
+    evidence: OptimizationEvidence | None = None,
 ) -> tuple[int, list[str], list[str]]:
     score = 0
     reasons: list[str] = []
     review: list[str] = []
     lower = facts.lower()
-    has_join = bool(re.search(r"\b(?:HASH JOIN|JOIN)\b", facts, re.IGNORECASE)) or any(
-        is_operator_name(operator, ("HASH JOIN", "JOIN"))
-        for operator in analysis_operators(analysis, "cardinality_anomalies")
-    )
-    has_shape_operator = bool(
-        re.search(r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b", facts, re.IGNORECASE)
-    ) or any(
-        is_operator_name(
-            operator, ("HASH JOIN", "JOIN", "AGGREGATE", "SORT", "ANALYTIC", "DISTINCT")
+    has_join = (
+        evidence.has_join_operator
+        if evidence is not None
+        else bool(re.search(r"\b(?:HASH JOIN|JOIN)\b", facts, re.IGNORECASE))
+        or any(
+            is_operator_name(operator, ("HASH JOIN", "JOIN"))
+            for operator in analysis_operators(analysis, "cardinality_anomalies")
         )
-        for key in ("cardinality_anomalies", "memory_anomalies")
-        for operator in analysis_operators(analysis, key)
     )
-    if "severe cardinality underestimation before high-cost operator" in lower and has_join:
+    has_shape_operator = (
+        evidence.has_shape_operator
+        if evidence is not None
+        else bool(
+            re.search(
+                r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b",
+                facts,
+                re.IGNORECASE,
+            )
+        )
+        or any(
+            is_operator_name(
+                operator, ("HASH JOIN", "JOIN", "AGGREGATE", "SORT", "ANALYTIC", "DISTINCT")
+            )
+            for key in ("cardinality_anomalies", "memory_anomalies")
+            for operator in analysis_operators(analysis, key)
+        )
+    )
+    high_join_mismatch = (
+        evidence.max_join_row_estimate_ratio is not None
+        and evidence.max_join_row_estimate_ratio >= 50
+        if evidence is not None
+        else "severe cardinality underestimation before high-cost operator" in lower
+    )
+    if high_join_mismatch and has_join:
         score += 25
         reasons.append("estimate mismatch before expensive hash join")
         review.extend(
             ["table/partition row counts", "join key column statistics", "filter column statistics"]
         )
-    elif has_join and max_ratio_value(facts, ("actual/estimated ratio",)) is not None:
+    elif has_join and (
+        evidence.max_row_estimate_ratio is not None
+        if evidence is not None
+        else max_ratio_value(facts, ("actual/estimated ratio",)) is not None
+    ):
         score += 15
         reasons.append("estimate mismatch feeds join planning")
         review.extend(["join key column statistics", "filter column statistics"])
-    if large_exchange_evidence(facts) or analysis_has_finding(
-        analysis, "large_intermediate_or_exchange_traffic"
-    ):
+    large_exchange = (
+        evidence.large_exchange
+        if evidence is not None
+        else large_exchange_evidence(facts)
+        or analysis_has_finding(analysis, "large_intermediate_or_exchange_traffic")
+    )
+    if large_exchange:
         score += 18
         reasons.append("estimate mismatch may affect exchange or join distribution decisions")
         review.extend(["join distribution", "exchange volume", "join/filter column statistics"])
-    if has_supported_spill_scratch_evidence(facts) and has_shape_operator:
+    spill_supported = (
+        evidence.spill_scratch_supported
+        if evidence is not None
+        else has_supported_spill_scratch_evidence(facts)
+    )
+    if spill_supported and has_shape_operator:
         score += 15
         reasons.append("spill or memory pressure follows planning-sensitive operators")
         review.extend(["memory estimates", "join/filter column statistics"])
-    if re.search(r"peak/estimated memory ratio:\s*(\d+(?:\.\d+)?)x", facts, re.IGNORECASE):
+    memory_ratio_present = (
+        evidence.max_memory_estimate_ratio is not None
+        if evidence is not None
+        else re.search(r"peak/estimated memory ratio:\s*(\d+(?:\.\d+)?)x", facts, re.IGNORECASE)
+    )
+    if memory_ratio_present:
         score += 10
         reasons.append("memory reservation may be sensitive to estimates")
         review.extend(["table/partition row counts", "column statistics"])
@@ -532,6 +607,7 @@ def stats_counter_signals(
     has_metadata_evidence: bool,
     has_mismatch: bool,
     has_planning_symptom: bool,
+    evidence: OptimizationEvidence | None = None,
 ) -> tuple[list[str], float]:
     lower = facts.lower()
     signals: list[str] = []
@@ -542,11 +618,17 @@ def stats_counter_signals(
     if failure_category:
         signals.append("case has collection or analysis failure")
         penalty *= 0.5
-    status_values = " ".join(
-        fact_values(scoring_section_text(facts, "## CM Query Context"), "status")
+    status_values = (
+        evidence.query_status
+        if evidence is not None
+        else " ".join(fact_values(scoring_section_text(facts, "## CM Query Context"), "status"))
     )
-    state_values = " ".join(
-        fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state")
+    state_values = (
+        evidence.query_state
+        if evidence is not None
+        else " ".join(
+            fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state")
+        )
     )
     if re.search(
         r"\b(?:failed|cancelled|canceled|exception)\b",
@@ -555,7 +637,11 @@ def stats_counter_signals(
     ):
         signals.append("query did not complete with useful execution evidence")
         penalty *= 0.35
-    admission_wait = duration_value_for_label(facts, "admission_wait")
+    admission_wait = (
+        evidence.admission_wait_sec
+        if evidence is not None
+        else duration_value_for_label(facts, "admission_wait")
+    )
     if (
         admission_wait is not None
         and duration_sec
@@ -581,10 +667,24 @@ def stats_counter_signals(
     elif str(metadata_status).lower() in PARTIAL_METADATA_STATUSES:
         signals.append("metadata collection was partial")
         penalty *= 0.95
-    if "backend data skew" in lower and not has_planning_symptom:
+    backend_context = (
+        evidence.backend_data_skew if evidence is not None else "backend data skew" in lower
+    )
+    large_read_context = (
+        evidence.read_bytes >= 10 * 1024**3
+        if evidence is not None
+        else "large totalbytesread is an i/o footprint, not proof" in lower
+    )
+    query_shape_context = (
+        evidence.max_join_row_estimate_ratio is not None
+        and evidence.max_join_row_estimate_ratio >= 50
+        if evidence is not None
+        else "join row expansion" in lower or "many-to-many" in lower
+    )
+    if backend_context and not has_planning_symptom:
         signals.append("backend symptoms dominate without stats-planning evidence")
         penalty *= 0.6
-    if "large totalbytesread is an i/o footprint, not proof" in lower and not has_planning_symptom:
+    if large_read_context and not has_planning_symptom:
         signals.append("large read volume is storage context without stats-planning evidence")
         penalty *= 0.7
     if not has_metadata_evidence:
@@ -593,7 +693,7 @@ def stats_counter_signals(
         signals.append("no supported estimate mismatch")
     if not has_planning_symptom:
         signals.append("no expensive planning-dependent symptom")
-    if "join row expansion" in lower or "many-to-many" in lower:
+    if query_shape_context:
         signals.append("query shape may still need SQL review")
     return dedupe_preserve_order(signals), penalty
 

@@ -3857,6 +3857,8 @@ def test_case_summary_includes_structured_scoring_components():
     assert summary["collection_status"] == "ok"
     assert summary["analysis_status"] == "ok"
     assert summary["score_severity"] == "high"
+    assert summary["scoring_evidence_source"] == "not_scored"
+    assert summary["scoring_fallback_reason"] is None
     assert summary["workload_fingerprint"].startswith("wf_")
 
 
@@ -4869,8 +4871,11 @@ def test_batch_summary_includes_primary_bottleneck_distribution(tmp_path):
     )
     stats = case_result(module, index=1, query_id="query-1", score=10)
     stats.case_primary_bottleneck = {"label": "stats", "confidence": "high", "reasons": []}
+    stats.scoring_evidence_source = "analysis_json"
     unknown = case_result(module, index=2, query_id="query-2", score=3)
     unknown.case_primary_bottleneck = {"label": "unknown", "confidence": "low", "reasons": []}
+    unknown.scoring_evidence_source = "markdown_fallback"
+    unknown.scoring_fallback_reason = "analysis_json_missing"
     human_review = case_result(module, index=3, query_id="query-3", score=4)
     human_review.optimizer_rewrite_support = OptimizerRewriteSupport(
         status="guidance_only",
@@ -4898,6 +4903,15 @@ def test_batch_summary_includes_primary_bottleneck_distribution(tmp_path):
     distribution = summary["case_primary_bottleneck_distribution"]
     assert distribution["label_counts"] == {"not_classified": 1, "stats": 1, "unknown": 1}
     assert distribution["unknown_rate"] == 0.3333
+    scoring_distribution = summary["scoring_evidence_source_distribution"]
+    assert scoring_distribution["source_counts"] == {
+        "analysis_json": 1,
+        "markdown_fallback": 1,
+        "not_scored": 1,
+    }
+    assert scoring_distribution["fallback_cases"] == 1
+    assert scoring_distribution["fallback_rate"] == 0.3333
+    assert scoring_distribution["fallback_reason_counts"] == {"analysis_json_missing": 1}
     rewriteability = summary["optimizer_rewriteability_distribution"]
     assert rewriteability["bucket_counts"] == {"human_review_only": 1, "unknown": 2}
     optimizer_funnel = summary["optimizer_funnel"]
@@ -4909,6 +4923,11 @@ def test_batch_summary_includes_primary_bottleneck_distribution(tmp_path):
     funnel_json = json.loads((batch_dir(tmp_path) / "optimizer_funnel.json").read_text())
     assert funnel_json == optimizer_funnel
     assert "## Primary Bottleneck Distribution" in summary_md
+    assert "## Scoring Evidence Source" in summary_md
+    assert "- analysis JSON cases: 1 / 3" in summary_md
+    assert "- markdown fallback cases: 1 (0.3333)" in summary_md
+    assert "- sources: analysis_json=1, markdown_fallback=1, not_scored=1" in summary_md
+    assert "- fallback reasons: analysis_json_missing=1" in summary_md
     assert "- classified cases: 2 / 3" in summary_md
     assert "- unknown cases: 1 (0.3333)" in summary_md
     assert "- labels: not_classified=1, stats=1, unknown=1" in summary_md
@@ -5368,6 +5387,9 @@ def test_score_case_prefers_structured_analysis_json_for_stats_candidate(tmp_pat
 
     module.score_case(case)
 
+    assert case.score == 11
+    assert case.scoring_evidence_source == "analysis_json"
+    assert case.scoring_fallback_reason is None
     assert case.stats_optimization_candidate is not None
     assert case.stats_optimization_candidate.need_type == "table_stats"
     assert (

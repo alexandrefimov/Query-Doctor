@@ -275,14 +275,21 @@ def write_trusted_optimizer_draft(
     write_optimizer_marker(case_dir, source_sql=source_sql)
 
 
-def batch_settings(tmp_path: Path, case_dir: Path) -> trusted_artifacts.WebSettings:
+def batch_settings(
+    tmp_path: Path,
+    case_dir: Path,
+    *,
+    source_visibility: str = "safe",
+) -> trusted_artifacts.WebSettings:
     summary = tmp_path / "batch_summary.json"
     summary.write_text(
         json.dumps({"cases": [{"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)}]}),
         encoding="utf-8",
     )
     return trusted_artifacts.WebSettings(
-        config=Path(".query-doctor-cm.local.json"), batch_summary=summary
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=summary,
+        source_visibility=source_visibility,
     )
 
 
@@ -496,7 +503,7 @@ def test_batch_case_trusted_detail_artifacts_loads_only_validated_outputs(tmp_pa
     write_trusted_optimizer_draft(case_dir, source_sql=source_sql)
 
     artifacts = trusted_artifacts.load_batch_case_trusted_detail_artifacts(
-        batch_settings(tmp_path, case_dir),
+        batch_settings(tmp_path, case_dir, source_visibility="owner_raw"),
         "case-001",
         {"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)},
         WebJobStore(),
@@ -510,6 +517,30 @@ def test_batch_case_trusted_detail_artifacts_loads_only_validated_outputs(tmp_pa
     assert str(case_dir) not in artifacts.trusted_report_text
     assert artifacts.trusted_optimized_query == f"{source_sql};\n"
     assert artifacts.trusted_optimizer_recommendations is None
+
+
+def test_batch_case_trusted_detail_artifacts_hide_draft_in_safe_source_visibility(tmp_path):
+    case_dir = tmp_path / "cases" / "case-001"
+    case_dir.mkdir(parents=True)
+    source_sql = "SELECT a FROM db.source_table WHERE ds = 20260504"
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    write_trusted_optimizer_draft(case_dir, source_sql=source_sql)
+
+    artifacts = trusted_artifacts.load_batch_case_trusted_detail_artifacts(
+        batch_settings(tmp_path, case_dir, source_visibility="safe"),
+        "case-001",
+        {"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)},
+        WebJobStore(),
+    )
+
+    assert artifacts.optimized_query_state["trusted"] is False
+    assert artifacts.optimized_query_state["status"] == "not_run"
+    assert artifacts.optimized_query_state["fallback_reason"] == "source_visibility_safe"
+    assert artifacts.trusted_optimized_query is None
+    assert (
+        trusted_artifacts.load_validated_optimized_query(case_dir, source_visibility="safe") is None
+    )
 
 
 def test_trusted_optimizer_artifacts_reject_draft_symlink_outside_case_dir(tmp_path):

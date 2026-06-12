@@ -262,6 +262,8 @@ def test_preflight_with_invalid_query_id_fails_safely(tmp_path, capsys):
     assert result == 4
     assert len(calls) == 1
     assert "Profile text check failed" in captured.err
+    assert "Impala Query ID path usage" in captured.err
+    assert "CM profile text request" not in captured.err
     assert "[A-Za-z0-9]+:[A-Za-z0-9]+" in captured.err
     assert "Profile text endpoint:" not in captured.out
     assert not (tmp_path / "cm-corpus").exists()
@@ -4139,6 +4141,27 @@ Authorization: Bearer secret-token
     assert "impala-worker-1.example.invalid.example.com:22000" in redacted
     assert "host=impala-worker-1.example.invalid.example.com:22000" in redacted
     assert "Host: 10.20.30.40" in redacted
+
+
+def test_redact_profile_text_redacts_pool_fields_and_local_paths():
+    module = load_collector_module()
+    text = """
+Request Pool: root.analytics
+Admission Pool: root.batch
+Scratch path: /Users/example/query-doctor/scratch
+Temporary file: /private/tmp/query-doctor-profile.tmp
+"""
+
+    redacted = module.redact_profile_text(text)
+
+    assert "root.analytics" not in redacted
+    assert "root.batch" not in redacted
+    assert "/Users/example" not in redacted
+    assert "/private/tmp/query-doctor-profile.tmp" not in redacted
+    assert "Request Pool: <pool>" in redacted
+    assert "Admission Pool: <pool>" in redacted
+    assert "Scratch path: <local_path>" in redacted
+    assert "Temporary file: <local_path>" in redacted
 
 
 def test_redact_profile_text_redacts_ipv6_without_touching_timestamps():

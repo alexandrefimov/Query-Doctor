@@ -1,6 +1,6 @@
 # Release Checklist
 
-Last reviewed: 2026-06-04
+Last reviewed: 2026-06-12
 
 Use this checklist before cutting a tag, announcing a public release, or making
 future repository visibility changes.
@@ -101,7 +101,8 @@ gate:
 
 Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
-scripts plus the installed demo web UI. Docs CI should catch broken local
+scripts, the installed demo web UI, and the installed one-profile path with
+`scripts/installed_one_profile_smoke.py`. Docs CI should catch broken local
 Markdown links before merge.
 Dependency Review should stay enabled on pull requests as a security signal
 alongside Dependabot. CodeQL should scan production code before release tags;
@@ -240,6 +241,10 @@ git diff --check
 python -m pip install --upgrade build twine
 python -m build
 python -m twine check dist/*
+python -m venv /tmp/query-doctor-release-wheel-venv
+/tmp/query-doctor-release-wheel-venv/bin/python -m pip install --upgrade pip
+/tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
+python scripts/installed_one_profile_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 ```
 
 - Prefer a TestPyPI upload first for the first release or any packaging change.
@@ -261,7 +266,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-ur
 - Do not reuse a PyPI version number. If a release upload fails after a file is
   accepted by PyPI, bump the version for the next attempt.
 - After PyPI upload, install the exact released version from production PyPI in
-  a clean virtual environment and smoke the public demo commands.
+  a clean virtual environment and smoke the public demo commands plus
+  `scripts/installed_one_profile_smoke.py` against that environment.
 
 ## After Release
 

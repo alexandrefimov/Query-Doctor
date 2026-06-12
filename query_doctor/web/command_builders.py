@@ -258,6 +258,8 @@ def build_optimized_query_command(case_dir: Path, settings: WebSettings) -> list
         settings.optimizer_llm_provider,
         "--out",
         OPTIMIZED_QUERY_NAME,
+        "--source-visibility",
+        settings.source_visibility,
         "--keep-alive",
         "0",
     ]

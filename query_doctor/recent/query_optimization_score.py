@@ -5,6 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 
+from query_doctor.recent.optimization_evidence import OptimizationEvidence
+from query_doctor.recent.optimization_evidence import optimization_evidence_from_analysis
+
 
 TIER_ORDER = {"high": 3, "medium": 2, "low": 1, "not_likely": 0}
 IMPACT_ORDER = {"high": 2, "medium": 1, "low": 0}
@@ -59,6 +62,8 @@ class QueryOptimizationCandidateScore:
     reasons: tuple[str, ...]
     counter_signals: tuple[str, ...]
     suggested_review_areas: tuple[str, ...]
+    evidence_source: str = "analysis_facts_md"
+    evidence_fallback_reason: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -75,11 +80,19 @@ def score_query_optimization_candidate(
     analysis: dict[str, object] | None = None,
 ) -> QueryOptimizationCandidateScore:
     facts = facts_text or ""
-    duration = duration_sec if duration_sec is not None else duration_seconds_value(facts)
-    impact_score, impact_reasons = impact_signals(facts, duration)
+    evidence = optimization_evidence_from_analysis(analysis)
+    duration = (
+        duration_sec
+        if duration_sec is not None
+        else evidence.duration_sec
+        if evidence is not None
+        else duration_seconds_value(facts)
+    )
+    impact_score, impact_reasons = impact_signals(facts, duration, evidence=evidence)
     opportunity_score, opportunity_reasons, review_areas = query_shape_opportunity_signals(
         facts,
         analysis=analysis,
+        evidence=evidence,
     )
     counter_signals, penalty_factor = query_optimization_counter_signals(
         facts,
@@ -90,6 +103,7 @@ def score_query_optimization_candidate(
         failure_category=failure_category,
         has_shape_evidence=opportunity_score > 0,
         analysis=analysis,
+        evidence=evidence,
     )
 
     has_shape_evidence = opportunity_score > 0
@@ -120,6 +134,8 @@ def score_query_optimization_candidate(
         reasons=reasons,
         counter_signals=tuple(counter_signals[:5]),
         suggested_review_areas=tuple(dedupe_preserve_order(review_areas)[:5]),
+        evidence_source="analysis_json" if evidence is not None else "analysis_facts_md",
+        evidence_fallback_reason=optimization_evidence_fallback_reason(analysis, evidence),
     )
 
 
@@ -274,7 +290,12 @@ def impact_label(score: int) -> str:
     return "low"
 
 
-def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[str]]:
+def impact_signals(
+    facts: str,
+    duration_sec: float | None,
+    *,
+    evidence: OptimizationEvidence | None = None,
+) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
     if duration_sec is not None:
@@ -287,8 +308,12 @@ def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[st
         elif duration_sec >= 10:
             score += 10
             reasons.append("moderate runtime")
-    max_read = max_size_value(
-        facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+    max_read = (
+        evidence.read_bytes
+        if evidence is not None
+        else max_size_value(
+            facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+        )
     )
     if max_read >= 100 * 1024**3:
         score += 22
@@ -299,8 +324,12 @@ def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[st
     elif max_read >= 1024**3:
         score += 6
         reasons.append("non-trivial scan/read volume")
-    max_memory = max_size_value(
-        facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak")
+    max_memory = (
+        evidence.peak_memory_bytes
+        if evidence is not None
+        else max_size_value(
+            facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak")
+        )
     )
     if max_memory >= 64 * 1024**3:
         score += 20
@@ -311,10 +340,18 @@ def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[st
     elif max_memory >= 4 * 1024**3:
         score += 8
         reasons.append("material peak memory")
-    if has_supported_spill_scratch_evidence(facts):
+    spill_supported = (
+        evidence.spill_scratch_supported
+        if evidence is not None
+        else has_supported_spill_scratch_evidence(facts)
+    )
+    large_exchange = (
+        evidence.large_exchange if evidence is not None else large_exchange_evidence(facts)
+    )
+    if spill_supported:
         score += 15
         reasons.append("spill/scratch evidence")
-    if large_exchange_evidence(facts):
+    if large_exchange:
         score += 18
         reasons.append("large exchange/intermediate volume")
     return min(100, score), reasons
@@ -324,50 +361,81 @@ def query_shape_opportunity_signals(
     facts: str,
     *,
     analysis: dict[str, object] | None = None,
+    evidence: OptimizationEvidence | None = None,
 ) -> tuple[int, list[str], list[str]]:
     lower = facts.lower()
     score = 0
     reasons: list[str] = []
     review: list[str] = []
-    if large_scan_waste_evidence(facts):
+    large_scan_waste = (
+        evidence.large_scan_waste if evidence is not None else large_scan_waste_evidence(facts)
+    )
+    join_expansion = (
+        typed_join_row_expansion_evidence(evidence)
+        if evidence is not None
+        else join_row_expansion_evidence(facts, analysis=analysis)
+    )
+    cardinality_count = (
+        evidence.cardinality_mismatch_count
+        if evidence is not None
+        else cardinality_mismatch_count(facts, analysis=analysis)
+    )
+    large_exchange = (
+        evidence.large_exchange if evidence is not None else large_exchange_evidence(facts)
+    )
+    memory_shape = evidence.memory_shape if evidence is not None else memory_shape_evidence(facts)
+    backend_skew = (
+        evidence.backend_data_skew if evidence is not None else backend_data_skew_evidence(facts)
+    )
+    if large_scan_waste:
         score += 28
         reasons.append("large scan volume with comparatively small downstream row count")
         review.extend(["filter placement", "partition/filter scope", "projection pruning"])
-    if join_row_expansion_evidence(facts, analysis=analysis):
+    if join_expansion:
         score += 30
         reasons.append("join row expansion or cardinality mismatch with join evidence")
         review.extend(
             ["join keys and join cardinality", "filter placement", "pre-aggregation before join"]
         )
-    elif cardinality_mismatch_count(facts, analysis=analysis) > 0:
+    elif cardinality_count > 0:
         score += 10
         reasons.append("cardinality mismatch needs query-shape evidence before stronger action")
         review.extend(["statistics and join cardinality"])
-    if large_exchange_evidence(facts):
+    if large_exchange:
         score += 26
         reasons.append("large exchange volume before downstream processing")
         review.extend(["pre-aggregation before exchange", "exchange payload", "filter placement"])
-    if memory_shape_evidence(facts):
+    if memory_shape:
         score += 20
         reasons.append("memory pressure at join/aggregation/sort-style operator")
         review.extend(["join cardinality", "aggregation strategy", "intermediate row width"])
-    if has_supported_spill_scratch_evidence(facts) and re.search(
-        r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b",
-        facts,
-        re.IGNORECASE,
-    ):
+    spill_at_shape_operator = (
+        evidence.spill_scratch_supported and evidence.has_shape_operator
+        if evidence is not None
+        else has_supported_spill_scratch_evidence(facts)
+        and re.search(
+            r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b",
+            facts,
+            re.IGNORECASE,
+        )
+    )
+    if spill_at_shape_operator:
         score += 18
         reasons.append("spill pressure at shape-sensitive operator")
         review.extend(["spill-heavy operator inputs", "pre-aggregation", "sort/distinct inputs"])
-    if (
-        "cm metrics correlation" in lower
-        and "network i/o spike is correlated" in lower
-        and large_exchange_evidence(facts)
-    ):
+    if evidence is not None:
+        network_exchange_context = evidence.network_io_correlated and evidence.large_exchange
+    else:
+        network_exchange_context = (
+            "cm metrics correlation" in lower
+            and "network i/o spike is correlated" in lower
+            and large_exchange_evidence(facts)
+        )
+    if network_exchange_context:
         score += 8
         reasons.append("network I/O context aligns with exchange evidence")
         review.extend(["exchange payload", "data movement"])
-    if score > 0 and backend_data_skew_evidence(facts):
+    if score > 0 and backend_skew:
         reasons.append("backend data skew supports distribution and hot-key review")
         review = ["data distribution", "hot keys", "join/distribution skew"] + review
     return min(100, score), reasons, review
@@ -383,6 +451,7 @@ def query_optimization_counter_signals(
     failure_category: str | None,
     has_shape_evidence: bool,
     analysis: dict[str, object] | None = None,
+    evidence: OptimizationEvidence | None = None,
 ) -> tuple[list[str], float]:
     lower = facts.lower()
     signals: list[str] = []
@@ -393,11 +462,17 @@ def query_optimization_counter_signals(
     if failure_category:
         signals.append("case has collection or analysis failure")
         penalty *= 0.5
-    status_values = " ".join(
-        fact_values(scoring_section_text(facts, "## CM Query Context"), "status")
+    status_values = (
+        evidence.query_status
+        if evidence is not None
+        else " ".join(fact_values(scoring_section_text(facts, "## CM Query Context"), "status"))
     )
-    state_values = " ".join(
-        fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state")
+    state_values = (
+        evidence.query_state
+        if evidence is not None
+        else " ".join(
+            fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state")
+        )
     )
     if re.search(
         r"\b(?:failed|cancelled|canceled|exception)\b",
@@ -406,7 +481,11 @@ def query_optimization_counter_signals(
     ):
         signals.append("query did not complete with useful execution evidence")
         penalty *= 0.35
-    admission_wait = duration_value_for_label(facts, "admission_wait")
+    admission_wait = (
+        evidence.admission_wait_sec
+        if evidence is not None
+        else duration_value_for_label(facts, "admission_wait")
+    )
     if (
         admission_wait is not None
         and duration_sec
@@ -426,18 +505,55 @@ def query_optimization_counter_signals(
     if duration_sec is not None and duration_sec < 5:
         signals.append("very short query")
         penalty *= 0.5
-    if "large totalbytesread is an i/o footprint, not proof" in lower and not has_shape_evidence:
+    large_read_context = (
+        evidence.read_bytes >= 10 * 1024**3
+        if evidence is not None
+        else "large totalbytesread is an i/o footprint, not proof" in lower
+    )
+    backend_context = (
+        evidence.backend_data_skew and not evidence.large_exchange
+        if evidence is not None
+        else "backend data skew" in lower and "large exchange" not in lower
+    )
+    if large_read_context and not has_shape_evidence:
         signals.append("large read volume is storage context without query-shape evidence")
         penalty *= 0.7
-    if "backend data skew" in lower and "large exchange" not in lower and not has_shape_evidence:
+    if backend_context and not has_shape_evidence:
         signals.append("backend symptoms dominate without query-shape evidence")
         penalty *= 0.6
-    cardinality_count = cardinality_mismatch_count(facts, analysis=analysis)
+    cardinality_count = (
+        evidence.cardinality_mismatch_count
+        if evidence is not None
+        else cardinality_mismatch_count(facts, analysis=analysis)
+    )
     if cardinality_count > 0 and not metadata_status_is_usable(metadata_status):
         signals.append("metadata was not collected, so stats-vs-query-shape split is unconfirmed")
-    if metadata_stats_gap(facts, analysis=analysis) and cardinality_count > 0:
+    stats_gap = (
+        evidence.metadata_stats_gap
+        if evidence is not None
+        else metadata_stats_gap(facts, analysis=analysis)
+    )
+    if stats_gap and cardinality_count > 0:
         signals.append("some cardinality mismatch may also require statistics refresh")
     return dedupe_preserve_order(signals), penalty
+
+
+def optimization_evidence_fallback_reason(
+    analysis: dict[str, object] | None,
+    evidence: OptimizationEvidence | None,
+) -> str | None:
+    if evidence is not None or analysis is None:
+        return None
+    return "analysis_json_incomplete" if isinstance(analysis, dict) else "analysis_json_missing"
+
+
+def typed_join_row_expansion_evidence(evidence: OptimizationEvidence | None) -> bool:
+    return bool(
+        evidence is not None
+        and evidence.max_join_row_estimate_ratio is not None
+        and evidence.max_join_row_estimate_ratio >= 50
+        and evidence.cardinality_mismatch_count > 0
+    )
 
 
 def large_scan_waste_evidence(facts: str) -> bool:

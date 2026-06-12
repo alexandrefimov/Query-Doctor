@@ -67,6 +67,11 @@ does not replace `AGENTS.md` or the safety contract.
   merge. Do not push, rebase, amend, or force-push unless the user explicitly
   asks for that operation. Never push directly to remote `main`; a requested push
   should target a task branch for review.
+- When the user explicitly asks to finalize a remote PR after required checks
+  pass, prefer GitHub Rebase and merge (`gh pr merge --rebase`) so remote
+  `main` does not receive a merge commit. Use a regular merge commit, squash
+  merge, amend, rebase, force-push, or direct remote-main push only when the
+  user explicitly asks for that operation.
 - After a successful local merge to `main`, remove completed clean task worktrees
   and delete merged local branches in the same turn when they are no longer
   needed. Remove the worktree before deleting a branch that is checked out there,

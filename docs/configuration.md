@@ -320,6 +320,30 @@ settings such as `recent_parallelism` and `recent_metadata_jobs` are intended
 as local config defaults or explicit request overrides, not normal per-scan
 browser choices.
 
+## Manual Profile Inbox
+
+| Field | Type | Scope | Notes |
+| --- | --- | --- | --- |
+| `corpus_dir` | string path | global | Optional output directory for web-collected or web-staged Query ID cases. `query-doctor-web --corpus-dir` overrides this config value. Relative config values resolve from the config file; relative CLI values resolve from the current directory. Defaults to `cases/cm-corpus` under the directory where `query-doctor-web` starts. |
+| `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path and does not upload raw profile text through the browser. If the file contains an embedded Query ID for a different query, staging fails closed before replacing any existing case. |
+
+`manual_profile_dir` is a local-first fallback for one exported profile. It
+does not enable Recent scans, Running scans, Cloudera Manager metrics/events,
+direct impalad collection, metadata collection, report generation, or optimizer
+actions by itself. When it is the only configured source, Known Query ID fails
+closed if the matching profile file is absent instead of falling back to live
+collection.
+
+Minimal manual-only web config:
+
+```json
+{
+  "manual_profile_dir": "./profile-inbox",
+  "corpus_dir": "./query-doctor-cases",
+  "no_llm": true
+}
+```
+
 ## Direct Impala Profiles
 
 | Field | Type | Scope | Notes |

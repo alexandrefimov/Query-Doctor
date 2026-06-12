@@ -89,6 +89,9 @@ jobs:
         run: |
           QUERY_DOCTOR_INSTALLED_CLI_BIN=/tmp/query-doctor-wheel-venv/bin python -m pytest -q tests/test_installed_cli_contract.py
 
+      - name: Smoke installed one-profile intake
+        run: python scripts/installed_one_profile_smoke.py --bin-dir /tmp/query-doctor-wheel-venv/bin
+
       - name: Check declared console scripts are installed
         run: |
           /tmp/query-doctor-wheel-venv/bin/python - <<'PY'

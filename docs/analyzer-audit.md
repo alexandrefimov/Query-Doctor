@@ -1,6 +1,6 @@
 # Analyzer Audit
 
-Last reviewed: 2026-06-01
+Last reviewed: 2026-06-12
 
 This public audit summarizes deterministic analyzer risks for Impala profile
 diagnostics. It avoids local case identifiers, private smoke history, generated
@@ -30,6 +30,12 @@ limits, and confidence. The LLM can only phrase validated facts.
   in the SQL-shape lane. It does not treat memory estimates as runtime memory
   pressure without selected-query spill/scratch evidence, and it does not treat
   low-byte exchange context as runtime data movement.
+- Recent batch scoring now uses typed `analysis.json` for core scoring
+  components when available and records any markdown fallback source and reason
+  in batch summaries.
+- Query and stats optimization candidate scoring now use typed analyzer
+  evidence for the full analyzer JSON path and record safe fallback labels when
+  they remain on legacy rendered facts.
 - Report validation rejects unsupported skew, host-tail, runtime metric, and
   root-cause claims.
 - Browser presenters render analyzer facts through allowlisted, raw-free
@@ -44,11 +50,13 @@ profiles must degrade to `unknown`, `not_configured`, or explicit limitation
 wording. They must not become failed diagnosis or unsupported root cause claims
 unless the user explicitly required that source.
 
-### 2. Scoring must stay section-scoped and fact-owned
+### 2. Scoring must stay typed or section-scoped and fact-owned
 
-Recent-scan scoring should read only the facts owned by each deterministic
-section. New labels or debug appendices must not accidentally influence score,
-severity, candidate selection, or root-cause wording.
+Recent-scan scoring should read typed analyzer facts where the typed contract
+exists. Markdown fallback must read only the facts owned by each deterministic
+section, and any fallback should remain visible in batch summaries. New labels
+or debug appendices must not accidentally influence score, severity, candidate
+selection, or root-cause wording.
 
 ### 3. Profile counter interpretation must stay evidence-tiered
 

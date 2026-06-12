@@ -69,13 +69,14 @@ details, local output paths и планы следующей сессии дол
   `query_doctor/safety/handoff_artifacts.py`. Новые Trino/Spark handoff scripts
   должны использовать их для path overlap checks и ASCII/sorted JSON artifact
   writes вместо копирования локальных output helpers.
-- Public-safe Spark 4.1 live checkpoint от 2026-06-05 зафиксирован в
-  [spark-test-cluster-evidence-checklist.md](../../engines/spark-test-cluster-evidence-checklist.md):
-  bounded one-application intake может быть warning-free и raw-free, а
-  application-only `same_application` evidence может суммировать readable
-  application-level jobs, stages, scheduler delay, spill и task-duration
-  context без selected SQL execution linkage. SQL-execution-specific
-  timing/failure facts всё еще требуют accepted SQL execution evidence.
+- [spark-test-cluster-evidence-checklist.md](../../engines/spark-test-cluster-evidence-checklist.md)
+  фиксирует durable Spark readiness boundary: bounded one-application intake
+  может оставаться raw-free для compact summaries, а application-only
+  `same_application` evidence может суммировать readable application-level
+  jobs, stages, scheduler delay, spill и task-duration context без selected SQL
+  execution linkage. SQL-execution-specific timing/failure facts всё еще
+  требуют accepted SQL execution evidence. Live validation notes и one-run
+  checkpoints остаются вне committed docs.
 
 ## Safety baseline
 
