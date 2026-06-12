@@ -332,6 +332,10 @@ the read-only `query-doctor-web --public-demo` mode.
   still do not show raw SQL, profiles, or metadata.
 - Local config `no_llm=true` keeps report and optimizer actions on deterministic
   Python-owned output.
+- Validated optimizer SQL drafts are the only SQL exception in the browser:
+  Details shows them only for explicit selected-case optimizer actions when
+  `source_visibility=owner_raw`; the default `safe` mode shows trusted
+  recommendations/no-rewrite guidance instead.
 - Query Optimizer accepts only a single safe read-only statement and never
   executes pasted SQL.
 

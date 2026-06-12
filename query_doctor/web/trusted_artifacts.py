@@ -28,6 +28,7 @@ from query_doctor.web.command_builders import (
 from query_doctor.web.models import WebJobSnapshot, WebSettings
 from query_doctor.web.job_progress import progress_view_from_snapshot
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
+from query_doctor.optimizer.source_policy import optimizer_sql_draft_display_allowed
 from query_doctor.safety.browser_display import (
     redact_browser_display_text,
     redact_local_paths_for_display,
@@ -390,11 +391,17 @@ def load_specific_query_trusted_report_artifact(
     )
 
 
-def load_validated_optimized_query(case_dir: Path) -> str | None:
+def load_validated_optimized_query(
+    case_dir: Path,
+    *,
+    source_visibility: object | None = None,
+) -> str | None:
     if not optimized_query_validated_exists(case_dir):
         return None
     marker = read_optimized_query_marker(case_dir)
     if marker.get("output_kind") in {"recommendations_only", "no_rewrite"}:
+        return None
+    if source_visibility is not None and not optimizer_sql_draft_display_allowed(source_visibility):
         return None
     return read_case_relative_text(case_dir, OPTIMIZED_QUERY_NAME)
 
@@ -439,7 +446,11 @@ def load_batch_case_trusted_detail_artifacts(
     )
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     optimized_query_state = load_optimized_query_state(
-        artifact_dir, job_store, batch_case_id=case_id, job=job
+        artifact_dir,
+        job_store,
+        batch_case_id=case_id,
+        job=job,
+        source_visibility=settings.source_visibility,
     )
     trusted_python_report_text = (
         load_validated_batch_case_report(settings, case, report_variant=REPORT_VARIANT_PYTHON)
@@ -461,7 +472,10 @@ def load_batch_case_trusted_detail_artifacts(
         trusted_python_report_text=trusted_python_report_text,
         trusted_llm_report_text=trusted_llm_report_text,
         trusted_optimized_query=(
-            load_validated_optimized_query(artifact_dir)
+            load_validated_optimized_query(
+                artifact_dir,
+                source_visibility=settings.source_visibility,
+            )
             if artifact_dir is not None and optimized_query_state.get("trusted")
             else None
         ),
@@ -498,7 +512,11 @@ def load_specific_query_trusted_detail_artifacts(
         report_variant=REPORT_VARIANT_LLM,
     )
     optimized_query_state = load_optimized_query_state(
-        case_dir, job_store, query_id=query_id, job=job
+        case_dir,
+        job_store,
+        query_id=query_id,
+        job=job,
+        source_visibility=settings.source_visibility,
     )
     trusted_python_report_text = (
         load_validated_specific_query_report(case_dir, report_variant=REPORT_VARIANT_PYTHON)
@@ -519,9 +537,14 @@ def load_specific_query_trusted_detail_artifacts(
         trusted_report_text=trusted_python_report_text,
         trusted_python_report_text=trusted_python_report_text,
         trusted_llm_report_text=trusted_llm_report_text,
-        trusted_optimized_query=load_validated_optimized_query(case_dir)
-        if optimized_query_state.get("trusted")
-        else None,
+        trusted_optimized_query=(
+            load_validated_optimized_query(
+                case_dir,
+                source_visibility=settings.source_visibility,
+            )
+            if optimized_query_state.get("trusted")
+            else None
+        ),
         trusted_optimizer_recommendations=(
             load_validated_optimizer_recommendations(case_dir)
             if optimized_query_state.get("trusted")
@@ -677,6 +700,7 @@ def load_optimized_query_state(
     batch_case_id: str | None = None,
     query_id: str | None = None,
     job: WebJobSnapshot | None = None,
+    source_visibility: object | None = None,
 ) -> dict[str, object]:
     running_job: WebJobSnapshot | None = None
     if (
@@ -698,11 +722,25 @@ def load_optimized_query_state(
     elif query_id is not None:
         running_job = job_store.running_query_optimized_query(query_id)
 
-    trusted = case_dir is not None and optimized_query_validated_exists(case_dir)
-    marker = read_optimized_query_marker(case_dir) if case_dir is not None and trusted else {}
+    marker_trusted = case_dir is not None and optimized_query_validated_exists(case_dir)
+    marker = (
+        read_optimized_query_marker(case_dir) if case_dir is not None and marker_trusted else {}
+    )
+    output_kind = str(marker.get("output_kind") or "sql_draft")
+    draft_hidden_by_policy = (
+        marker_trusted
+        and output_kind not in {"recommendations_only", "no_rewrite"}
+        and source_visibility is not None
+        and not optimizer_sql_draft_display_allowed(source_visibility)
+    )
+    trusted = marker_trusted and not draft_hidden_by_policy
     partial = case_dir is not None and (
         case_relative_file_path(case_dir, OPTIMIZED_QUERY_PARTIAL_NAME) is not None
-        or (case_relative_file_path(case_dir, OPTIMIZED_QUERY_NAME) is not None and not trusted)
+        or (
+            case_relative_file_path(case_dir, OPTIMIZED_QUERY_NAME) is not None
+            and not trusted
+            and not draft_hidden_by_policy
+        )
     )
     source_available = case_dir is not None and case_has_safe_source_sql(case_dir)
     analyzer_available = case_dir is not None and case_has_analyzer_facts(case_dir)
@@ -758,8 +796,12 @@ def load_optimized_query_state(
         "source_available": source_available,
         "analyzer_available": analyzer_available,
         "unavailable_reason": unavailable_reason,
-        "output_kind": marker.get("output_kind") or "sql_draft",
-        "fallback_reason": marker.get("fallback_reason") or "",
+        "output_kind": output_kind,
+        "fallback_reason": (
+            "source_visibility_safe"
+            if draft_hidden_by_policy
+            else marker.get("fallback_reason") or ""
+        ),
         "risk_mode": marker.get("risk_mode") or "",
         "risk_reasons": marker.get("risk_reasons")
         if isinstance(marker.get("risk_reasons"), list)

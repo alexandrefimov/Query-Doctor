@@ -191,11 +191,14 @@ production profile text.
 - Web Recent scan не должен автоматически запускать LLM reports или optimizer
   jobs; validated report generation и Query LLM optimizer generation являются
   explicit actions для одного selected case.
-- Details-page Query LLM optimizer должен показывать только validated read-only
-  draft, safe recommendations/no-rewrite guidance, validation-failure-only
-  external rewrite validation categories и safe status fields.
-- Partial drafts, raw source SQL и externally pasted SQL должны оставаться
-  скрытыми.
+- Details-page Query LLM optimizer может показывать validated read-only SQL
+  draft только для explicit selected-case optimizer action, когда текущая web
+  source policy равна `source_visibility=owner_raw`. Default
+  `source_visibility=safe` должен деградировать до trusted
+  recommendations/no-rewrite guidance, даже если validated SQL draft artifact
+  уже существует.
+- Partial drafts, raw source SQL, externally pasted SQL и optimizer validation
+  failures должны оставаться скрытыми.
 
 ## Future Cluster Doctor
 

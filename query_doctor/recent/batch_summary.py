@@ -126,6 +126,7 @@ HUMAN_REVIEW_RISK_REASONS = {
     "nested_query_body_validation_not_proven",
     "set_operations",
     "sql_payload_too_large_for_safe_rewrite",
+    "source_visibility_safe_blocks_sql_draft",
     "too_many_ctes_for_safe_rewrite",
     "too_many_top_level_joins_for_safe_rewrite",
 }

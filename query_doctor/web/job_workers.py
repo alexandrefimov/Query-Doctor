@@ -183,9 +183,7 @@ def generate_validated_optimizer_artifact(
             subprocess_failure_message("Query Doctor optimized query generation", completed)
         )
     if not optimized_query_validated_exists(case_dir):
-        raise WebError(
-            "Optimized query generation completed but the validated draft was not created."
-        )
+        raise WebError("Optimizer generation completed but the trusted outcome was not created.")
 
 
 def run_llm_actions_job(
@@ -264,10 +262,10 @@ def run_optimized_query_job(
             )
         if not optimized_query_validated_exists(case_dir):
             raise WebError(
-                "Optimized query generation completed but the validated draft was not created."
+                "Optimizer generation completed but the trusted outcome was not created."
             )
         job_store.complete_html(
-            job_id, f"Optimized query draft generated for {redact_browser_display_text(label)}."
+            job_id, f"Optimizer outcome generated for {redact_browser_display_text(label)}."
         )
     except WebError as exc:
         job_store.fail(job_id, exc)

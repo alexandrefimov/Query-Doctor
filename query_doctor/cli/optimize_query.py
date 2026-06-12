@@ -58,6 +58,11 @@ from query_doctor.optimizer.recipes import (
     build_post_union_aggregate_pushdown_recipe,
     detect_optimizer_rewrite_recipe,
 )
+from query_doctor.optimizer.source_policy import (
+    OPTIMIZER_DRAFT_BLOCKED_BY_SOURCE_VISIBILITY_FALLBACK,
+    optimizer_source_visibility_risk_decision,
+    optimizer_sql_draft_display_allowed,
+)
 from query_doctor.optimizer.source_sql import (
     MAX_SOURCE_SQL_BYTES,
     OptimizableSourceSql,
@@ -181,6 +186,7 @@ from query_doctor.report.recommendations import (
     canonical_recommendation_bullets,
     recommendation_candidate_id_for_bullet,
 )
+from query_doctor.source_visibility import SOURCE_VISIBILITY_CHOICES, SOURCE_VISIBILITY_OWNER_RAW
 from query_doctor.report.llm_client import (
     DEFAULT_KEEP_ALIVE,
     DEFAULT_LLM_API_BASE_URL,
@@ -371,6 +377,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Use only Python-owned deterministic rewrites or recommendations; do not call Ollama.",
     )
+    parser.add_argument(
+        "--source-visibility",
+        choices=SOURCE_VISIBILITY_CHOICES,
+        default=SOURCE_VISIBILITY_OWNER_RAW,
+        help=(
+            "Source visibility policy for browser-visible SQL drafts. "
+            "owner_raw permits validated drafts; safe forces trusted recommendations."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -424,7 +439,11 @@ def main(argv: list[str] | None = None) -> int:
         source_sql = extract_optimizable_source_sql(read_source_sql(case_dir))
         extract_referenced_tables(source_sql.sql)
         facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
-        risk_decision = decide_optimizer_risk_mode(source_sql.sql)
+        source_visibility_allows_draft = optimizer_sql_draft_display_allowed(args.source_visibility)
+        risk_decision = optimizer_source_visibility_risk_decision(
+            decide_optimizer_risk_mode(source_sql.sql),
+            source_visibility=args.source_visibility,
+        )
         rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql.sql, facts_text)
         print(f"{PROGRESS_PREFIX} optimized query source: available", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
@@ -433,8 +452,10 @@ def main(argv: list[str] | None = None) -> int:
             rewrite_recipe and rewrite_recipe.recipe_id in RISK_THRESHOLD_BYPASS_RECIPE_IDS
         )
         deterministic_draft = deterministic_recipe_draft(source_sql.sql, rewrite_recipe)
-        if deterministic_draft and (
-            risk_decision.mode != "recommendations_only" or recipe_can_bypass_risk_threshold
+        if (
+            source_visibility_allows_draft
+            and deterministic_draft
+            and (risk_decision.mode != "recommendations_only" or recipe_can_bypass_risk_threshold)
         ):
             errors = validate_draft_sql(source_sql.sql, deterministic_draft, rewrite_recipe)
             if not errors and draft_has_material_change(source_sql.sql, deterministic_draft):
@@ -536,7 +557,11 @@ def main(argv: list[str] | None = None) -> int:
                     risk_decision=risk_decision,
                     rewrite_recipe=rewrite_recipe,
                     output_kind="recommendations_only",
-                    fallback_reason="llm_disabled",
+                    fallback_reason=(
+                        OPTIMIZER_DRAFT_BLOCKED_BY_SOURCE_VISIBILITY_FALLBACK
+                        if not source_visibility_allows_draft
+                        else "llm_disabled"
+                    ),
                     generation_metadata={
                         "generator": "deterministic_no_llm",
                         "prompt_chars": 0,
@@ -599,6 +624,11 @@ def main(argv: list[str] | None = None) -> int:
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
                 rewrite_recipe=rewrite_recipe,
+                fallback_reason=(
+                    OPTIMIZER_DRAFT_BLOCKED_BY_SOURCE_VISIBILITY_FALLBACK
+                    if not source_visibility_allows_draft
+                    else None
+                ),
                 generation_metadata=generation_metadata,
             )
             print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)

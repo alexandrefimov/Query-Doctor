@@ -334,6 +334,10 @@ TLS/reverse-proxy trust и resource limits. Shared public demos должны
   reports все равно не показывают raw SQL, profiles или metadata.
 - Local config `no_llm=true` оставляет report и optimizer actions на
   deterministic Python-owned output.
+- Validated optimizer SQL drafts - единственное SQL-исключение в browser:
+  Details показывает их только для explicit selected-case optimizer actions при
+  `source_visibility=owner_raw`; default `safe` mode показывает trusted
+  recommendations/no-rewrite guidance вместо SQL draft.
 - Query Optimizer принимает только один safe read-only statement и никогда не
   выполняет pasted SQL.
 

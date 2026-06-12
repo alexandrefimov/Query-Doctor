@@ -190,19 +190,23 @@ contents, or real production profile text.
   policy before rendering.
 - Web Recent scan must not auto-run LLM reports or optimizer jobs. Validated
   report and Query LLM optimizer generation are explicit for one selected case.
-- Details-page Query LLM optimizer must render only a validated read-only draft,
-  safe recommendations/no-rewrite guidance, validation-failure-only external
-  rewrite validation categories, and safe status fields. Partial drafts, raw
-  source SQL, and externally pasted SQL stay hidden.
+- Details-page Query LLM optimizer may render a validated read-only SQL draft
+  only for an explicit selected-case optimizer action when the current web
+  source policy is `source_visibility=owner_raw`. The default
+  `source_visibility=safe` policy must degrade to trusted
+  recommendations/no-rewrite guidance even if a validated SQL draft artifact is
+  present. Partial drafts, raw source SQL, externally pasted SQL, and optimizer
+  validation failures stay hidden.
 - `source_visibility=owner_raw` is an owner-gating mode, not a blanket display
   bypass. In the current implementation it narrows Cloudera Manager or direct
-  Impala Recent and Running scans to a verified owner user and does not permit
+  Impala Recent and Running scans to a verified owner user and is the only web
+  policy that can display a validated optimizer SQL draft. It does not permit
   raw browser or trusted-report display. Any future owner source view that
-  proposes raw SQL or plan excerpts requires a separate safety-contract
-  revision, and must remain explicit, selected-case only, source-allowlisted,
-  fail-closed on ownership mismatch, and must still exclude raw profile dumps,
-  raw metadata, local paths, subprocess output, secrets, model names, runtime
-  internals, and raw artifact filenames.
+  proposes raw SQL source views or plan excerpts requires a separate
+  safety-contract revision, and must remain explicit, selected-case only,
+  source-allowlisted, fail-closed on ownership mismatch, and must still exclude
+  raw profile dumps, raw metadata, local paths, subprocess output, secrets,
+  model names, runtime internals, and raw artifact filenames.
 - Keytab-derived Username dropdowns may display simple account names only.
   Keytab paths, full Kerberos principals, keytab contents, ticket contents, and
   `klist` subprocess output must not be rendered in browser-visible UI or

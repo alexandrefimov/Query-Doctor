@@ -42,6 +42,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   file; relative CLI values resolve from the current directory. When unset, the
   web default now resolves under the launch directory instead of the installed
   package or source-tree root.
+- Details-page optimizer SQL drafts are now explicitly gated by
+  `source_visibility=owner_raw`. The default `source_visibility=safe` policy
+  produces trusted recommendations/no-rewrite guidance instead and hides any
+  existing validated SQL draft artifact from browser rendering.
 - Added a full-pipeline leak-canary regression baseline for manual-profile
   intake, deterministic analysis, scoring, report prompt assembly, trusted
   Python report output, and browser Details/report rendering. The test uses

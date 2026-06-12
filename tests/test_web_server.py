@@ -3808,7 +3808,10 @@ def test_web_batch_case_report_action_builds_validated_python_report_command(tmp
         encoding="utf-8",
     )
     settings = module.WebSettings(
-        config=Path(".query-doctor-cm.local.json"), batch_summary=summary, model="configured-model"
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=summary,
+        model="configured-model",
+        source_visibility="owner_raw",
     )
     store = module.WebJobStore()
     calls = []
@@ -4045,7 +4048,10 @@ def test_web_batch_optimized_query_job_generates_validated_draft_without_echoing
         encoding="utf-8",
     )
     settings = module.WebSettings(
-        config=Path(".query-doctor-cm.local.json"), batch_summary=summary, model="configured-model"
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=summary,
+        model="configured-model",
+        source_visibility="owner_raw",
     )
     store = module.WebJobStore()
     calls = []
@@ -4161,7 +4167,10 @@ def test_web_batch_case_actions_job_generates_python_report_and_optimizer(tmp_pa
         encoding="utf-8",
     )
     settings = module.WebSettings(
-        config=Path(".query-doctor-cm.local.json"), batch_summary=summary, model="configured-model"
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=summary,
+        model="configured-model",
+        source_visibility="owner_raw",
     )
     store = module.WebJobStore()
     calls = []
@@ -8278,6 +8287,7 @@ def test_web_optimizer_model_overrides_report_model(tmp_path):
     assert report_cmd[report_cmd.index("--llm-base-url") + 1] == "https://llm.example.com"
     assert cmd[cmd.index("--llm-provider") + 1] == "ollama"
     assert cmd[cmd.index("--llm-base-url") + 1] == "http://localhost:11434"
+    assert cmd[cmd.index("--source-visibility") + 1] == "safe"
 
 
 def test_web_optimizer_default_does_not_inherit_report_model(tmp_path):
@@ -8294,6 +8304,18 @@ def test_web_optimizer_default_does_not_inherit_report_model(tmp_path):
 
     assert cmd[cmd.index("--model") + 1] == module.DEFAULT_OPTIMIZER_MODEL
     assert report_cmd[report_cmd.index("--model") + 1] == "report-model"
+
+
+def test_web_optimizer_command_passes_owner_raw_source_visibility(tmp_path):
+    module = load_web_module()
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        source_visibility="owner_raw",
+    )
+
+    cmd = module.build_optimized_query_command(tmp_path / "case-001", settings)
+
+    assert cmd[cmd.index("--source-visibility") + 1] == "owner_raw"
 
 
 def test_web_report_commands_use_configured_language(tmp_path):

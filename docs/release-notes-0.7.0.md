@@ -45,6 +45,11 @@ engine.
 - Browser-visible UI and trusted reports still do not render raw profile text,
   raw SQL, raw metadata, local paths, case directories, subprocess output,
   secrets, model names, runtime internals, or raw artifact filenames.
+- Validated optimizer SQL drafts are now an explicit owner-local exception:
+  Details shows them only when the current web source policy is
+  `source_visibility=owner_raw`. The default `source_visibility=safe` path shows
+  trusted recommendations/no-rewrite guidance instead, including when an older
+  validated draft artifact is present.
 
 ## Web And Configuration
 
