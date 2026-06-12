@@ -144,13 +144,15 @@ Confirm public docs state only implemented behavior:
   Details/trusted report output, optimizer behavior, metadata collection, Query
   Doctor-generated SQL, or live Trino diagnosis.
 - Query Optimizer is read-only and does not execute pasted query text.
-- Validated reports and details-page optimizer drafts are explicit selected-case
-  actions.
-- README and demo runbooks use the current synthetic demo pack flow:
-  `query-doctor-demo` writes to a dedicated `query-doctor-*` temp directory and
-  `query-doctor-web` opens that pack through `--batch-summary` with
-  `QUERY_DOCTOR_ACTION_OUTCOMES_PATH` pointing at the generated local synthetic
-  outcomes file.
+- Known Query ID may generate the deterministic Python report in its explicit
+  submit job. LLM reports and details-page optimizer drafts are explicit
+  selected-case actions.
+- README and demo runbooks present `query-doctor-web --public-demo` as the
+  primary read-only synthetic demo startup. Manual pack inspection and
+  screenshot refresh paths may still use `query-doctor-demo` to write a
+  dedicated `query-doctor-*` temp directory and open it through
+  `--batch-summary` with `QUERY_DOCTOR_ACTION_OUTCOMES_PATH` pointing at the
+  generated local synthetic outcomes file.
 - README screenshots are refreshed from the synthetic demo pack before tagging
   any release that includes material web UI layout changes.
 - `tests/fixtures/` remains a synthetic/sanitized corpus. New fixture families

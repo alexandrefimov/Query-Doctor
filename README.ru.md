@@ -96,7 +96,7 @@ Query Doctor это не:
 | Direct Impala | Bounded Recent scans, Running scans и один Known Query ID через impalad daemon endpoints; без Cloudera Manager events и без SQL execution. |
 | Runtime metrics | Optional bounded Prometheus summaries для configured direct Impala workflows; без arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted Impala metadata statements через `impala-shell`; без user SQL execution и unbounded metadata crawl. |
-| Reports and optimizer | Python-owned facts, validation и explicit selected-case actions; без automatic batch LLM jobs. |
+| Reports and optimizer | Python-owned facts и validation. Known Query ID готовит deterministic Python report в explicit submit-job; LLM narratives и optimizer actions остаются explicit selected-case actions. |
 | Trino and Spark | Только bounded raw-free preview/compact surfaces. Это не production engine support, не live Recent scans, не Details/trusted report output, не optimizer behavior и не Query Doctor-generated SQL. |
 
 Trino preview surfaces остаются offline/local boundary, а не public support:
@@ -189,7 +189,9 @@ ID header, добавьте `--query-id <query-id>`; если оба значе�
 
 Чтобы открыть staged case в local UI, запустите `query-doctor-web`, выберите
 `One Query ID` и введите Query ID из этого профиля. Known Query ID analysis
-переиспользует complete manual-profile staged cases вместо recollection.
+переиспользует complete manual-profile staged cases вместо recollection и
+готовит deterministic Python report в том же explicit submit-job. LLM narrative
+и optimizer actions остаются explicit buttons.
 
 Также можно настроить local profile inbox для web UI. Положите exported text
 profile в `manual_profile_dir`, назвав файл slug-версией Query ID: замените
@@ -223,18 +225,23 @@ local-only и не содержит real SQL, profiles, metadata, hostnames, use
 credentials.
 
 ```bash
+query-doctor-web --public-demo
+```
+
+Этот one-command mode описан в [docs/demo-mode.md](docs/demo-mode.md). Он сам
+генерирует synthetic demo pack в dedicated temp directory, включает Python-only
+mode, игнорирует default local config и блокирует все POST actions.
+
+Если нужно вручную посмотреть или переиспользовать generated pack, используйте
+lower-level commands:
+
+```bash
 query-doctor-demo-preflight
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 query-doctor-demo --out "$DEMO_PACK" --overwrite
 QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
   query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
-
-Для read-only click-through demo, которое совпадает с public synthetic UI,
-используйте one-command mode из [docs/demo-mode.md](docs/demo-mode.md):
-`query-doctor-web --public-demo`. Он сам генерирует synthetic demo pack в
-dedicated temp directory, включает Python-only mode, игнорирует default local
-config и блокирует все POST actions.
 
 Откройте localhost URL, который напечатает `query-doctor-web`. Начните с
 `/?query_group=workloads#scan-context`, чтобы показать компактный Scan context,

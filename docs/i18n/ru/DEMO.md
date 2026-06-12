@@ -9,15 +9,31 @@ Last reviewed: 2026-06-06
 от английского источника.
 
 `query-doctor-web` запускает небольшой localhost-only UI для Query Doctor.
-Текущая навигация строится вокруг Diagnose, Details pages, Help и explicit
-selected-case report/optimizer actions. В Diagnose находятся Recent queries и
-вторичный режим Known Query ID.
+Текущая навигация строится вокруг Diagnose, Details pages, Help,
+автогенерации Python report для Known Query ID и explicit selected-case LLM
+report/optimizer actions. В Diagnose находятся Recent queries и вторичный
+режим Known Query ID.
 
-Это не production UI. Для публичных repeatable demo используйте synthetic pack
-из `query-doctor-demo`; не используйте старые prepared-pack case IDs, account
-names, local deep links или environment-specific query IDs.
+Это не production UI. Для публичных repeatable demo используйте
+`query-doctor-web --public-demo`; запускайте `query-doctor-demo` напрямую
+только когда нужно посмотреть или переиспользовать generated pack. Не
+используйте старые prepared-pack case IDs, account names, local deep links или
+environment-specific query IDs.
 
 ## Synthetic demo startup
+
+Для обычного read-only public demo запускайте одну команду:
+
+```bash
+query-doctor-web --public-demo
+```
+
+Она сама генерирует fresh synthetic pack в system temp directory, подключает
+web UI к этому pack, включает Python-only mode, игнорирует default local config
+и owner-source environment hints, отклоняет explicitly loaded external source
+settings и блокирует все POST routes.
+
+Если нужно вручную посмотреть или переиспользовать generated pack:
 
 ```bash
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
@@ -42,12 +58,6 @@ Synthetic pack не вызывает Cloudera Manager, Impala, Prometheus, local
 generation backend или network и не является performance evidence.
 
 ## Read-only public demo
-
-Для public-style read-only demo запускайте одну команду:
-
-```bash
-query-doctor-web --public-demo
-```
 
 Не передавайте real local config, Kerberos material, cluster credentials или
 cases из real environments в public demo.
@@ -117,12 +127,13 @@ query-doctor-collect-cm-profiles \
   selected profile collection, deterministic ranking, no automatic LLM reports.
 - **Diagnose / Running now**: тот же result shape для running queries, без
   date/hour filters и с lower-confidence live evidence.
-- **Diagnose / Known Query ID**: один explicit Impala query ID без automatic
-  LLM; по умолчанию используется Cloudera Manager, либо direct Impala daemon
-  profile endpoints при соответствующем local config. Input очищается после
-  submit, результат добавляется в Known Query ID analysis table.
-- **Details**: deterministic details плюс explicit LLM Report / Query LLM
-  optimizer actions.
+- **Diagnose / Known Query ID**: один explicit Impala query ID, deterministic
+  Python report в том же submit-job, без automatic LLM или optimizer jobs; по
+  умолчанию используется Cloudera Manager, либо direct Impala daemon profile
+  endpoints при соответствующем local config. Input очищается после submit,
+  результат добавляется в Known Query ID analysis table.
+- **Details**: deterministic details, generated Python report when available,
+  плюс explicit LLM Report / Query LLM optimizer actions.
 - **Help**: workflow, safety boundaries и ссылки на GitHub documentation внутри
   продукта.
 

@@ -86,7 +86,8 @@ details, local output paths и планы следующей сессии дол
   SQL/profile/metadata/paths/secrets/subprocess output/model internals.
 - `engine_fact_boundary_v1` является raw-free contract seam, а не product
   engine registry или support claim.
-- Python Report, optional LLM narrative и optimizer jobs являются explicit
+- Known Query ID analysis может готовить deterministic Python report внутри
+  explicit submit-job. LLM reports и optimizer jobs остаются explicit
   selected-case actions.
 
 Полный handoff и code map находятся в

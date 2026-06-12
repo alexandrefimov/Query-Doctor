@@ -188,9 +188,10 @@ production profile text.
   rendering.
 - Любой dynamic browser-visible text должен проходить shared browser display
   redaction policy перед rendering.
-- Web Recent scan не должен автоматически запускать LLM reports или optimizer
-  jobs; validated report generation и Query LLM optimizer generation являются
-  explicit actions для одного selected case.
+- Web Recent и Running scans не должны автоматически запускать LLM reports или
+  optimizer jobs. Known Query ID может готовить deterministic Python report
+  внутри explicit analysis submit-job. LLM report generation и Query LLM
+  optimizer generation остаются explicit actions для одного selected case.
 - Details-page Query LLM optimizer может показывать validated read-only SQL
   draft только для explicit selected-case optimizer action, когда текущая web
   source policy равна `source_visibility=owner_raw`. Default

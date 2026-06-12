@@ -189,8 +189,10 @@ contents, or real production profile text.
   names, and internal runtime fingerprints must stay hidden before rendering.
 - Dynamic browser-visible text should use the shared browser display redaction
   policy before rendering.
-- Web Recent scan must not auto-run LLM reports or optimizer jobs. Validated
-  report and Query LLM optimizer generation are explicit for one selected case.
+- Web Recent and Running scans must not auto-run LLM reports or optimizer jobs.
+  Known Query ID may generate the deterministic Python report as part of its
+  explicit analysis submit job. LLM report and Query LLM optimizer generation
+  remain explicit for one selected case.
 - Details-page Query LLM optimizer may render a validated read-only SQL draft
   only for an explicit selected-case optimizer action when the current web
   source policy is `source_visibility=owner_raw`. The default

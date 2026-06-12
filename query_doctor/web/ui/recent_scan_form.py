@@ -411,7 +411,8 @@ def render_known_query_form(
     button_label = "Running" if run_disabled else "Run"
     query_help_text = (
         "One explicit Query ID. Query Doctor collects or reuses the profile, "
-        "runs deterministic analysis, adds metadata when configured, and does not auto-run LLM actions. "
+        "runs deterministic analysis, adds metadata when configured, prepares the Python report, "
+        "and does not auto-run LLM or optimizer actions. "
         "Recent-query filters stay hidden in this mode."
     )
     return (

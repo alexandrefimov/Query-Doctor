@@ -116,7 +116,11 @@ def test_web_help_page_renders_curated_static_help():
     assert "Validated reports" in body
     assert "Common questions" in body
     assert "Where is future engine scope documented?" in body
-    assert "Web scans do not auto-run reports, LLM narratives, or optimizer drafts." in body
+    assert (
+        "Recent and Running scans do not auto-run reports, LLM narratives, or optimizer drafts."
+        in body
+    )
+    assert "prepares the deterministic Python report in the same submit job" in body
     assert "draft workflow placeholder" not in body
     assert "Metadata top cases" not in body
     assert "Queries to fetch metadata for" not in body
@@ -158,8 +162,9 @@ def test_web_help_page_uses_python_only_copy_when_no_llm():
     assert "LLM narrative" not in body
     assert "Query optimizer" in body
     assert "without LLM calls" in body
-    assert "Web scans do not auto-run reports or optimizer jobs." in body
-    assert "without automatic report or optimizer execution" in body
+    assert "Recent and Running scans do not auto-run reports or optimizer jobs." in body
+    assert "prepares the deterministic Python report in the same submit job" in body
+    assert "Optimizer actions remain explicit." in body
     assert "LLM Report" not in body
     assert "Query LLM optimizer" not in body
     assert "Details and LLM actions" not in body

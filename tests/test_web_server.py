@@ -43,6 +43,19 @@ def html_between(text: str, start: str, end: str) -> str:
     return text[text.index(start) : text.index(end)]
 
 
+def complete_python_report_command(cmd: list[object]) -> subprocess.CompletedProcess[str]:
+    args = command_args(cmd, "report")
+    case_dir = Path(args[0])
+    assert "--no-llm" in args
+    assert args[args.index("--out") + 1] == "diagnosis_python.md"
+    assert args[args.index("--validation-mode") + 1] == "strict"
+    (case_dir / "diagnosis_python.md").write_text(
+        "# Query Doctor Report\n\nDeterministic Python report.\n",
+        encoding="utf-8",
+    )
+    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+
 def optimizer_recipe_facts():
     return """
 # Query Doctor deterministic analysis facts
@@ -1762,11 +1775,12 @@ def test_web_job_panel_uses_shared_progress_view_for_initial_render():
     html = render_job_panel(job)
 
     assert '<span id="job-stage" class="progress-stage">Analyzing profile</span>' in html
-    assert 'id="job-progress-fill" class="progress-fill" style="width:40%"' in html
+    assert 'id="job-progress-fill" class="progress-fill" style="width:33%"' in html
     assert 'id="job-progress-fill" class="progress-fill" style="width:62%"' not in html
     assert 'class="batch-progress-steps job-progress-steps"' in html
     assert "Collecting or reusing profile" in html
     assert "Analyzing profile" in html
+    assert "Generating Python report" in html
     assert "Preparing deterministic result" in html
     assert "batch-progress-step--done" in html
     assert "batch-progress-step--running" in html
@@ -9748,7 +9762,7 @@ def test_web_run_analysis_uses_subprocess_list_args_and_tmp_outputs(monkeypatch,
     assert progress_stages == [0, 1, 2, 3, 4, 5]
 
 
-def test_web_query_id_analysis_does_not_generate_llm_report(monkeypatch, tmp_path):
+def test_web_query_id_analysis_generates_python_report_without_llm(monkeypatch, tmp_path):
     module = load_web_module()
     monkeypatch.setenv("CM_TOKEN", "secret-token")
     config = tmp_path / "cm-config.json"
@@ -9803,7 +9817,7 @@ def test_web_query_id_analysis_does_not_generate_llm_report(monkeypatch, tmp_pat
             )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if command_uses_role(cmd, "report"):
-            raise AssertionError("Specific Query analysis must not generate an LLM report")
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -9822,8 +9836,10 @@ def test_web_query_id_analysis_does_not_generate_llm_report(monkeypatch, tmp_pat
     assert result.case["table_stats_status"] == "available"
     assert "case_dir" not in result.case
     assert "case_index" not in result.case
-    assert len(calls) == 2
-    assert progress_stages == [0, 1, 2, 3, 4]
+    assert (case_dir / "diagnosis_python.md").is_file()
+    assert (case_dir / "diagnosis_python.validated.json").is_file()
+    assert len(calls) == 3
+    assert progress_stages == [0, 1, 2, 3, 4, 5]
 
 
 def test_web_query_id_analysis_reuses_manual_profile_case_without_collector(tmp_path):
@@ -9863,6 +9879,8 @@ def test_web_query_id_analysis_reuses_manual_profile_case_without_collector(tmp_
                 encoding="utf-8",
             )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -9877,9 +9895,12 @@ def test_web_query_id_analysis_reuses_manual_profile_case_without_collector(tmp_
     assert result.query_id == "abc:def"
     assert result.case["query_id"] == "abc:def"
     assert result.case["score"] > 0
-    assert len(calls) == 1
+    assert (case_dir / "diagnosis_python.md").is_file()
+    assert (case_dir / "diagnosis_python.validated.json").is_file()
+    assert len(calls) == 2
     assert command_uses_role(calls[0], "pipeline")
-    assert progress_stages == [0, 1, 2, 3, 4]
+    assert command_uses_role(calls[1], "report")
+    assert progress_stages == [0, 1, 2, 3, 4, 5]
 
 
 def test_web_query_id_analysis_stages_matching_manual_profile_from_directory_without_collector(
@@ -9934,6 +9955,8 @@ def test_web_query_id_analysis_stages_matching_manual_profile_from_directory_wit
                 stdout=f"Output case directory: {staged_case_dir}\n",
                 stderr="",
             )
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -9950,9 +9973,12 @@ def test_web_query_id_analysis_stages_matching_manual_profile_from_directory_wit
     assert result.case["score"] > 0
     assert final_case_dir.is_dir()
     assert (final_case_dir / "analysis_facts.md").is_file()
-    assert len(calls) == 1
+    assert (final_case_dir / "diagnosis_python.md").is_file()
+    assert (final_case_dir / "diagnosis_python.validated.json").is_file()
+    assert len(calls) == 2
     assert command_uses_role(calls[0], "analyze")
-    assert progress_stages == [0, 1, 2, 3, 4]
+    assert command_uses_role(calls[1], "report")
+    assert progress_stages == [0, 1, 2, 3, 4, 5]
 
 
 def test_web_query_id_analysis_uses_configured_corpus_dir_for_manual_profile_inbox(
@@ -10011,6 +10037,8 @@ def test_web_query_id_analysis_uses_configured_corpus_dir_for_manual_profile_inb
                 stdout=f"Output case directory: {staged_case_dir}\n",
                 stderr="",
             )
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -10024,8 +10052,11 @@ def test_web_query_id_analysis_uses_configured_corpus_dir_for_manual_profile_inb
     assert result.query_id == "abc:def"
     assert final_case_dir.is_dir()
     assert not (tmp_path / "cm-corpus" / "abc_def").exists()
-    assert len(calls) == 1
+    assert (final_case_dir / "diagnosis_python.md").is_file()
+    assert (final_case_dir / "diagnosis_python.validated.json").is_file()
+    assert len(calls) == 2
     assert command_uses_role(calls[0], "analyze")
+    assert command_uses_role(calls[1], "report")
 
 
 def test_web_query_id_analysis_prefers_manual_profile_over_configured_live_collector(
@@ -10082,6 +10113,8 @@ def test_web_query_id_analysis_prefers_manual_profile_over_configured_live_colle
                 stdout=f"Output case directory: {staged_case_dir}\n",
                 stderr="",
             )
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -10094,8 +10127,11 @@ def test_web_query_id_analysis_prefers_manual_profile_over_configured_live_colle
 
     assert result.query_id == "abc:def"
     assert final_case_dir.is_dir()
-    assert len(calls) == 1
+    assert (final_case_dir / "diagnosis_python.md").is_file()
+    assert (final_case_dir / "diagnosis_python.validated.json").is_file()
+    assert len(calls) == 2
     assert command_uses_role(calls[0], "analyze")
+    assert command_uses_role(calls[1], "report")
 
 
 def test_manual_profile_file_for_query_uses_deterministic_suffix_order(tmp_path):
@@ -10356,6 +10392,8 @@ def test_web_query_id_analysis_can_collect_direct_impala_profile_without_cm_cred
                 encoding="utf-8",
             )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -10365,6 +10403,7 @@ def test_web_query_id_analysis_can_collect_direct_impala_profile_without_cm_cred
     assert result.query_id == "abc:def"
     assert any(command_uses_role(cmd, "collect_impala_profile") for cmd in calls)
     assert not any(command_uses_role(cmd, "collect_cm") for cmd in calls)
+    assert sum(command_uses_role(cmd, "report") for cmd in calls) == 1
 
 
 def test_web_query_id_analysis_passes_prometheus_metrics_flags_for_direct_impala(
@@ -10423,6 +10462,8 @@ def test_web_query_id_analysis_passes_prometheus_metrics_flags_for_direct_impala
                 encoding="utf-8",
             )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -10431,6 +10472,7 @@ def test_web_query_id_analysis_passes_prometheus_metrics_flags_for_direct_impala
 
     assert result.query_id == "abc:def"
     assert any(command_uses_role(cmd, "collect_impala_profile") for cmd in calls)
+    assert sum(command_uses_role(cmd, "report") for cmd in calls) == 1
 
 
 def test_web_query_id_analysis_collects_metadata_when_configured(monkeypatch, tmp_path):
@@ -10492,12 +10534,13 @@ def test_web_query_id_analysis_collects_metadata_when_configured(monkeypatch, tm
             )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if command_uses_role(cmd, "report"):
-            raise AssertionError("Specific Query analysis must not generate an LLM report")
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     module.run_query_id_analysis("abc:def", "analysis", False, settings, runner=fake_runner)
 
     assert sum(command_uses_role(cmd, "pipeline") for cmd in calls) == 1
+    assert sum(command_uses_role(cmd, "report") for cmd in calls) == 1
     assert not any((tmp_path / "cm-corpus").glob(".query-refresh-*"))
     assert not (case_dir / ".metadata-source-tables.json").exists()
 
@@ -10542,6 +10585,8 @@ def test_web_query_id_analysis_refreshes_existing_case_after_success(monkeypatch
                 encoding="utf-8",
             )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if command_uses_role(cmd, "report"):
+            return complete_python_report_command(cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
     result = module.run_query_id_analysis(
@@ -10555,9 +10600,12 @@ def test_web_query_id_analysis_refreshes_existing_case_after_success(monkeypatch
         .startswith("- Parsed operators: 9")
     )
     assert not (case_dir / "old_report.md").exists()
+    assert (case_dir / "diagnosis_python.md").is_file()
+    assert (case_dir / "diagnosis_python.validated.json").is_file()
     assert not list((tmp_path / "cm-corpus").glob(".query-refresh-*"))
     assert sum(command_uses_role(cmd, "collect_cm") for cmd in calls) == 1
     assert sum(command_uses_role(cmd, "pipeline") for cmd in calls) == 1
+    assert sum(command_uses_role(cmd, "report") for cmd in calls) == 1
 
 
 def test_web_query_id_analysis_keeps_existing_case_when_refresh_analysis_fails(
@@ -10599,6 +10647,64 @@ def test_web_query_id_analysis_keeps_existing_case_when_refresh_analysis_fails(
     assert "sensitive" not in message
     assert (case_dir / "analysis_facts.md").read_text(encoding="utf-8") == "old safe facts\n"
     assert not list((tmp_path / "cm-corpus").glob(".query-refresh-*"))
+
+
+def test_web_query_id_analysis_keeps_existing_case_when_refresh_report_fails(monkeypatch, tmp_path):
+    module = load_web_module()
+    monkeypatch.setenv("CM_TOKEN", "secret-token")
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    write_complete_collected_case(case_dir)
+    (case_dir / "analysis_facts.md").write_text("old safe facts\n", encoding="utf-8")
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        if command_uses_role(cmd, "collect_cm"):
+            out_dir = Path(cmd[cmd.index("--out") + 1])
+            staged_case_dir = out_dir / "abc_def"
+            write_complete_collected_case(staged_case_dir)
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=f"Output case directory: {staged_case_dir}\n", stderr=""
+            )
+        if command_uses_role(cmd, "pipeline"):
+            command_case_dir = Path(command_args(cmd, "pipeline")[0])
+            assert command_case_dir != case_dir
+            (command_case_dir / "analysis_facts.md").write_text(
+                "- Parsed operators: 9\n- Cardinality anomalies: 2\n- Memory anomalies: 0\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if command_uses_role(cmd, "report"):
+            command_case_dir = Path(command_args(cmd, "report")[0])
+            assert command_case_dir != case_dir
+            return subprocess.CompletedProcess(
+                cmd,
+                module.REPORT_VALIDATION_EXIT_CODE,
+                stdout="invalid report with raw profile text",
+                stderr="SELECT sensitive",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    with pytest.raises(module.WebError) as excinfo:
+        module.run_query_id_analysis("abc:def", "analysis", False, settings, runner=fake_runner)
+
+    message = str(excinfo.value)
+    assert "Report generation completed but validation rejected the output" in message
+    assert "SELECT" not in message
+    assert "sensitive" not in message
+    assert (case_dir / "analysis_facts.md").read_text(encoding="utf-8") == "old safe facts\n"
+    assert not (case_dir / "diagnosis_python.md").exists()
+    assert not list((tmp_path / "cm-corpus").glob(".query-refresh-*"))
+    assert sum(command_uses_role(cmd, "collect_cm") for cmd in calls) == 1
+    assert sum(command_uses_role(cmd, "pipeline") for cmd in calls) == 1
+    assert sum(command_uses_role(cmd, "report") for cmd in calls) == 1
 
 
 def test_web_retries_report_generation_once_after_validation_failure(monkeypatch, tmp_path):

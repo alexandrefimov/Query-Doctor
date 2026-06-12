@@ -118,7 +118,8 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "Known Query ID" in body
     assert "Analyze one explicit Impala query by Query ID." in body
     assert "One explicit Query ID. Query Doctor collects or reuses the profile" in body
-    assert "does not auto-run LLM actions" in body
+    assert "prepares the Python report" in body
+    assert "does not auto-run LLM or optimizer actions" in body
     assert '<label for="query_id">Query ID</label>' in body
     assert "Query ID or case path" not in body
     assert "Analyze one explicit Impala query with deterministic profile facts." not in body

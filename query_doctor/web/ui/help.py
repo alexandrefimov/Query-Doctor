@@ -40,14 +40,14 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
         else "Run <strong>Python Report</strong> or <strong>Query optimizer</strong> only from a selected Details page."
     )
     web_scan_boundary = (
-        "Web scans do not auto-run reports, LLM narratives, or optimizer drafts."
+        "Recent and Running scans do not auto-run reports, LLM narratives, or optimizer drafts."
         if llm_enabled
-        else "Web scans do not auto-run reports or optimizer jobs."
+        else "Recent and Running scans do not auto-run reports or optimizer jobs."
     )
     known_query_boundary = (
-        "It collects and analyzes one query without automatic LLM execution, clears the input after submit, and appends the result to the Known Query ID analysis table."
+        "It collects and analyzes one query, prepares the deterministic Python report in the same submit job, clears the input after submit, and appends the result to the Known Query ID analysis table. LLM narrative and optimizer actions remain explicit."
         if llm_enabled
-        else "It collects and analyzes one query without automatic report or optimizer execution, clears the input after submit, and appends the result to the Known Query ID analysis table."
+        else "It collects and analyzes one query, prepares the deterministic Python report in the same submit job, clears the input after submit, and appends the result to the Known Query ID analysis table. Optimizer actions remain explicit."
     )
     action_copy = (
         "<p><strong>Reports and optimizer</strong> contains explicit selected-case buttons for Python Report, optional LLM narrative, Query LLM optimizer, and combined report + optimizer execution. Outputs appear only after deterministic validation; rejected partial content stays hidden.</p>"
@@ -267,14 +267,14 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
         else "Запускайте <strong>Python-отчет</strong> или <strong>Query optimizer</strong> только со страницы Details выбранного кейса."
     )
     web_scan_boundary = (
-        "Web-сканы не запускают отчеты, LLM narrative или optimizer drafts автоматически."
+        "Recent и Running scans не запускают отчеты, LLM narrative или optimizer drafts автоматически."
         if llm_enabled
-        else "Web-сканы не запускают отчеты или optimizer jobs автоматически."
+        else "Recent и Running scans не запускают отчеты или optimizer jobs автоматически."
     )
     known_query_boundary = (
-        "Он собирает и анализирует один query ID без автоматического LLM-запуска, очищает ввод после submit и добавляет результат в таблицу Known Query ID."
+        "Он собирает и анализирует один query ID, готовит deterministic Python report в том же submit-job, очищает ввод после submit и добавляет результат в таблицу Known Query ID. LLM narrative и optimizer actions остаются явными."
         if llm_enabled
-        else "Он собирает и анализирует один query ID без автоматической генерации report или optimizer, очищает ввод после submit и добавляет результат в таблицу Known Query ID."
+        else "Он собирает и анализирует один query ID, готовит deterministic Python report в том же submit-job, очищает ввод после submit и добавляет результат в таблицу Known Query ID. Optimizer actions остаются явными."
     )
     action_copy = (
         "<p><strong>Отчеты и оптимизатор</strong> содержит явные действия для выбранного кейса: Python-отчет, optional LLM narrative, Query LLM optimizer и combined report + optimizer execution. Outputs появляются только после deterministic validation; rejected partial content остается hidden.</p>"

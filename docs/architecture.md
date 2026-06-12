@@ -470,10 +470,11 @@ The local UI:
   runtime metrics as runtime context for selected cases;
 - uses the same result shape for Running now scans, with lower-confidence live
   evidence;
-- analyzes one known Query ID in the Known Query ID Diagnose mode without
-  automatic LLM and appends results to its table. This path can collect via
-  Cloudera Manager or direct Impala daemon profile endpoints, depending on
-  local config;
+- analyzes one known Query ID in the Known Query ID Diagnose mode, prepares the
+  deterministic Python report in that explicit submit job, and appends results
+  to its table. It does not auto-run LLM reports or optimizer jobs. This path
+  can collect via Cloudera Manager or direct Impala daemon profile endpoints,
+  depending on local config;
 - keeps the direct Query Optimizer route read-only for compatibility and safety
   testing; it parses one safe SELECT/WITH statement locally, does not execute
   pasted SQL, and does not render it back after submit;

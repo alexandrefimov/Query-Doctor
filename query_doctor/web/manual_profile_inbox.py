@@ -90,6 +90,7 @@ def analyze_manual_profile_from_directory(
     subprocess_env: dict[str, str],
     progress: ProgressFunc | None = None,
     cancel_check: CancelCheck | None = None,
+    post_analyze: Callable[[Path], None] | None = None,
 ) -> Path:
     corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
     staging_root = corpus_dir / f".query-refresh-{uuid.uuid4().hex}"
@@ -139,6 +140,8 @@ def analyze_manual_profile_from_directory(
             raise WebError(
                 "Manual profile analysis returned a case directory that does not match the requested query id."
             )
+        if post_analyze is not None:
+            post_analyze(case_dir)
         return replace_case_dir_after_success(case_dir, expected_case_dir)
     finally:
         if staging_root.exists():
