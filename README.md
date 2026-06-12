@@ -180,6 +180,20 @@ enter the original Query ID. The web path stages and analyzes the local file
 through the same text-only, bounded, redacted analyzer path; it does not upload
 the raw profile through the browser. If the file contains an embedded Query ID
 for a different query, staging fails closed before replacing any existing case.
+For a self-contained one-profile workspace, set both paths in an ignored local
+config file and keep generated cases outside the source tree:
+
+```json
+{
+  "manual_profile_dir": "/path/to/profile-inbox",
+  "corpus_dir": "/path/to/query-doctor-cases",
+  "no_llm": true
+}
+```
+
+Then start `query-doctor-web --config ./query-doctor-one-profile.json`.
+Relative `corpus_dir` values in config resolve from the config file; the
+`--corpus-dir` CLI flag resolves relative paths from the current directory.
 
 ### Door 2: Run The Synthetic Demo
 

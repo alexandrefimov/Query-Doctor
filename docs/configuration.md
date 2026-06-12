@@ -324,6 +324,7 @@ browser choices.
 
 | Field | Type | Scope | Notes |
 | --- | --- | --- | --- |
+| `corpus_dir` | string path | global | Optional output directory for web-collected or web-staged Query ID cases. `query-doctor-web --corpus-dir` overrides this config value. Relative config values resolve from the config file; relative CLI values resolve from the current directory. Defaults to `cases/cm-corpus`. |
 | `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path and does not upload raw profile text through the browser. If the file contains an embedded Query ID for a different query, staging fails closed before replacing any existing case. |
 
 `manual_profile_dir` is a local-first fallback for one exported profile. It

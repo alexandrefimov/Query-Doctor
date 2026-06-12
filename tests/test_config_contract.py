@@ -76,6 +76,18 @@ def test_workload_history_config_fields_reject_invalid_values():
         config_contract.normalize_config_keys(minimal_config(workload_history_path=123))
 
 
+def test_web_corpus_dir_config_field_is_allowed():
+    values = config_contract.normalize_config_keys(
+        minimal_config(
+            corpus_dir="query-doctor-cases",
+            manual_profile_dir="profile-inbox",
+        )
+    )
+
+    assert values["corpus_dir"] == "query-doctor-cases"
+    assert values["manual_profile_dir"] == "profile-inbox"
+
+
 def test_default_config_is_discovered(tmp_path):
     path = write_config(tmp_path / config_contract.DEFAULT_CONFIG_PATH, minimal_config())
 

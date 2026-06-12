@@ -7,6 +7,7 @@ import argparse
 from query_doctor.cli import collect_cm_profiles as cm_collector
 from query_doctor.web.config import positive_int
 from query_doctor.web.models import (
+    DEFAULT_CORPUS_DIR,
     DEFAULT_HOST,
     DEFAULT_METADATA_TIMEOUT_SEC,
     DEFAULT_MODEL,
@@ -99,6 +100,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         default=DEFAULT_TIMEOUT_SEC,
         help=f"Per-step subprocess timeout. Default: {DEFAULT_TIMEOUT_SEC}.",
+    )
+    parser.add_argument(
+        "--corpus-dir",
+        help=(
+            "Directory for web-collected or web-staged Query ID cases. "
+            f"Default: {DEFAULT_CORPUS_DIR}."
+        ),
     )
     parser.add_argument(
         "--batch-summary",

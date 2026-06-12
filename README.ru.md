@@ -186,6 +186,20 @@ ID. Web path staged/analyzed этот local file через тот же text-onl
 redacted analyzer path; профиль не загружается через browser. Если файл
 содержит embedded Query ID другого запроса, staging fail-closed до замены
 существующего case.
+Для self-contained one-profile workspace задайте оба пути в ignored local
+config и держите generated cases вне source tree:
+
+```json
+{
+  "manual_profile_dir": "/path/to/profile-inbox",
+  "corpus_dir": "/path/to/query-doctor-cases",
+  "no_llm": true
+}
+```
+
+Затем запустите `query-doctor-web --config ./query-doctor-one-profile.json`.
+Relative `corpus_dir` в config разрешается от файла config; CLI-флаг
+`--corpus-dir` разрешает relative path от current directory.
 
 ### Дверь 2: synthetic demo
 

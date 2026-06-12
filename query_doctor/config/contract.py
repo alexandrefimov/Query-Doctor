@@ -63,6 +63,7 @@ ALLOWED_CONFIG_KEYS = {
     "collect_workload_history",
     "cm_metrics_profile",
     "cm_timeseries_padding_sec",
+    "corpus_dir",
     "host",
     "impala_kerberos_service_name",
     "impala_collect_admission_context",
@@ -438,6 +439,8 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError("Config field language must be a non-empty string.")
         if key == "manual_profile_dir":
             raise ConfigError("Config field manual_profile_dir must be a non-empty string.")
+        if key == "corpus_dir":
+            raise ConfigError("Config field corpus_dir must be a non-empty string.")
         return None
     if key == "krb5ccname":
         if not isinstance(value, str):
@@ -461,6 +464,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "impala_profile_scheme",
         "language",
         "manual_profile_dir",
+        "corpus_dir",
         "optimizer_model",
         "out",
         "pool",

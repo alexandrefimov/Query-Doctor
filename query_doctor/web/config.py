@@ -19,6 +19,7 @@ from query_doctor.report.llm_client import (
 from query_doctor.report.language_contract import normalize_report_language
 from query_doctor.web.cluster_selection import build_web_cluster_configs, settings_for_cluster_key
 from query_doctor.web.models import (
+    DEFAULT_CORPUS_DIR,
     DEFAULT_HOST,
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
@@ -316,6 +317,23 @@ def configured_manual_profile_dir(
     return resolve_config_path_value(path, base_dir=base_dir)
 
 
+def configured_corpus_dir(
+    args: argparse.Namespace,
+    config_values: dict[str, object],
+    *,
+    config_path: Path,
+    cwd: Path,
+) -> Path:
+    cli_value = getattr(args, "corpus_dir", None)
+    if cli_value:
+        return resolve_config_path_value(Path(cli_value), base_dir=cwd)
+    config_value = optional_config_path(config_values, "corpus_dir")
+    if config_value is not None:
+        config_base_dir = resolve_config_path_value(config_path, base_dir=cwd).parent
+        return resolve_config_path_value(config_value, base_dir=config_base_dir)
+    return DEFAULT_CORPUS_DIR
+
+
 def resolve_config_path_value(path: Path, *, base_dir: Path) -> Path:
     expanded = path.expanduser()
     return expanded if expanded.is_absolute() else base_dir / expanded
@@ -532,6 +550,12 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             optional_config_string(config_values, "ca_bundle"),
         ),
         insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify") is True,
+        corpus_dir=configured_corpus_dir(
+            args,
+            config_values,
+            config_path=config_path,
+            cwd=cwd,
+        ),
         manual_profile_dir=optional_config_path(config_values, "manual_profile_dir"),
         clusters=clusters,
         active_cluster_key=clusters[0].key if clusters else None,
