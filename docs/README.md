@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-11
+Last reviewed: 2026-06-12
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -69,6 +69,9 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
+- [release-notes-0.7.0.md](release-notes-0.7.0.md): curated 0.7.0 release
+  notes for one-profile intake, installed-wheel release gates, typed scoring,
+  and Impala-first adoption readiness.
 - [release-notes-0.6.0.md](release-notes-0.6.0.md): curated 0.6.0 release
   notes for bounded Spark compact intake, Trino raw-free handoff gates, and
   Impala diagnostic-loop calibration.
@@ -147,6 +150,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [release-notes-0.7.0.md](release-notes-0.7.0.md) | reference | Curated 0.7.0 release notes. |
 | [release-notes-0.6.0.md](release-notes-0.6.0.md) | reference | Curated 0.6.0 release notes. |
 | [release-notes-0.5.0.md](release-notes-0.5.0.md) | reference | Curated 0.5.0 release notes. |
 | [release-notes-0.4.3.md](release-notes-0.4.3.md) | reference | Curated 0.4.3 release notes. |

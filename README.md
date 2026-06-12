@@ -371,7 +371,7 @@ configs, credentials, raw profiles, raw metadata, or temporary outputs.
 
 ## Public Status
 
-This repository is public. Public source releases start at `v0.4.2`; `v0.6.0`
+This repository is public. Public source releases start at `v0.4.2`; `v0.7.0`
 continues that public source release line. Older package-index releases remain
 visible on
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) where needed for
