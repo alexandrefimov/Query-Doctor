@@ -262,6 +262,8 @@ def test_preflight_with_invalid_query_id_fails_safely(tmp_path, capsys):
     assert result == 4
     assert len(calls) == 1
     assert "Profile text check failed" in captured.err
+    assert "Impala Query ID path usage" in captured.err
+    assert "CM profile text request" not in captured.err
     assert "[A-Za-z0-9]+:[A-Za-z0-9]+" in captured.err
     assert "Profile text endpoint:" not in captured.out
     assert not (tmp_path / "cm-corpus").exists()

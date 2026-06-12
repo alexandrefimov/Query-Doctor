@@ -334,6 +334,16 @@ actions by itself. When it is the only configured source, Known Query ID fails
 closed if the matching profile file is absent instead of falling back to live
 collection.
 
+Minimal manual-only web config:
+
+```json
+{
+  "manual_profile_dir": "./profile-inbox",
+  "corpus_dir": "./query-doctor-cases",
+  "no_llm": true
+}
+```
+
 ## Direct Impala Profiles
 
 | Field | Type | Scope | Notes |

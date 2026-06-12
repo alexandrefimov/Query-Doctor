@@ -965,7 +965,10 @@ def test_web_startup_validation_rejects_missing_env_secret(tmp_path):
     with pytest.raises(module.WebError) as exc:
         module.validate_web_startup_config(path, cwd=tmp_path, env={})
 
-    assert "CM_PASSWORD/CM_TOKEN" in str(exc.value)
+    message = str(exc.value)
+    assert "CM_PASSWORD/CM_TOKEN" in message
+    assert "manual_profile_dir" in message
+    assert "one exported Impala text profile" in message
 
 
 def test_web_startup_validation_can_skip_cm_for_read_only_batch_summary(tmp_path):

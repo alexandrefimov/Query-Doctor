@@ -280,7 +280,9 @@ def validate_web_startup_config(
         raise WebError(
             "Missing required CM startup setting(s): "
             + ", ".join(missing)
-            + ". Provide non-secret CM settings in local config and CM_PASSWORD or CM_TOKEN via environment variables."
+            + ". Provide non-secret CM settings in local config and CM_PASSWORD or CM_TOKEN "
+            "via environment variables. If you only have one exported Impala text profile, "
+            "configure manual_profile_dir as a local profile inbox instead of CM settings."
         )
 
     warnings: list[str] = []

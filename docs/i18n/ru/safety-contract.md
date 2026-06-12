@@ -1,6 +1,6 @@
 # Контракт безопасности Query Doctor
 
-Last reviewed: 2026-06-04
+Last reviewed: 2026-06-12
 
 Язык: [English](../../safety-contract.md) | Русский
 
@@ -73,6 +73,26 @@ Last reviewed: 2026-06-04
   bounded, redacted и пишется только в explicit `--out`.
 - Generated `impala_context.md` и `impala_context.json` являются local outputs
   и не должны попадать в commit.
+
+## Граница manual profile intake
+
+- Manual profile intake принимает только один локальный exported Apache Impala
+  text profile для одного explicit Query ID. JSON, Thrift, profile-v2 payloads,
+  browser uploads, broad profile directories и network collection находятся вне
+  этой границы.
+- Browser не должен upload или render raw profile. Web `manual_profile_dir` -
+  server-side local inbox: пользователь кладет files на disk, затем вводит
+  исходный Query ID в Known Query ID mode.
+- Manual profile staging должен пройти тот же redaction и bounded analyzer path,
+  что collector-shaped cases, до того как Details page или trusted report могут
+  использовать case.
+- Если profile text содержит embedded Query ID, он должен совпадать с explicit
+  Query ID до записи staged case или замены existing case. Missing или malformed
+  profile files должны fail closed с safe remediation text.
+- Browser-visible manual-intake errors не должны раскрывать raw profile text,
+  local paths, raw filenames, subprocess output, credentials или mismatched raw
+  Query IDs. Terminal diagnostics могут быть technical, но не должны печатать
+  raw profile dumps или secrets.
 
 ## Git boundary
 

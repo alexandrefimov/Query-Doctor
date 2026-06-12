@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Last reviewed: 2026-06-04
+Last reviewed: 2026-06-12
 
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
@@ -73,6 +73,27 @@ implementation boundaries.
   `--out`.
 - Generated `impala_context.md` and `impala_context.json` are local outputs and
   must not be committed.
+
+## Manual Profile Intake Boundary
+
+- Manual profile intake accepts only one local exported Apache Impala text
+  profile for one explicit Query ID. JSON, Thrift, profile-v2 payloads, browser
+  uploads, broad profile directories, and network collection are outside this
+  boundary.
+- The browser must not upload or render the raw profile. Web `manual_profile_dir`
+  is a server-side local inbox; users place files on disk, then enter the
+  original Query ID in Known Query ID mode.
+- Manual profile staging must run the same redaction and bounded analyzer path
+  used for collector-shaped cases before any Details page or trusted report can
+  consume the case.
+- If the profile text contains an embedded Query ID, it must match the explicit
+  Query ID before the staged case can be written or replace an existing case.
+  Missing or malformed profile files must fail closed with safe remediation
+  text.
+- Browser-visible manual-intake errors must not expose raw profile text, local
+  paths, raw filenames, subprocess output, credentials, or mismatched raw Query
+  IDs. Terminal diagnostics may be technical but still must avoid raw profile
+  dumps and secrets.
 
 ## Git Boundary
 

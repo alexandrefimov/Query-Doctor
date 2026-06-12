@@ -21,6 +21,10 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- Manual-profile intake is now documented in the safety contract as a text-only,
+  no-browser-upload, fail-closed local boundary. Web startup errors now point
+  one-profile users to `manual_profile_dir` when CM settings are absent, and the
+  configuration guide includes a minimal manual-only web config example.
 - `query-doctor-web` now accepts `--corpus-dir`, and local config accepts
   `corpus_dir`, so one-profile web inbox runs can keep generated Query ID cases
   in a user-chosen workspace instead of relying on the default
