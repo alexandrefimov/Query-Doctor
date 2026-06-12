@@ -919,6 +919,79 @@ def test_recent_scan_case_detail_view_without_trusted_artifacts_renders_no_artif
     assert_no_forbidden_fragments(view_html)
 
 
+def test_recent_scan_action_plan_includes_trusted_optimizer_recommendations():
+    view = present_recent_scan_case_detail(
+        "case-001",
+        {
+            "query_id": "abc",
+            "score": 8,
+            "collection_status": "ok",
+            "analysis_status": "ok",
+            "metadata_status": "collected",
+            "score_reasons": ["cardinality estimate anomalies: 2"],
+        },
+    )
+
+    view_html = render_recent_scan_case_detail_view(
+        view,
+        optimized_query_state=present_optimized_query_action(
+            {
+                "status": "generated",
+                "output_kind": "recommendations_only",
+                "risk_mode": "recommendations_only",
+                "source_scope": "read_only_statement",
+            }
+        ),
+        trusted_optimizer_recommendations="- Review the join/filter placement.",
+    )
+    action_plan_html = view_html.split('<section id="action-plan"', 1)[1].split(
+        '<section id="diagnostics"', 1
+    )[0]
+
+    assert "Optimizer recommendations" in action_plan_html
+    assert "Review the join/filter placement." in action_plan_html
+    assert 'href="#query-optimizer-result"' in action_plan_html
+    assert "Query LLM optimizer recommendations" in view_html
+    assert_no_forbidden_fragments(view_html)
+
+
+def test_recent_scan_action_plan_links_trusted_optimizer_draft_without_sql():
+    source_sql = "SELECT secret_customer_id FROM production.table"
+    view = present_recent_scan_case_detail(
+        "case-001",
+        {
+            "query_id": "abc",
+            "score": 8,
+            "collection_status": "ok",
+            "analysis_status": "ok",
+            "metadata_status": "collected",
+            "score_reasons": ["cardinality estimate anomalies: 2"],
+        },
+    )
+
+    view_html = render_recent_scan_case_detail_view(
+        view,
+        optimized_query_state=present_optimized_query_action(
+            {
+                "status": "generated",
+                "output_kind": "sql_draft",
+                "risk_mode": "rewrite_allowed",
+                "source_scope": "read_only_statement",
+            }
+        ),
+        trusted_optimized_query=source_sql,
+    )
+    action_plan_html = view_html.split('<section id="action-plan"', 1)[1].split(
+        '<section id="diagnostics"', 1
+    )[0]
+
+    assert "Validated optimizer draft available" in action_plan_html
+    assert "Open optimizer result" in action_plan_html
+    assert 'href="#query-optimizer-result"' in action_plan_html
+    assert source_sql not in action_plan_html
+    assert source_sql in view_html
+
+
 def test_recent_scan_status_summary_view_renderer_matches_legacy_adapter():
     view = present_recent_scan_case_detail(
         "case-001",

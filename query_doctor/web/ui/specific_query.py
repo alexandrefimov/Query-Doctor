@@ -120,6 +120,14 @@ def render_specific_query_detail_view(
     actions_url = specific_query_actions_href(query_id, llm_enabled=llm_enabled)
     optimizer_view = present_optimized_query_action(optimized_query_state)
     llm_report_view = present_report_action(llm_report_state) if llm_report_state else None
+    action_plan_html = render_case_action_plan(
+        view,
+        optimized_query_state=optimizer_view,
+        trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+        optimizer_manual_guidance=optimizer_manual_guidance,
+        language=language,
+    )
     title = ui_text(language, "Known Query ID details", "Детали Known Query ID")
     intro = ui_text(
         language,
@@ -133,7 +141,7 @@ def render_specific_query_detail_view(
         f'<div class="batch-head"><div><h1>{html.escape(title)}</h1>'
         f"<p>{html.escape(intro)}</p></div></div>"
         f"{render_case_verdict(view, language=language)}"
-        f"{render_case_action_plan(view, language=language)}"
+        f"{action_plan_html}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
         f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, llm_report_view=llm_report_view, llm_report_action_url=llm_report_url, llm_report_open_url=llm_report_url, llm_report_export_url=llm_report_export_url, trusted_llm_report_html=trusted_llm_report_html, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"

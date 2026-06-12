@@ -77,6 +77,9 @@ Query Doctor это не:
 - Показывает Details как analyst decision page: почему запрос важен, где
   проверить, что попробовать, как проверить comparable rerun и каких evidence
   не хватает.
+- Встраивает validated selected-case optimizer guidance в ту же зону
+  Recommended change, когда оно доступно, но report и optimizer generation
+  остаются отдельными explicit actions.
 - Генерирует доверенные отчеты только после детерминированной нормализации,
   очистки и проверки.
 - Дает отдельный read-only Query Optimizer workflow для разбора вставленного
