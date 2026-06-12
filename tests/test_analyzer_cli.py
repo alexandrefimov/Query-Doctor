@@ -209,6 +209,37 @@ def test_analyzer_profile_text_accepts_query_header_id_form(tmp_path):
     assert metadata["profile_query_id_verified"] is True
 
 
+def test_analyzer_profile_text_accepts_web_ui_execsummary_tree_prefixes(tmp_path):
+    profile = tmp_path / "web-ui-exported-profile.txt"
+    profile.write_text(
+        """Query (id=aaaaaaaaaaaaaaaa:0000000000000001)
+User: alice
+
+ExecSummary:
+Operator              #Hosts   Avg Time   Max Time    #Rows  Est. #Rows  Peak Mem  Est. Peak Mem  Detail
+|--02:HASH JOIN            1       2s000ms  4s000ms   1.00M      10.00K  256.00 MB      64.00 MB  INNER JOIN, PARTITIONED
+|  |--01:SCAN HDFS         1       1s000ms  2s000ms   1.00M      10.00K  128.00 MB      64.00 MB  table=analytics_demo.fact_events
+
+TotalTime: 5m
+TotalBytesRead: 12.00 GiB
+TotalBytesSent: 2.00 GiB
+""",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    case_dir = out_dir / "aaaaaaaaaaaaaaaa_0000000000000001"
+    metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["profile_query_id_verified"] is True
+    analysis_json = json.loads((case_dir / "analysis.json").read_text(encoding="utf-8"))
+    assert len(analysis_json["operators"]) >= 1
+    facts_text = (case_dir / "analysis_facts.md").read_text(encoding="utf-8")
+    assert "Local exported Impala text profile" in facts_text
+
+
 def test_analyzer_profile_text_rejects_mismatched_profile_query_id_without_writing_case(
     tmp_path,
 ):
