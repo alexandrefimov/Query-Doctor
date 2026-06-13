@@ -304,6 +304,7 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
                 "metadata_auth": "kerberos",
                 "metadata_protocol": "hs2",
                 "metadata_kerberos_service_name": "hive",
+                "metadata_kerberos_host_fqdn": "config-coordinator.example.com",
                 "metadata_ssl": True,
                 "metadata_ca_cert": "/tmp/config-ca.pem",
                 "metadata_timeout_sec": 44,
@@ -322,6 +323,7 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
     assert args.impala_shell == "/opt/config/impala-shell"
     assert args.protocol == "hs2"
     assert args.kerberos_service_name == "hive"
+    assert args.kerberos_host_fqdn == "config-coordinator.example.com"
     assert args.ssl is True
     assert args.ca_cert == "/tmp/config-ca.pem"
     assert args.timeout_sec == 44
@@ -343,6 +345,8 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
             "beeswax",
             "--kerberos-service-name",
             "impala",
+            "--kerberos-host-fqdn",
+            "cli-coordinator.example.com",
             "--timeout-sec",
             "5",
             "--redact",
@@ -352,6 +356,7 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
     assert args.coordinator == "cli-coordinator.example.com:21000"
     assert args.protocol == "beeswax"
     assert args.kerberos_service_name == "impala"
+    assert args.kerberos_host_fqdn == "cli-coordinator.example.com"
     assert args.timeout_sec == 5
     assert args.redact is True
 
@@ -503,6 +508,8 @@ def test_impala_shell_argv_uses_kerberos_and_safe_options():
             "hs2-http",
             "--kerberos-service-name",
             "hive",
+            "--kerberos-host-fqdn",
+            "lb.example.com",
         ]
     )
 
@@ -523,6 +530,7 @@ def test_impala_shell_argv_uses_kerberos_and_safe_options():
         "--protocol",
         "hs2-http",
         "--kerberos_service_name=hive",
+        "--kerberos_host_fqdn=lb.example.com",
     ]
 
 

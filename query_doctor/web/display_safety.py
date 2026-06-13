@@ -11,6 +11,7 @@ BROWSER_ERROR_FIELD_NAME_TOKENS = (
     "KRB5CCNAME",
     "metadata_coordinator",
     "metadata_auth",
+    "metadata_kerberos_host_fqdn",
     "metadata_path",
 )
 

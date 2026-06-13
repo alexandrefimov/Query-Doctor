@@ -13,6 +13,7 @@ from query_doctor.impala.shell_runner import (
     ImpalaShellConfigError,
     validate_auth,
     validate_coordinator,
+    validate_kerberos_host_fqdn,
     validate_kerberos_service_name,
     validate_protocol,
 )
@@ -104,6 +105,14 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("QD_METADATA_KERBEROS_SERVICE_NAME")
         or os.environ.get("QD_IMPALA_KERBEROS_SERVICE_NAME"),
         help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
+    )
+    parser.add_argument(
+        "--metadata-kerberos-host-fqdn",
+        default=os.environ.get("QD_METADATA_KERBEROS_HOST_FQDN"),
+        help=(
+            "Expected Kerberos host FQDN passed to impala-shell for load-balanced "
+            "metadata coordinators."
+        ),
     )
     parser.add_argument(
         "--metadata-ssl",
@@ -206,6 +215,9 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
     try:
         args.metadata_kerberos_service_name = validate_kerberos_service_name(
             args.metadata_kerberos_service_name
+        )
+        args.metadata_kerberos_host_fqdn = validate_kerberos_host_fqdn(
+            args.metadata_kerberos_host_fqdn
         )
     except ImpalaShellConfigError as exc:
         parser.error(str(exc))
@@ -474,6 +486,9 @@ def build_metadata_collector_cmd(
     kerberos_service_name = getattr(args, "metadata_kerberos_service_name", None)
     if kerberos_service_name:
         cmd.extend(["--kerberos-service-name", kerberos_service_name])
+    kerberos_host_fqdn = getattr(args, "metadata_kerberos_host_fqdn", None)
+    if kerberos_host_fqdn:
+        cmd.extend(["--kerberos-host-fqdn", kerberos_host_fqdn])
     if args.metadata_ssl:
         cmd.append("--ssl")
     if args.metadata_ca_cert:

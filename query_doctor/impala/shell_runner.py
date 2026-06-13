@@ -12,6 +12,8 @@ ALLOWED_PROTOCOLS = ("beeswax", "hs2", "hs2-http")
 COORDINATOR_HOSTPORT_RE = re.compile(r"([A-Za-z0-9_.-]+):([0-9]{1,5})\Z")
 COORDINATOR_IPV6_RE = re.compile(r"\[([0-9A-Fa-f:.]+)\]:([0-9]{1,5})\Z")
 KERBEROS_SERVICE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
+HOST_LABEL_RE = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+KERBEROS_HOST_FQDN_RE = re.compile(rf"(?=^.{{1,253}}\Z){HOST_LABEL_RE}(?:\.{HOST_LABEL_RE})*\Z")
 
 Runner = Callable[..., subprocess.CompletedProcess[bytes]]
 
@@ -77,6 +79,23 @@ def validate_kerberos_service_name(value: str | None) -> str | None:
     return normalized
 
 
+def validate_kerberos_host_fqdn(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if value != normalized or "://" in normalized or "@" in normalized or ":" in normalized:
+        raise ImpalaShellConfigError(
+            "Kerberos host FQDN must be a hostname without scheme, port, or credentials."
+        )
+    if not KERBEROS_HOST_FQDN_RE.fullmatch(normalized):
+        raise ImpalaShellConfigError(
+            "Kerberos host FQDN must be a hostname such as impala-coordinator.example.com."
+        )
+    return normalized
+
+
 def build_impala_shell_argv(
     *,
     impala_shell: str,
@@ -87,11 +106,13 @@ def build_impala_shell_argv(
     ssl: bool = False,
     ca_cert: str | None = None,
     kerberos_service_name: str | None = None,
+    kerberos_host_fqdn: str | None = None,
 ) -> list[str]:
     validate_coordinator(coordinator)
     validate_auth(auth)
     validate_protocol(protocol)
     kerberos_service_name = validate_kerberos_service_name(kerberos_service_name)
+    kerberos_host_fqdn = validate_kerberos_host_fqdn(kerberos_host_fqdn)
     if not impala_shell.strip():
         raise ImpalaShellConfigError("--impala-shell must not be empty.")
     if ca_cert and not ssl:
@@ -115,6 +136,8 @@ def build_impala_shell_argv(
         argv.extend(["--protocol", protocol])
     if kerberos_service_name:
         argv.append(f"--kerberos_service_name={kerberos_service_name}")
+    if kerberos_host_fqdn:
+        argv.append(f"--kerberos_host_fqdn={kerberos_host_fqdn}")
     return argv
 
 

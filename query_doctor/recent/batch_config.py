@@ -514,6 +514,10 @@ def build_batch_config(
             config_values.get("metadata_kerberos_service_name"),
             config_values.get("impala_kerberos_service_name"),
         ),
+        metadata_kerberos_host_fqdn=first_string(
+            getattr(args, "metadata_kerberos_host_fqdn", None),
+            config_values.get("metadata_kerberos_host_fqdn"),
+        ),
         metadata_ssl=first_bool(
             args.metadata_ssl, config_values.get("metadata_ssl"), default=False
         ),

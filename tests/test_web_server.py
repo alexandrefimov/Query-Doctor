@@ -827,6 +827,8 @@ def test_web_parse_args_accepts_metadata_options():
             "beeswax",
             "--metadata-kerberos-service-name",
             "hive",
+            "--metadata-kerberos-host-fqdn",
+            "impala-lb.example.com",
             "--metadata-ssl",
             "--metadata-ca-cert",
             "/tmp/example-ca.pem",
@@ -844,6 +846,7 @@ def test_web_parse_args_accepts_metadata_options():
     assert args.metadata_impala_shell == "/opt/impala-shell"
     assert args.metadata_protocol == "beeswax"
     assert args.metadata_kerberos_service_name == "hive"
+    assert args.metadata_kerberos_host_fqdn == "impala-lb.example.com"
     assert args.metadata_ssl is True
     assert args.metadata_ca_cert == "/tmp/example-ca.pem"
     assert args.metadata_timeout_sec == 45
@@ -7985,6 +7988,7 @@ def test_web_settings_loads_metadata_from_local_config(tmp_path):
                 "metadata_auth": "kerberos",
                 "metadata_protocol": "hs2",
                 "impala_kerberos_service_name": "hive",
+                "metadata_kerberos_host_fqdn": "impala-lb.example.net",
                 "metadata_ssl": True,
                 "metadata_ca_cert": "/tmp/example-ca.pem",
                 "metadata_timeout_sec": 44,
@@ -8022,6 +8026,7 @@ def test_web_settings_loads_metadata_from_local_config(tmp_path):
     assert settings.metadata_auth == "kerberos"
     assert settings.metadata_protocol == "hs2"
     assert settings.metadata_kerberos_service_name == "hive"
+    assert settings.metadata_kerberos_host_fqdn == "impala-lb.example.net"
     assert settings.metadata_ssl is True
     assert settings.metadata_ca_cert == "/tmp/example-ca.pem"
     assert settings.metadata_timeout_sec == 44
@@ -8146,6 +8151,7 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path)
                         "prometheus_timeseries_padding_sec": 300,
                         "metadata_coordinator": "impala-stage.example.com:21000",
                         "metadata_kerberos_service_name": "hive",
+                        "metadata_kerberos_host_fqdn": "impala-stage-lb.example.com",
                         "recent_scan_timezone": "Europe/Berlin",
                         "source_visibility": "owner_raw",
                         "source_owner_user": "stage_user",
@@ -8171,6 +8177,7 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path)
     assert settings.clusters[1].prometheus_url == "https://prometheus-stage.example.com"
     assert settings.clusters[1].prometheus_timeseries_padding_sec == 300
     assert settings.clusters[1].metadata_kerberos_service_name == "hive"
+    assert settings.clusters[1].metadata_kerberos_host_fqdn == "impala-stage-lb.example.com"
     assert settings.clusters[1].recent_scan_timezone == "Europe/Berlin"
     assert settings.clusters[1].source_visibility == "owner_raw"
     assert settings.clusters[1].source_owner_user == "stage_user"
@@ -8988,6 +8995,7 @@ def test_web_batch_full_mode_builds_metadata_command(tmp_path):
         metadata_auth="kerberos",
         metadata_protocol="beeswax",
         metadata_kerberos_service_name="hive",
+        metadata_kerberos_host_fqdn="impala-lb.example.com",
         metadata_ssl=True,
         metadata_ca_cert="/tmp/example-ca.pem",
         metadata_timeout_sec=45,
@@ -9009,6 +9017,7 @@ def test_web_batch_full_mode_builds_metadata_command(tmp_path):
     assert cmd[cmd.index("--metadata-auth") + 1] == "kerberos"
     assert cmd[cmd.index("--metadata-protocol") + 1] == "beeswax"
     assert cmd[cmd.index("--metadata-kerberos-service-name") + 1] == "hive"
+    assert cmd[cmd.index("--metadata-kerberos-host-fqdn") + 1] == "impala-lb.example.com"
     assert cmd[cmd.index("--metadata-timeout-sec") + 1] == "45"
     assert "--metadata-ssl" in cmd
     assert cmd[cmd.index("--metadata-ca-cert") + 1] == "/tmp/example-ca.pem"

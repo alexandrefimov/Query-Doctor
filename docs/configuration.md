@@ -112,12 +112,16 @@ Use this shape when Cloudera Manager is not the profile source:
   "impala_kerberos_service_name": "hive",
   "metadata_coordinator": "impala-coordinator.example.com:21000",
   "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
-  "metadata_kerberos_service_name": "hive"
+  "metadata_kerberos_service_name": "hive",
+  "metadata_kerberos_host_fqdn": "impala-coordinator.example.com"
 }
 ```
 
 Direct Impala collection reads only bounded daemon debug web endpoints for
 Recent, Running, or one Known Query ID workflow. It does not execute SQL.
+For load-balanced metadata connections, keep `metadata_coordinator` as the
+reachable `HOST:PORT` endpoint and set `metadata_kerberos_host_fqdn` when the
+Kerberos server principal uses a different DNS hostname.
 Metadata collection uses read-only `SHOW` statements through `impala-shell` and
 stays bounded by the metadata limits below.
 For Cloudera Manager Recent batches, the metadata refresh may use table
@@ -385,6 +389,7 @@ when selected-query profile evidence correlates the signal.
 | `metadata_ssl` | boolean | global or cluster | Enables TLS for `impala-shell`. |
 | `metadata_ca_cert` | string path | global or cluster | CA certificate for metadata TLS. |
 | `metadata_kerberos_service_name` | string | global or cluster | Kerberos service token for metadata, such as `impala` or `hive`. |
+| `metadata_kerberos_host_fqdn` | string | global or cluster | Optional Kerberos host override for load-balanced metadata coordinators. Passed to `impala-shell --kerberos_host_fqdn`. |
 | `metadata_timeout_sec` | positive integer | global or cluster | Optional per-command timeout override. Omit to use the built-in default. |
 | `metadata_max_tables` | positive integer | global or cluster | Optional maximum tables override for each metadata run. Omit to use the workflow default. |
 | `metadata_max_output_bytes` | positive integer | global or cluster | Optional metadata output byte limit override. Omit to use the built-in default. |

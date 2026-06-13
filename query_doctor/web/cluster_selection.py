@@ -197,6 +197,10 @@ def build_web_cluster_config(
             string_value(defaults, "metadata_kerberos_service_name"),
             string_value(defaults, "impala_kerberos_service_name"),
         ),
+        metadata_kerberos_host_fqdn=first_string(
+            string_value(values, "metadata_kerberos_host_fqdn"),
+            string_value(defaults, "metadata_kerberos_host_fqdn"),
+        ),
         metadata_ssl=first_bool(values, defaults, "metadata_ssl", default=False),
         metadata_ca_cert=first_string(
             string_value(values, "metadata_ca_cert"),
@@ -378,6 +382,7 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 metadata_auth=cluster.metadata_auth,
                 metadata_protocol=cluster.metadata_protocol,
                 metadata_kerberos_service_name=cluster.metadata_kerberos_service_name,
+                metadata_kerberos_host_fqdn=cluster.metadata_kerberos_host_fqdn,
                 metadata_ssl=cluster.metadata_ssl,
                 metadata_ca_cert=cluster.metadata_ca_cert,
                 metadata_timeout_sec=cluster.metadata_timeout_sec,

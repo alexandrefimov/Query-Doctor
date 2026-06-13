@@ -354,6 +354,7 @@ def test_batch_recent_config_cluster_loads_owner_raw_source_visibility(tmp_path)
                         "query_profile_source": "impala",
                         "impala_profile_hosts": ["impalad-1.example.com"],
                         "metadata_kerberos_service_name": "hive",
+                        "metadata_kerberos_host_fqdn": "impala-lb.example.com",
                         "source_visibility": "owner_raw",
                         "source_owner_user": "analyst_one",
                     },
@@ -378,6 +379,7 @@ def test_batch_recent_config_cluster_loads_owner_raw_source_visibility(tmp_path)
     assert config.query_profile_source == "impala"
     assert config.impala_profile_hosts == ("impalad-1.example.com",)
     assert config.metadata_kerberos_service_name == "hive"
+    assert config.metadata_kerberos_host_fqdn == "impala-lb.example.com"
     assert config.source_visibility == "owner_raw"
     assert config.source_owner_user == "analyst_one"
     assert config.user == "analyst_one"
@@ -962,6 +964,7 @@ def test_batch_config_values_override_internal_defaults(tmp_path):
                 "metadata_auth": "kerberos",
                 "metadata_protocol": "hs2",
                 "metadata_kerberos_service_name": "hive",
+                "metadata_kerberos_host_fqdn": "impala-lb.example.net",
                 "metadata_ssl": True,
                 "metadata_ca_cert": "/tmp/impala-ca.pem",
                 "metadata_timeout_sec": 55,
@@ -1014,6 +1017,7 @@ def test_batch_config_values_override_internal_defaults(tmp_path):
     assert config.metadata_impala_shell == "/opt/impala-shell"
     assert config.metadata_protocol == "hs2"
     assert config.metadata_kerberos_service_name == "hive"
+    assert config.metadata_kerberos_host_fqdn == "impala-lb.example.net"
     assert config.metadata_ssl is True
     assert config.metadata_ca_cert == "/tmp/impala-ca.pem"
     assert config.metadata_timeout_sec == 55

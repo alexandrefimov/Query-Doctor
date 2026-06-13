@@ -90,6 +90,7 @@ class BatchConfig:
     redact_hosts: bool = True
     source_visibility: str = "safe"
     source_owner_user: str | None = None
+    metadata_kerberos_host_fqdn: str | None = None
 
 
 @dataclass

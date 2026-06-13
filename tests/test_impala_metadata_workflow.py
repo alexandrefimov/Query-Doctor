@@ -48,6 +48,7 @@ def test_metadata_collector_cmd_accepts_command_prefix(tmp_path):
         metadata_coordinator="coordinator.example.net:21000",
         metadata_auth="kerberos",
         metadata_protocol="beeswax",
+        metadata_kerberos_host_fqdn="lb.example.com",
         metadata_timeout_sec=30,
         metadata_max_output_bytes=1024,
         metadata_redact=True,
@@ -66,3 +67,4 @@ def test_metadata_collector_cmd_accepts_command_prefix(tmp_path):
     assert cmd[:3] == ["/py", "-m", "query_doctor.cli.collect_impala_context"]
     assert cmd[cmd.index("--table") + 1] == "db.table_a"
     assert cmd[cmd.index("--out") + 1] == str(tmp_path)
+    assert cmd[cmd.index("--kerberos-host-fqdn") + 1] == "lb.example.com"
