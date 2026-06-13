@@ -50,6 +50,8 @@ QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
 IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
 WEB_ADVANCED_FILTER_CHOICES = ("user", "pool")
 KERBEROS_SERVICE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
+HOST_LABEL_RE = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+KERBEROS_HOST_FQDN_RE = re.compile(rf"(?=^.{{1,253}}\Z){HOST_LABEL_RE}(?:\.{HOST_LABEL_RE})*\Z")
 
 ALLOWED_CONFIG_KEYS = {
     "ca_bundle",
@@ -146,6 +148,7 @@ ALLOWED_CONFIG_KEYS = {
     "metadata_ca_cert",
     "metadata_coordinator",
     "metadata_impala_shell",
+    "metadata_kerberos_host_fqdn",
     "metadata_kerberos_service_name",
     "metadata_max_output_bytes",
     "metadata_max_tables",
@@ -184,6 +187,7 @@ CLUSTER_CONFIG_KEYS = {
     "metadata_ca_cert",
     "metadata_coordinator",
     "metadata_impala_shell",
+    "metadata_kerberos_host_fqdn",
     "metadata_kerberos_service_name",
     "metadata_max_output_bytes",
     "metadata_max_tables",
@@ -494,6 +498,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "metadata_ca_cert",
         "metadata_coordinator",
         "metadata_impala_shell",
+        "metadata_kerberos_host_fqdn",
         "metadata_kerberos_service_name",
         "metadata_protocol",
     }:
@@ -550,6 +555,8 @@ def normalize_config_value(key: str, value: object) -> object:
             validate_safe_http_url(normalized, field_name=key)
         if key in {"impala_kerberos_service_name", "metadata_kerberos_service_name"}:
             validate_kerberos_service_name(normalized, field_name=key)
+        if key == "metadata_kerberos_host_fqdn":
+            validate_kerberos_host_fqdn(normalized, field_name=key)
         if key == "source_owner_user":
             try:
                 return normalize_source_owner_user(normalized)
@@ -781,6 +788,19 @@ def validate_kerberos_service_name(value: str, *, field_name: str) -> None:
     if not KERBEROS_SERVICE_NAME_RE.fullmatch(value):
         raise ConfigError(
             f"Config field {field_name} must be a short token such as hive or impala."
+        )
+
+
+def validate_kerberos_host_fqdn(value: str, *, field_name: str) -> None:
+    if not value:
+        return
+    if "://" in value or "@" in value or ":" in value or "/" in value:
+        raise ConfigError(
+            f"Config field {field_name} must be a hostname without scheme, port, or credentials."
+        )
+    if not KERBEROS_HOST_FQDN_RE.fullmatch(value):
+        raise ConfigError(
+            f"Config field {field_name} must be a hostname such as impala-coordinator.example.com."
         )
 
 

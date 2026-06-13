@@ -956,7 +956,7 @@ def test_recent_scan_action_plan_includes_trusted_optimizer_recommendations():
 
 
 def test_recent_scan_action_plan_links_trusted_optimizer_draft_without_sql():
-    source_sql = "SELECT secret_customer_id FROM production.table"
+    source_sql = "SELECT secret_customer_id FROM production_table"
     view = present_recent_scan_case_detail(
         "case-001",
         {

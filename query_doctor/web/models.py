@@ -82,6 +82,7 @@ class WebClusterConfig:
     metadata_auth: str = DEFAULT_METADATA_AUTH
     metadata_protocol: str = DEFAULT_METADATA_PROTOCOL
     metadata_kerberos_service_name: str | None = None
+    metadata_kerberos_host_fqdn: str | None = None
     metadata_ssl: bool = False
     metadata_ca_cert: str | None = None
     metadata_timeout_sec: int = DEFAULT_METADATA_TIMEOUT_SEC
@@ -149,6 +150,7 @@ class WebSettings:
     metadata_auth: str = DEFAULT_METADATA_AUTH
     metadata_protocol: str = DEFAULT_METADATA_PROTOCOL
     metadata_kerberos_service_name: str | None = None
+    metadata_kerberos_host_fqdn: str | None = None
     metadata_ssl: bool = False
     metadata_ca_cert: str | None = None
     metadata_timeout_sec: int = DEFAULT_METADATA_TIMEOUT_SEC

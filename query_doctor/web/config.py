@@ -378,6 +378,7 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.prometheus_url,
             settings.metadata_coordinator,
             settings.metadata_impala_shell,
+            settings.metadata_kerberos_host_fqdn,
             settings.source_owner_user,
             settings.source_owner_user_options,
             settings.krb5ccname,
@@ -696,6 +697,10 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             args.metadata_kerberos_service_name,
             optional_config_string(config_values, "metadata_kerberos_service_name"),
             optional_config_string(config_values, "impala_kerberos_service_name"),
+        ),
+        metadata_kerberos_host_fqdn=first_string_value(
+            args.metadata_kerberos_host_fqdn,
+            optional_config_string(config_values, "metadata_kerberos_host_fqdn"),
         ),
         metadata_ssl=merged_bool_setting(
             args.metadata_ssl,

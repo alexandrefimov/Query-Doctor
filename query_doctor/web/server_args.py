@@ -143,6 +143,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Kerberos service principal short name for metadata impala-shell, e.g. hive or impala.",
     )
     parser.add_argument(
+        "--metadata-kerberos-host-fqdn",
+        help="Expected Kerberos host FQDN for load-balanced metadata coordinators.",
+    )
+    parser.add_argument(
         "--metadata-ssl",
         action="store_true",
         help="Pass --ssl to impala-shell metadata collection.",

@@ -18,6 +18,7 @@ from query_doctor.impala.shell_runner import (
     run_impala_shell,
     validate_auth,
     validate_coordinator,
+    validate_kerberos_host_fqdn,
     validate_kerberos_service_name,
     validate_protocol,
 )
@@ -83,6 +84,7 @@ def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
         ssl=args.ssl,
         ca_cert=args.ca_cert,
         kerberos_service_name=args.kerberos_service_name,
+        kerberos_host_fqdn=args.kerberos_host_fqdn,
     )
 
 
@@ -289,6 +291,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
     )
     parser.add_argument(
+        "--kerberos-host-fqdn",
+        help=(
+            "Expected Kerberos host FQDN passed to impala-shell. Use this when the "
+            "network coordinator is a load balancer address but the service principal "
+            "uses a DNS hostname."
+        ),
+    )
+    parser.add_argument(
         "--ssl", action="store_true", default=None, help="Pass --ssl to impala-shell."
     )
     parser.add_argument("--ca-cert", help="CA certificate path for --ssl connections.")
@@ -357,6 +367,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         validate_auth(args.auth)
         validate_protocol(args.protocol)
         args.kerberos_service_name = validate_kerberos_service_name(args.kerberos_service_name)
+        args.kerberos_host_fqdn = validate_kerberos_host_fqdn(args.kerberos_host_fqdn)
         if args.coordinator:
             args.coordinator = validate_coordinator(args.coordinator)
         elif not args.dry_run:
@@ -386,6 +397,10 @@ def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
         args.kerberos_service_name,
         config_values.get("metadata_kerberos_service_name"),
         config_values.get("impala_kerberos_service_name"),
+    )
+    args.kerberos_host_fqdn = first_string(
+        args.kerberos_host_fqdn,
+        config_values.get("metadata_kerberos_host_fqdn"),
     )
     args.ssl = first_bool(args.ssl, config_values.get("metadata_ssl"), default=False)
     args.ca_cert = first_string(args.ca_cert, config_values.get("metadata_ca_cert"))

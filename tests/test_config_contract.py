@@ -477,6 +477,16 @@ def test_impala_kerberos_service_name_rejects_shell_metacharacters(tmp_path):
         config_contract.load_local_config(path, cwd=tmp_path)
 
 
+def test_metadata_kerberos_host_fqdn_rejects_urls_and_ports(tmp_path):
+    path = write_config(
+        tmp_path / "config.json",
+        {"metadata_kerberos_host_fqdn": "https://impala.example.com:21050"},
+    )
+
+    with pytest.raises(config_contract.ConfigError, match="without scheme, port"):
+        config_contract.load_local_config(path, cwd=tmp_path)
+
+
 def test_aliases_normalize_safely(tmp_path):
     path = write_config(
         tmp_path / "config.json",

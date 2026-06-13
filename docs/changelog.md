@@ -20,6 +20,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Metadata collection now accepts `metadata_kerberos_host_fqdn` /
+  `--metadata-kerberos-host-fqdn`, passed through to
+  `impala-shell --kerberos_host_fqdn`, so load-balanced Impala metadata
+  endpoints can keep a reachable coordinator address while authenticating
+  against the Kerberos host principal.
 - Details now folds validated selected-case optimizer recommendations, manual
   optimizer guidance, or a safe link to a validated SQL draft into the same
   Recommended change area as deterministic analyzer action cards. Report and
