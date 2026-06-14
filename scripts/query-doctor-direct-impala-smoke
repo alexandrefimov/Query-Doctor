@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""Run a small direct-Impala Recent scan smoke from local config."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_WINDOW_MINUTES = 240
+DEFAULT_INSPECT_LIMIT = 50
+DEFAULT_TRIAGE_LIMIT = 5
+DEFAULT_OUT = Path("/tmp/query-doctor-direct-impala-smoke")
+DEFAULT_KRB5_CACHE = "FILE:/tmp/krb5cc_query_doctor"
+
+
+class SmokeError(Exception):
+    pass
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run a bounded no-LLM direct Impala Recent scan smoke. The script "
+            "auto-selects the only direct-Impala cluster in local config."
+        )
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help=(
+            "Local Query Doctor config. Defaults to $QD_CONFIG, then "
+            "~/.qdcreds/query-doctor-config.json."
+        ),
+    )
+    parser.add_argument(
+        "--cluster",
+        "--config-cluster",
+        dest="cluster",
+        help=(
+            "Cluster id from config clusters[]. Required only when multiple "
+            "direct-Impala clusters exist."
+        ),
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path(os.environ.get("QD_DIRECT_IMPALA_SMOKE_OUT", str(DEFAULT_OUT))),
+        help="Output directory. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--window-minutes",
+        type=int,
+        default=int(
+            os.environ.get("QD_DIRECT_IMPALA_SMOKE_WINDOW_MINUTES", DEFAULT_WINDOW_MINUTES)
+        ),
+        help="Recent scan lookback window. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--inspect-limit",
+        type=int,
+        default=int(os.environ.get("QD_DIRECT_IMPALA_SMOKE_INSPECT_LIMIT", DEFAULT_INSPECT_LIMIT)),
+        help="Maximum query summaries to inspect. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=int(os.environ.get("QD_DIRECT_IMPALA_SMOKE_LIMIT", DEFAULT_TRIAGE_LIMIT)),
+        help="Maximum candidate profiles to collect/analyze. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--query-type",
+        default=os.environ.get("QD_DIRECT_IMPALA_SMOKE_QUERY_TYPE", "query"),
+        help="Optional query type filter. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--all-query-types",
+        action="store_true",
+        help="Do not pass a query type filter to batch_recent.",
+    )
+    parser.add_argument(
+        "--require-metadata",
+        action="store_true",
+        help="Fail if a Kerberos ticket cannot be prepared for metadata collection.",
+    )
+    parser.add_argument(
+        "--no-metadata",
+        action="store_true",
+        help="Skip metadata collection and only smoke discovery/profile/analyzer.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the batch_recent command without running it.",
+    )
+    parser.add_argument(
+        "batch_args",
+        nargs=argparse.REMAINDER,
+        help="Extra batch_recent args after --.",
+    )
+    args = parser.parse_args(argv)
+    if args.no_metadata and args.require_metadata:
+        parser.error("--no-metadata and --require-metadata are mutually exclusive")
+    if args.window_minutes <= 0:
+        parser.error("--window-minutes must be positive")
+    if args.inspect_limit <= 0:
+        parser.error("--inspect-limit must be positive")
+    if args.limit <= 0:
+        parser.error("--limit must be positive")
+    if args.batch_args[:1] == ["--"]:
+        args.batch_args = args.batch_args[1:]
+    return args
+
+
+def default_config_path() -> Path:
+    if os.environ.get("QD_CONFIG"):
+        return Path(os.environ["QD_CONFIG"])
+    creds_dir = Path(os.environ.get("QD_CREDS_DIR", str(Path.home() / ".qdcreds")))
+    for candidate in (
+        creds_dir / "query-doctor-config.json",
+        ROOT_DIR / "query-doctor-config.json",
+        ROOT_DIR / ".query-doctor-cm.local.json",
+    ):
+        if candidate.is_file():
+            return candidate
+    return creds_dir / "query-doctor-config.json"
+
+
+def load_json_config(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SmokeError(f"Config file was not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise SmokeError(f"Config file is not valid JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise SmokeError("Config root must be a JSON object.")
+    return payload
+
+
+def is_direct_impala_config(values: dict[str, Any]) -> bool:
+    source = str(values.get("query_profile_source") or values.get("cluster_type") or "").strip()
+    if source:
+        return source == "impala"
+    hosts = values.get("impala_profile_hosts")
+    return isinstance(hosts, list) and bool(hosts)
+
+
+def safe_cluster_label(cluster: dict[str, Any]) -> str:
+    cluster_id = str(cluster.get("id") or "<missing-id>").strip() or "<missing-id>"
+    label = str(cluster.get("label") or "").strip()
+    return f"{cluster_id} ({label})" if label else cluster_id
+
+
+def select_cluster_id(config: dict[str, Any], requested: str | None) -> str | None:
+    clusters = [cluster for cluster in config.get("clusters") or [] if isinstance(cluster, dict)]
+    direct_clusters = [cluster for cluster in clusters if is_direct_impala_config(cluster)]
+    if requested:
+        matching = [cluster for cluster in clusters if str(cluster.get("id") or "") == requested]
+        if not matching:
+            available = (
+                ", ".join(safe_cluster_label(cluster) for cluster in direct_clusters) or "none"
+            )
+            raise SmokeError(
+                f"Cluster id {requested!r} was not found. Direct-Impala clusters: {available}."
+            )
+        if not is_direct_impala_config(matching[0]):
+            raise SmokeError(f"Cluster id {requested!r} is not configured as direct Impala.")
+        return requested
+    if direct_clusters:
+        if len(direct_clusters) == 1:
+            selected = str(direct_clusters[0].get("id") or "").strip()
+            if not selected:
+                raise SmokeError("The only direct-Impala cluster is missing an id.")
+            return selected
+        available = "\n".join(f"  - {safe_cluster_label(cluster)}" for cluster in direct_clusters)
+        raise SmokeError(
+            "Multiple direct-Impala clusters are configured; choose one with --cluster:\n"
+            + available
+        )
+    if is_direct_impala_config(config):
+        return None
+    raise SmokeError(
+        "No direct-Impala cluster found in config. Add a clusters[] entry with "
+        'query_profile_source "impala" and impala_profile_hosts.'
+    )
+
+
+def run_quiet(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, text=True, capture_output=True, check=False)
+
+
+def kerberos_cache_ready(cache_name: str) -> bool:
+    if not cache_name.strip():
+        return False
+    return run_quiet(["klist", "-s", "-c", cache_name]).returncode == 0
+
+
+def parse_keytab_principal(output: str, field_index: int) -> str | None:
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) > field_index and parts[0].isdigit():
+            principal = parts[field_index].strip()
+            if principal:
+                return principal
+    return None
+
+
+def infer_principal_from_keytab(keytab: Path) -> str | None:
+    listed = run_quiet(["klist", "-k", str(keytab)])
+    principal = parse_keytab_principal(listed.stdout, 1) if listed.returncode == 0 else None
+    if principal:
+        return principal
+    ktutil = run_quiet(["ktutil", "-k", str(keytab), "list"])
+    if ktutil.returncode == 0:
+        return parse_keytab_principal(ktutil.stdout, 2)
+    return None
+
+
+def prepare_metadata_ticket(*, require_metadata: bool, no_metadata: bool) -> tuple[bool, str, str]:
+    cache_name = os.environ.get("KRB5CCNAME") or DEFAULT_KRB5_CACHE
+    os.environ["KRB5CCNAME"] = cache_name
+    if no_metadata:
+        return False, cache_name, "disabled by --no-metadata"
+    if kerberos_cache_ready(cache_name):
+        return True, cache_name, "Kerberos cache is ready"
+    if os.environ.get("QD_SKIP_KINIT") == "1":
+        if require_metadata:
+            raise SmokeError("Metadata requires a valid Kerberos ticket, but QD_SKIP_KINIT=1.")
+        return False, cache_name, "Kerberos ticket unavailable; metadata skipped"
+    creds_dir = Path(os.environ.get("QD_CREDS_DIR", str(Path.home() / ".qdcreds")))
+    keytab = Path(os.environ.get("QD_KEYTAB", str(creds_dir / "query-doctor.keytab")))
+    if not keytab.is_file():
+        if require_metadata:
+            raise SmokeError("Metadata requires a readable Kerberos keytab or an existing ticket.")
+        return False, cache_name, "Kerberos keytab unavailable; metadata skipped"
+    principal = os.environ.get("QD_KRB5_PRINCIPAL") or os.environ.get("KRB5_PRINCIPAL")
+    if not principal:
+        principal = infer_principal_from_keytab(keytab)
+    if not principal:
+        if require_metadata:
+            raise SmokeError("Could not infer Kerberos principal; set QD_KRB5_PRINCIPAL.")
+        return False, cache_name, "Kerberos principal unavailable; metadata skipped"
+    initialized = run_quiet(["kinit", "-c", cache_name, "-kt", str(keytab), principal])
+    if initialized.returncode != 0 or not kerberos_cache_ready(cache_name):
+        if require_metadata:
+            raise SmokeError("Kerberos ticket could not be prepared for metadata collection.")
+        return False, cache_name, "Kerberos ticket unavailable; metadata skipped"
+    return True, cache_name, "Kerberos cache is ready"
+
+
+def build_batch_command(
+    args: argparse.Namespace,
+    *,
+    config_path: Path,
+    cluster_id: str | None,
+    metadata_enabled: bool,
+) -> list[str]:
+    metadata_mode = "on" if metadata_enabled else "off"
+    command = [
+        sys.executable,
+        "-m",
+        "query_doctor.cli.batch_recent",
+        "--config",
+        str(config_path),
+        "--out",
+        str(args.out),
+        "--overwrite",
+        "--recent-window-minutes",
+        str(args.window_minutes),
+        "--cm-inspect-limit",
+        str(args.inspect_limit),
+        "--triage-profile-limit",
+        str(args.limit),
+        "--metadata-mode",
+        metadata_mode,
+        "--metadata-top-limit",
+        str(args.limit if metadata_enabled else 0),
+        "--top-reports",
+        "0",
+        "--jobs",
+        "1",
+        "--metadata-jobs",
+        "1",
+        "--no-min-duration-filter",
+        "--include-failed",
+        "--include-running",
+    ]
+    if cluster_id is not None:
+        command.extend(["--config-cluster", cluster_id])
+    if not args.all_query_types and str(args.query_type or "").strip():
+        command.extend(["--query-type", str(args.query_type).strip()])
+    command.extend(args.batch_args)
+    return command
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    config_path = (args.config or default_config_path()).expanduser()
+    try:
+        config = load_json_config(config_path)
+        cluster_id = select_cluster_id(config, args.cluster)
+        metadata_enabled, _cache_name, metadata_reason = prepare_metadata_ticket(
+            require_metadata=args.require_metadata,
+            no_metadata=args.no_metadata,
+        )
+    except SmokeError as exc:
+        print(f"[direct-impala-smoke] {exc}", file=sys.stderr)
+        return 2
+    command = build_batch_command(
+        args,
+        config_path=config_path,
+        cluster_id=cluster_id,
+        metadata_enabled=metadata_enabled,
+    )
+    cluster_text = cluster_id if cluster_id is not None else "top-level direct Impala config"
+    print(f"[direct-impala-smoke] cluster: {cluster_text}", flush=True)
+    print(
+        f"[direct-impala-smoke] metadata: {'enabled' if metadata_enabled else 'skipped'} "
+        f"({metadata_reason})",
+        flush=True,
+    )
+    if args.dry_run:
+        print("[direct-impala-smoke] dry run:")
+        print(shlex.join(command))
+        return 0
+    return subprocess.call(command, cwd=ROOT_DIR, env=os.environ.copy())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

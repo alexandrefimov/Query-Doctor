@@ -278,43 +278,28 @@ Start any required local connectivity according to private local notes before
 Query Doctor commands. Do not copy private endpoint commands into committed
 docs.
 
-First verify bounded daemon discovery without profile collection:
+Run the direct Impala smoke wrapper first. It reads
+`~/.qdcreds/query-doctor-config.json`, auto-selects the only direct-Impala
+cluster when there is exactly one, prepares a Kerberos ticket from the local
+keytab when available, and runs a bounded no-LLM Recent scan. If metadata
+Kerberos is unavailable, the default smoke still checks discovery, profile
+collection, and analyzer output while skipping metadata.
 
 ```bash
-python3 -m query_doctor.cli.batch_recent \
-  --config ~/.qdcreds/query-doctor-config.json \
-  --config-cluster <direct-impala-cluster-id> \
-  --out <ignored-discovery-output-dir> \
-  --overwrite \
-  --recent-window-minutes 240 \
-  --cm-inspect-limit 50 \
-  --triage-profile-limit 5 \
-  --metadata-mode off \
-  --top-reports 0 \
-  --jobs 1 \
-  --no-min-duration-filter \
-  --include-failed \
-  --include-running \
-  --discover-only
+scripts/query-doctor-direct-impala-smoke
 ```
 
-Then run a no-LLM profile smoke:
+When multiple direct-Impala clusters exist in local config, pass the local
+cluster id explicitly:
 
 ```bash
-python3 -m query_doctor.cli.batch_recent \
-  --config ~/.qdcreds/query-doctor-config.json \
-  --config-cluster <direct-impala-cluster-id> \
-  --out <ignored-smoke-output-dir> \
-  --overwrite \
-  --recent-window-minutes 240 \
-  --cm-inspect-limit 50 \
-  --triage-profile-limit 5 \
-  --metadata-mode off \
-  --top-reports 0 \
-  --jobs 1 \
-  --no-min-duration-filter \
-  --include-failed \
-  --include-running
+scripts/query-doctor-direct-impala-smoke --cluster <direct-impala-cluster-id>
+```
+
+Use strict metadata mode only when validating the metadata path itself:
+
+```bash
+scripts/query-doctor-direct-impala-smoke --cluster <direct-impala-cluster-id> --require-metadata
 ```
 
 Validate the summary before changing wording or behavior:
