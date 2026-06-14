@@ -263,9 +263,28 @@ def settings_for_request_headers(settings: WebSettings, headers: object) -> WebS
     header_name = settings.viewer_identity_header
     if not header_name:
         return settings
-    header_value = headers.get(header_name) if hasattr(headers, "get") else None
+    header_value = single_trusted_header_value(headers, header_name)
     viewer_identity = authenticated_viewer_identity_from_header_value(header_value)
     return replace(settings, viewer_identity=viewer_identity)
+
+
+def single_trusted_header_value(headers: object, header_name: str) -> object | None:
+    get_all = getattr(headers, "get_all", None)
+    if callable(get_all):
+        values = get_all(header_name)
+        if values is None:
+            return None
+        if isinstance(values, str):
+            value_tuple = (values,)
+        else:
+            value_tuple = tuple(values)
+        if len(value_tuple) != 1:
+            return None
+        return value_tuple[0]
+    get = getattr(headers, "get", None)
+    if callable(get):
+        return get(header_name)
+    return None
 
 
 def _safe_header_value_for_log(value: str | None, *, max_chars: int = 180) -> str:

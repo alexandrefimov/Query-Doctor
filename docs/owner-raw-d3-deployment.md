@@ -78,7 +78,9 @@ The proxy or ingress must:
   Query Doctor unless a separate non-secret field explicitly needs them.
 
 Query Doctor treats missing, invalid, service-principal, and host-principal
-viewer header values as unauthenticated. Raw source access then fails closed.
+viewer header values as unauthenticated. If the HTTP request exposes duplicate
+viewer header values, Query Doctor also treats the viewer as unauthenticated.
+Raw source access then fails closed.
 
 ## Runtime Checks
 
@@ -88,6 +90,8 @@ Before enabling non-local `owner_raw`, verify:
   configuration.
 - Requests without the viewer header receive no owner-raw source link and no
   source page.
+- Requests with duplicate viewer header values receive no owner-raw source link
+  and no source page, even if one value matches the query owner.
 - Requests with a mismatched viewer header receive no owner-raw source link and
   no source page.
 - Requests with a matching viewer header can open only the isolated source page
