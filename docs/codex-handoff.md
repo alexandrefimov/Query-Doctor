@@ -40,9 +40,12 @@ local exclude-only note files, not in committed documentation.
   selected-case source surface is the narrow raw-SQL browser exception and must
   follow `docs/safety-contract.md`.
 - Shared or non-local `owner_raw` must gate raw source access on authenticated
-  per-request viewer identity, such as `viewer_identity_header` behind a trusted
-  proxy that strips inbound copies. Do not gate raw reveal on the collection
-  credential or keytab owner set. Use
+  per-request viewer identity from `viewer_identity_header` behind a trusted
+  auth front door that strips inbound copies and sets exactly one normalized
+  simple owner value. Query Doctor must not grow native OIDC, SAML, SPNEGO,
+  Kerberos, LDAP, password, MFA, session, group, RBAC, or token auth variants
+  for owner-raw access. Do not gate raw reveal on the collection credential or
+  keytab owner set. Use
   [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) as the D3 deployment
   checklist before changing shared owner-raw behavior.
 - Keep the isolated owner-raw source surface behind its kill switch and

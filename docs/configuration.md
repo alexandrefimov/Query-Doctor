@@ -215,7 +215,7 @@ and add the non-secret base URL. Keep the token in `~/.qdcreds/llm-api.env`.
 | `metadata_redact` | boolean | global or cluster | Redacts collected metadata context. Leave enabled unless inspecting private local artifacts only. |
 | `source_visibility` | string | global or cluster | `safe` or `owner_raw`. Default `safe`. `owner_raw` enables fail-closed owner gating for Recent and Running scans; it does not expose raw browser/report fields by itself. |
 | `source_owner_user` | string | global or cluster | Optional query owner user for `owner_raw`. Prefer omitting this for local web runs: Query Doctor derives a simple user from `QD_SOURCE_OWNER_USER`, `QD_KRB5_PRINCIPAL`, `KRB5_PRINCIPAL`, or simple principals in `QD_KEYTAB`. Service principals with `/` are not accepted for inference. Keytab-derived users are sorted alphabetically, and the first user becomes the default Username selection. |
-| `viewer_identity_header` | string | global | Optional HTTP header name to trust as the authenticated viewer user for shared/D3 web deployments. Use only behind an auth proxy or ingress that authenticates the request and strips inbound copies of that header before setting exactly one already normalized simple owner value, such as an Active Directory `sAMAccountName` or Kerberos primary. Missing, duplicate, UPN/email-style, distinguished-name, group/role-like, opaque-subject, whitespace/display-name, comma-separated, service-principal, or host-principal values are unauthenticated and fail closed for raw source access. |
+| `viewer_identity_header` | string | global | Optional HTTP header name to trust as the authenticated viewer user for shared/D3 web deployments. This is the only Query Doctor D3 application contract: a trusted auth front door authenticates the request, strips inbound copies of that header, and sets exactly one already normalized simple owner value, such as an Active Directory `sAMAccountName` or Kerberos primary. OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP, MFA, session, logout, and token lifecycle stay at the front door, not inside Query Doctor. Missing, duplicate, UPN/email-style, distinguished-name, group/role-like, opaque-subject, whitespace/display-name, comma-separated, service-principal, or host-principal values are unauthenticated and fail closed for raw source access. |
 | `owner_raw_source_enabled` | boolean | global | Default `true`. Set `false`, or pass `--disable-owner-raw-source`, to disable only the isolated owner-only original source page and Details link. Recent/Running collection owner filters and validated optimizer draft policy keep their existing `source_visibility` behavior. |
 | `language` | string | global | Global language mode shown in the web header. It controls Help, Details static UI, and newly generated trusted report language. Supported values: `en`, `ru`. Default: `en`. Existing reports are not regenerated automatically after changing this field. The web header points to this config key without rendering the absolute config path. |
 | `report_llm_provider` | string | global | Report LLM provider: `ollama` or `openai_compatible`. |
@@ -235,10 +235,12 @@ narrows Cloudera Manager or direct Impala Recent and Running scans to owner
 users and permits the isolated owner-only selected-case source view after a
 viewer identity check. On localhost, Query Doctor intentionally treats the
 collectable owner users as the local viewer's raw subjects. On non-local binds,
-`owner_raw` requires authenticated viewer identity, either from an already
-constructed authenticated identity or from `viewer_identity_header` behind a
-trusted proxy/ingress. The header controls only viewer authorization (C2), not
-which users the collector may gather as the collection credential (C1).
+`owner_raw` requires authenticated viewer identity from `viewer_identity_header`
+behind a trusted proxy/ingress. The header controls only viewer authorization
+(C2), not which users the collector may gather as the collection credential
+(C1). Query Doctor does not implement native OIDC, SAML, SPNEGO, Kerberos,
+LDAP, password, MFA, or session authentication for this path; those mechanisms
+must terminate at the front door and produce the same normalized viewer header.
 Every isolated owner-raw source page attempt emits a safe server-side audit line
 with request id, route source, HTTP status, reason code, viewer mode/source, and
 switch state. The audit line must not include SQL, query ids, case ids, query
@@ -263,8 +265,10 @@ browser.
 | `web_advanced_settings_enabled` | boolean | Shows the Diagnose Advanced settings disclosure when set to `true`. Default is hidden. |
 | `web_advanced_filters` | string list | Optional editable filters inside Diagnose Advanced settings. Supported values: `user`, `pool`, `query_type`. When omitted and advanced settings are enabled, `user` and `pool` are shown. |
 
-Non-local binds require the explicit web CLI risk flag and are not the
-supported shared-service deployment model.
+Non-local binds require the explicit web CLI risk flag. They are supported for
+shared `owner_raw` only behind the D3 front-door contract described in
+[owner-raw-d3-deployment.md](owner-raw-d3-deployment.md); they are not a
+general multi-tenant service mode.
 
 ## Cloudera Manager
 

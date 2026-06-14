@@ -236,6 +236,10 @@ contents, or real production profile text.
   auth proxy or ingress that authenticates the request and strips inbound
   copies of that header before setting exactly one already normalized simple
   owner value, such as an Active Directory `sAMAccountName` or Kerberos primary.
+  This is the only Query Doctor D3 application contract. OIDC/SSO, SAML,
+  SPNEGO/Kerberos, LDAP, MFA, session, logout, token, group, and RBAC handling
+  must stay at the trusted front door; Query Doctor must not implement native
+  owner-raw authentication variants or accept raw identity-provider tokens.
   Missing, duplicate, UPN/email-style, distinguished-name, group/role-like,
   opaque-subject, whitespace/display-name, comma-separated, service-principal,
   or host-principal values are unauthenticated and must fail closed for raw
