@@ -1,0 +1,262 @@
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+from pathlib import Path
+from typing import Optional
+
+
+REPO_DIR = Path(__file__).resolve().parents[1]
+SCRIPT = REPO_DIR / "scripts" / "query-doctor-web-direct-impala-smoke"
+
+
+def run_smoke(args, *, home: Path, env: Optional[dict[str, str]] = None):
+    merged_env = dict(os.environ)
+    for name in (
+        "QD_CONFIG",
+        "KRB5CCNAME",
+        "QD_CREDS_DIR",
+        "QD_KEYTAB",
+        "QD_KRB5_PRINCIPAL",
+        "KRB5_PRINCIPAL",
+        "CM_USERNAME",
+        "CM_USER",
+        "CM_PASSWORD",
+        "CM_TOKEN",
+    ):
+        merged_env.pop(name, None)
+    merged_env["HOME"] = str(home)
+    if env:
+        merged_env.update(env)
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args],
+        cwd=REPO_DIR,
+        env=merged_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def write_config(home: Path, payload: dict) -> Path:
+    config_dir = home / ".qdcreds"
+    config_dir.mkdir(parents=True)
+    config = config_dir / "query-doctor-config.json"
+    config.write_text(json.dumps(payload), encoding="utf-8")
+    return config
+
+
+def free_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def test_web_direct_impala_smoke_dry_run_auto_selects_without_host_leak(tmp_path):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "cluster-alpha",
+                    "label": "Direct Impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                }
+            ]
+        },
+    )
+
+    result = run_smoke(["--dry-run", "--config", str(config)], home=home)
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 0, combined_output
+    assert os.access(SCRIPT, os.X_OK)
+    assert "dry_run=ok" in result.stdout
+    assert "metadata_top_limit=1" in result.stdout
+    assert "query_type=QUERY" in result.stdout
+    assert "cluster-alpha" not in combined_output
+    assert "impalad-1.example.com" not in combined_output
+    assert str(config) not in combined_output
+
+
+def test_web_direct_impala_smoke_requires_cluster_when_multiple_direct_clusters(tmp_path):
+    home = tmp_path / "home"
+    write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "direct-a",
+                    "label": "Primary direct",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-a.example.test"],
+                },
+                {
+                    "id": "direct-b",
+                    "label": "Secondary direct",
+                    "cluster_type": "impala",
+                    "impala_profile_hosts": ["impalad-b.example.test"],
+                },
+            ]
+        },
+    )
+
+    result = run_smoke(["--dry-run"], home=home)
+
+    assert result.returncode == 2
+    assert "choose one with --cluster" in result.stderr
+    assert "direct-a (Primary direct)" in result.stderr
+    assert "direct-b (Secondary direct)" in result.stderr
+    assert "impalad-a.example.test" not in result.stderr
+    assert "impalad-b.example.test" not in result.stderr
+
+
+def write_fake_web_wrapper(path: Path) -> None:
+    path.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs
+
+host = "127.0.0.1"
+port = None
+args = sys.argv[1:]
+for index, value in enumerate(args):
+    if value == "--host":
+        host = args[index + 1]
+    if value == "--port":
+        port = int(args[index + 1])
+if port is None:
+    raise SystemExit(2)
+
+job_id = os.environ["FAKE_JOB_ID"]
+capture = Path(os.environ["FAKE_FORM_CAPTURE"])
+summary_dir = Path("/tmp") / f"query-doctor-web-batch-{job_id}"
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        return
+
+    def do_GET(self):
+        if self.path == "/":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+            return
+        if self.path == f"/jobs/{job_id}/status":
+            payload = {"status": "ok", "stage": "Done", "progress": 100}
+            body = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == "/batch/case/case-001":
+            body = b"<html><body><h1>Details</h1><p>Metadata collected</p></body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        if self.path != "/batch/run":
+            self.send_response(404)
+            self.end_headers()
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        form = parse_qs(self.rfile.read(length).decode(), keep_blank_values=True)
+        capture.write_text(json.dumps({key: values[0] for key, values in form.items()}))
+        summary_dir.mkdir(parents=True, exist_ok=True)
+        summary = {
+            "selected_count": 1,
+            "cases": [
+                {
+                    "case_index": 1,
+                    "collection_status": "ok",
+                    "analysis_status": "ok",
+                    "metadata_status": "collected",
+                    "metadata_refreshed": True,
+                    "collectable_metadata_table_count": 1,
+                    "collected_metadata_table_count": 1,
+                }
+            ],
+        }
+        (summary_dir / "batch_summary.json").write_text(json.dumps(summary))
+        self.send_response(303)
+        self.send_header("Location", f"/jobs/{job_id}")
+        self.end_headers()
+
+ThreadingHTTPServer((host, port), Handler).serve_forever()
+""",
+        encoding="utf-8",
+    )
+    os.chmod(path, 0o755)
+
+
+def test_web_direct_impala_smoke_runs_web_form_and_checks_summary(tmp_path):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "direct-impala",
+                    "label": "Direct Impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                }
+            ]
+        },
+    )
+    wrapper = tmp_path / "fake-web-wrapper"
+    write_fake_web_wrapper(wrapper)
+    capture = tmp_path / "form.json"
+    job_id = "1234567890abcdef1234567890abcdef"
+    port = free_local_port()
+    try:
+        result = run_smoke(
+            [
+                "--config",
+                str(config),
+                "--web-wrapper",
+                str(wrapper),
+                "--port",
+                str(port),
+                "--timeout-sec",
+                "10",
+                "--poll-interval-sec",
+                "0.05",
+            ],
+            home=home,
+            env={"FAKE_JOB_ID": job_id, "FAKE_FORM_CAPTURE": str(capture)},
+        )
+    finally:
+        shutil.rmtree(Path("/tmp") / f"query-doctor-web-batch-{job_id}", ignore_errors=True)
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 0, combined_output
+    assert "[web-direct-impala-smoke] web=ready" in result.stdout
+    assert "metadata_collected=1" in result.stdout
+    assert "metadata_refreshed=1" in result.stdout
+    assert "[web-direct-impala-smoke] details=ok" in result.stdout
+    form = json.loads(capture.read_text(encoding="utf-8"))
+    assert form["cluster_key"] == "direct-impala"
+    assert form["scan_target"] == "finished"
+    assert form["recent_window_minutes"] == "120"
+    assert form["triage_profile_limit"] == "3"
+    assert form["metadata_top_limit"] == "1"
+    assert form["metadata_jobs"] == "1"
+    assert form["parallelism"] == "2"
+    assert form["query_type"] == "QUERY"
