@@ -1654,8 +1654,12 @@ def test_web_rejects_owner_raw_nonlocal_bind_without_authenticated_viewer(tmp_pa
         viewer_identity=local_first_viewer_identity(("analyst_one",)),
     )
 
-    with pytest.raises(module.WebError, match="source_visibility=owner_raw"):
+    with pytest.raises(module.WebError, match="source_visibility=owner_raw") as exc_info:
         module.validate_owner_raw_nonlocal_bind(settings)
+    message = str(exc_info.value)
+    assert "D3 trusted auth front door" in message
+    assert "sets exactly one normalized viewer_identity_header" in message
+    assert "Configure viewer_identity_header behind that front door" in message
 
 
 def test_web_rejects_owner_raw_cluster_nonlocal_bind_without_authenticated_viewer(tmp_path):
@@ -1680,8 +1684,11 @@ def test_web_rejects_owner_raw_cluster_nonlocal_bind_without_authenticated_viewe
         viewer_identity=local_first_viewer_identity(("stage_user",)),
     )
 
-    with pytest.raises(module.WebError, match="source_visibility=owner_raw"):
+    with pytest.raises(module.WebError, match="source_visibility=owner_raw") as exc_info:
         module.validate_owner_raw_nonlocal_bind(settings)
+    message = str(exc_info.value)
+    assert "D3 trusted auth front door" in message
+    assert "sets exactly one normalized viewer_identity_header" in message
 
 
 def test_web_allows_owner_raw_nonlocal_bind_with_authenticated_viewer(tmp_path):
@@ -1747,6 +1754,9 @@ def test_web_cli_main_rejects_owner_raw_nonlocal_bind_without_auth(monkeypatch, 
     captured = capsys.readouterr()
     assert result == 2
     assert "source_visibility=owner_raw" in captured.err
+    assert "D3 trusted auth front door" in captured.err
+    assert "sets exactly one normalized viewer_identity_header" in captured.err
+    assert "analyst_one" not in captured.err
 
 
 def test_web_cli_main_allows_owner_raw_nonlocal_bind_with_viewer_identity_header(
@@ -4063,13 +4073,18 @@ def test_web_owner_raw_source_route_denies_safe_mode_and_mismatched_viewer(tmp_p
     assert safe_response is not None
     assert safe_response.status == 403
     assert 'data-reason-code="source_visibility_not_owner_raw"' in safe_response.body
+    assert "Owner raw source is not enabled for this request." in safe_response.body
+    assert "D3 front-door checklist" in safe_response.body
     assert mismatch_response is not None
     assert mismatch_response.status == 403
     assert 'data-reason-code="viewer_not_authorized_for_query_user"' in mismatch_response.body
+    assert "The current viewer is not authorized for this selected case." in mismatch_response.body
+    assert "forwarded exactly one normalized simple owner value" in mismatch_response.body
     for body in (safe_response.body, mismatch_response.body):
         assert "qdleak_db_20260611" not in body
         assert "supersecret" not in body
         assert "/tmp/owner-raw-private" not in body
+        assert "other_user" not in body
 
 
 def test_web_owner_raw_source_route_uses_request_viewer_identity_header(tmp_path):
@@ -4306,8 +4321,11 @@ def test_web_owner_raw_source_route_can_be_disabled_by_kill_switch(tmp_path):
     assert response is not None
     assert response.status == 403
     assert 'data-reason-code="owner_raw_source_disabled"' in response.body
+    assert "The owner raw source kill switch is disabled." in response.body
+    assert "network isolation, and audit checks are verified" in response.body
     assert "qdleak_db_20260611" not in response.body
     assert "supersecret" not in response.body
+    assert "analyst" not in response.body
     assert response.audit_event is not None
     audit_fields = dict(response.audit_event.fields)
     assert response.audit_event.name == "owner_raw_source_access"

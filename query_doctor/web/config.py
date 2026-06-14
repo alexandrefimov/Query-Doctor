@@ -119,9 +119,11 @@ def validate_owner_raw_nonlocal_bind(settings: WebSettings) -> None:
         return
     raise WebError(
         "Refusing non-local web bind with source_visibility=owner_raw. "
-        "Owner raw visibility is local-only unless authenticated viewer identity is configured "
-        "through viewer_identity_header; bind to 127.0.0.1 or use source_visibility=safe for "
-        "shared web access."
+        "Shared owner_raw requires a D3 trusted auth front door that authenticates "
+        "the request, strips inbound viewer headers, and sets exactly one "
+        "normalized viewer_identity_header for Query Doctor's owner check. "
+        "Configure viewer_identity_header behind that front door, bind to "
+        "127.0.0.1, or use source_visibility=safe."
     )
 
 
