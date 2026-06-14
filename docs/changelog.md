@@ -62,6 +62,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   instead of the previous one-hour Scan date/hour bucket. Large browser-selected
   windows show a load warning for Cloudera Manager, direct Impala UI endpoints,
   and optional Prometheus collection.
+- Direct Impala query-list discovery now ignores daemon `query_locations`
+  bookkeeping entries when building Recent candidates, and plain non-CTAS DDL
+  statements are reported as `excluded: DDL statement` instead of the generic
+  not-analyzable query-text reason.
 - Recent source locators now carry typed raw-free `line_span` payloads and
   allowlisted `line_span_source` provenance alongside their legacy display
   coordinates, so owner-raw source highlighting can prefer structured line

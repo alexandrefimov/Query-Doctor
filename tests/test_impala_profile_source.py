@@ -317,6 +317,18 @@ def test_fetch_impala_query_summaries_parses_completed_and_running_queries():
                             "stmt_type": "QUERY",
                         }
                     ],
+                    "query_locations": [
+                        {
+                            "query_id": "eeeeeeeeeeeeeeee:ffffffffffffffff",
+                            "stmt_type": "QUERY",
+                        }
+                    ],
+                    "queryLocations": [
+                        {
+                            "query_id": "1111111111111111:2222222222222222",
+                            "stmt_type": "QUERY",
+                        }
+                    ],
                 }
             )
         )
