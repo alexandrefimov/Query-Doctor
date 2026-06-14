@@ -29,6 +29,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   missing retained daemon profiles, unavailable profile endpoints, endpoint
   request failures, and profile byte-limit failures, while still hiding raw
   child output.
+- D3 `viewer_identity_header` values now require an already normalized simple
+  owner token, such as an Active Directory `sAMAccountName` or Kerberos primary.
+  UPN/email-style values, distinguished names, group/role-like values, opaque
+  subjects, whitespace/display names, comma-separated subjects, and service or
+  host principals fail closed for owner-raw source access.
 - `viewer_identity_header` now fails closed when a request exposes duplicate
   viewer header values. Shared/D3 `owner_raw` source access still requires a
   trusted proxy or ingress to strip inbound copies and set exactly one

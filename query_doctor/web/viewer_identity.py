@@ -17,6 +17,7 @@ VIEWER_IDENTITY_UNAUTHENTICATED = "unauthenticated"
 VIEWER_IDENTITY_LOCAL_FIRST = "local_first"
 VIEWER_IDENTITY_AUTHENTICATED = "authenticated"
 VIEWER_IDENTITY_HEADER_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,80}\Z")
+VIEWER_IDENTITY_HEADER_USER_RE = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,15 @@ def normalize_viewer_user(value: object | None) -> str | None:
     return normalize_source_owner_user(user)
 
 
+def normalize_header_viewer_user(value: object | None) -> str | None:
+    user = normalize_source_owner_user(value)
+    if user is None:
+        return None
+    if not VIEWER_IDENTITY_HEADER_USER_RE.fullmatch(user):
+        return None
+    return user
+
+
 def local_first_viewer_identity(
     collectable_users: Iterable[object],
 ) -> ViewerIdentity:
@@ -83,7 +93,10 @@ def authenticated_viewer_identity(
 
 def authenticated_viewer_identity_from_header_value(value: object | None) -> ViewerIdentity:
     try:
-        return authenticated_viewer_identity(value)
+        user = normalize_header_viewer_user(value)
+        if user is None:
+            return unauthenticated_viewer_identity()
+        return authenticated_viewer_identity(user)
     except ValueError:
         return unauthenticated_viewer_identity()
 
