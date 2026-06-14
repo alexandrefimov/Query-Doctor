@@ -4047,26 +4047,23 @@ def test_web_owner_raw_source_route_uses_request_viewer_identity_header(tmp_path
     )
     handler = module.make_handler(settings, job_store=module.WebJobStore())
 
-    def run_request(headers):
-        request = handler.__new__(handler)
-        captured: dict[str, object] = {"headers": []}
-        output = io.BytesIO()
-        request.path = "/batch/case/case-001/source"
-        request.headers = headers
-        request.wfile = output
-        request.send_response = lambda status: captured.__setitem__("status", status)
-        request.send_header = lambda name, value: captured["headers"].append((name, value))
-        request.end_headers = lambda: None
-        request.do_GET()
-        return captured, output.getvalue().decode("utf-8")
-
-    allowed, allowed_body = run_request({"Host": "127.0.0.1", "X-QD-Viewer": "analyst"})
-    missing, missing_body = run_request({"Host": "127.0.0.1"})
-    service, service_body = run_request(
+    allowed, allowed_body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
+        {"Host": "127.0.0.1", "X-QD-Viewer": "analyst"},
+    )
+    missing, missing_body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
+        {"Host": "127.0.0.1"},
+    )
+    service, service_body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
         {
             "Host": "127.0.0.1",
             "X-QD-Viewer": "impala/host.example.com@EXAMPLE.COM",
-        }
+        },
     )
 
     assert allowed["status"] == 200
@@ -4089,25 +4086,16 @@ def test_web_owner_raw_source_route_fails_closed_for_duplicate_viewer_header(tmp
         viewer_identity_header="X-QD-Viewer",
     )
     handler = module.make_handler(settings, job_store=module.WebJobStore())
-    request = handler.__new__(handler)
-    captured: dict[str, object] = {"headers": []}
-    output = io.BytesIO()
-
-    request.path = "/batch/case/case-001/source"
-    request.headers = MultiValueHeaders(
-        {
-            "Host": ["127.0.0.1"],
-            "X-QD-Viewer": ["analyst", "other_user"],
-        }
+    captured, body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
+        MultiValueHeaders(
+            {
+                "Host": ["127.0.0.1"],
+                "X-QD-Viewer": ["analyst", "other_user"],
+            }
+        ),
     )
-    request.wfile = output
-    request.send_response = lambda status: captured.__setitem__("status", status)
-    request.send_header = lambda name, value: captured["headers"].append((name, value))
-    request.end_headers = lambda: None
-
-    request.do_GET()
-
-    body = output.getvalue().decode("utf-8")
     assert captured["status"] == 403
     assert 'data-reason-code="viewer_not_authorized_for_query_user"' in body
     assert "qdleak_db_20260611" not in body
@@ -4124,25 +4112,16 @@ def test_web_case_details_hides_owner_raw_source_link_for_duplicate_viewer_heade
         viewer_identity_header="X-QD-Viewer",
     )
     handler = module.make_handler(settings, job_store=module.WebJobStore())
-    request = handler.__new__(handler)
-    captured: dict[str, object] = {"headers": []}
-    output = io.BytesIO()
-
-    request.path = "/batch/case/case-001"
-    request.headers = MultiValueHeaders(
-        {
-            "Host": ["127.0.0.1"],
-            "X-QD-Viewer": ["analyst", "other_user"],
-        }
+    captured, body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001",
+        MultiValueHeaders(
+            {
+                "Host": ["127.0.0.1"],
+                "X-QD-Viewer": ["analyst", "other_user"],
+            }
+        ),
     )
-    request.wfile = output
-    request.send_response = lambda status: captured.__setitem__("status", status)
-    request.send_header = lambda name, value: captured["headers"].append((name, value))
-    request.end_headers = lambda: None
-
-    request.do_GET()
-
-    body = output.getvalue().decode("utf-8")
     assert captured["status"] == 200
     assert 'href="/batch/case/case-001/source"' not in body
     assert "Owner raw source" not in body
@@ -4313,21 +4292,16 @@ def test_web_case_details_uses_request_viewer_identity_header_for_owner_raw_link
     )
     handler = module.make_handler(settings, job_store=module.WebJobStore())
 
-    def run_request(headers):
-        request = handler.__new__(handler)
-        captured: dict[str, object] = {"headers": []}
-        output = io.BytesIO()
-        request.path = "/batch/case/case-001"
-        request.headers = headers
-        request.wfile = output
-        request.send_response = lambda status: captured.__setitem__("status", status)
-        request.send_header = lambda name, value: captured["headers"].append((name, value))
-        request.end_headers = lambda: None
-        request.do_GET()
-        return captured, output.getvalue().decode("utf-8")
-
-    allowed, allowed_body = run_request({"Host": "127.0.0.1", "X-QD-Viewer": "analyst"})
-    missing, missing_body = run_request({"Host": "127.0.0.1"})
+    allowed, allowed_body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001",
+        {"Host": "127.0.0.1", "X-QD-Viewer": "analyst"},
+    )
+    missing, missing_body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001",
+        {"Host": "127.0.0.1"},
+    )
 
     assert allowed["status"] == 200
     assert 'href="/batch/case/case-001/source"' in allowed_body
@@ -4368,18 +4342,11 @@ def test_web_owner_raw_source_audit_log_is_reason_coded_and_raw_free(tmp_path, c
         job_store=module.WebJobStore(),
         request_id_factory=lambda: "req-owner-raw-1",
     )
-    request = handler.__new__(handler)
-    captured: dict[str, object] = {"headers": []}
-    output = io.BytesIO()
-
-    request.path = "/batch/case/case-001/source"
-    request.headers = {"Host": "127.0.0.1"}
-    request.wfile = output
-    request.send_response = lambda status: captured.__setitem__("status", status)
-    request.send_header = lambda name, value: captured["headers"].append((name, value))
-    request.end_headers = lambda: None
-
-    request.do_GET()
+    captured, _body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
+        {"Host": "127.0.0.1"},
+    )
 
     captured_err = capsys.readouterr().err
     assert captured["status"] == 200
@@ -4408,23 +4375,16 @@ def test_web_owner_raw_source_duplicate_viewer_header_audit_is_raw_free(tmp_path
         job_store=module.WebJobStore(),
         request_id_factory=lambda: "req-owner-raw-duplicate",
     )
-    request = handler.__new__(handler)
-    captured: dict[str, object] = {"headers": []}
-    output = io.BytesIO()
-
-    request.path = "/batch/case/case-001/source"
-    request.headers = MultiValueHeaders(
-        {
-            "Host": ["127.0.0.1"],
-            "X-QD-Viewer": ["analyst", "other_user"],
-        }
+    captured, _body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
+        MultiValueHeaders(
+            {
+                "Host": ["127.0.0.1"],
+                "X-QD-Viewer": ["analyst", "other_user"],
+            }
+        ),
     )
-    request.wfile = output
-    request.send_response = lambda status: captured.__setitem__("status", status)
-    request.send_header = lambda name, value: captured["headers"].append((name, value))
-    request.end_headers = lambda: None
-
-    request.do_GET()
 
     captured_err = capsys.readouterr().err
     assert captured["status"] == 403
@@ -4471,24 +4431,17 @@ def test_web_owner_raw_source_route_is_no_store_without_download_header(tmp_path
     summary = write_owner_raw_source_summary(tmp_path)
     settings = owner_raw_web_settings(module, tmp_path, summary)
     handler = module.make_handler(settings, job_store=module.WebJobStore())
-    request = handler.__new__(handler)
-    captured: dict[str, object] = {"headers": []}
-    output = io.BytesIO()
-
-    request.path = "/batch/case/case-001/source"
-    request.headers = {"Host": "127.0.0.1"}
-    request.wfile = output
-    request.send_response = lambda status: captured.__setitem__("status", status)
-    request.send_header = lambda name, value: captured["headers"].append((name, value))
-    request.end_headers = lambda: None
-
-    request.do_GET()
+    captured, body = make_handler_get_request(
+        handler,
+        "/batch/case/case-001/source",
+        {"Host": "127.0.0.1"},
+    )
 
     headers = dict(captured["headers"])
     assert captured["status"] == 200
     assert headers["Cache-Control"] == "no-store"
     assert "Content-Disposition" not in headers
-    assert b"qdleak_db_20260611.qdleak_table_20260611" in output.getvalue()
+    assert "qdleak_db_20260611.qdleak_table_20260611" in body
 
 
 def test_web_case_details_links_owner_raw_source_only_when_allowed(tmp_path):
