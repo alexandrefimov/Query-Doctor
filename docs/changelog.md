@@ -20,6 +20,13 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- `query-doctor-web --corpus-dir` now starts without Cloudera Manager settings
+  when the corpus already contains complete `query-doctor-analyze
+  --profile-text` manual-profile cases, and the Diagnose page renders those
+  staged exported profiles automatically as a read-only local results table.
+  When no explicit `--config` is provided, this Quickstart corpus path also
+  tolerates stale default local config files that are not needed for the local
+  read-only view.
 - `query-doctor-analyze --profile-text` now accepts direct Impala Web UI text
   profile downloads whose filenames use the strict
   `profile_<query-id-high>_<query-id-low>` shape when the profile body lacks a

@@ -78,12 +78,17 @@ implementation boundaries.
 
 - Manual profile intake accepts only one local exported Apache Impala text
   profile for one Query ID. The CLI may derive that Query ID from an embedded
-  profile header, or accept an explicit `--query-id` when the profile header is
-  missing. JSON, Thrift, profile-v2 payloads, browser uploads, broad profile
+  profile header, from a strict Impala Web UI `profile_<query-id-high>_<query-id-low>`
+  download filename, or accept an explicit `--query-id` when the profile header
+  is missing. JSON, Thrift, profile-v2 payloads, browser uploads, broad profile
   directories, and network collection are outside this boundary.
 - The browser must not upload or render the raw profile. Web `manual_profile_dir`
   is a server-side local inbox; users place files on disk, then enter the
-  original Query ID in Known Query ID mode.
+  original Query ID in Known Query ID mode. Web `--corpus-dir` may also render
+  already complete manual-profile cases staged by `query-doctor-analyze
+  --profile-text` as a local read-only results table without requiring live CM
+  settings or default local config discovery when no explicit `--config` is
+  provided.
 - Manual profile staging must run the same redaction and bounded analyzer path
   used for collector-shaped cases before any Details page or trusted report can
   consume the case.

@@ -155,15 +155,19 @@ def optimizer_artifact_status_for_case(case: dict[str, Any]) -> str:
 
 
 def resolve_batch_case_dir(settings: WebSettings, case: dict[str, object]) -> Path | None:
-    if settings.batch_summary is None:
+    summary_root = settings.corpus_summary_root
+    if summary_root is None and settings.batch_summary is None:
         return None
     raw_case_dir = case.get("case_dir")
     if not isinstance(raw_case_dir, str) or not raw_case_dir:
         return None
-    try:
-        summary_root = settings.batch_summary.resolve(strict=True).parent
-    except OSError:
-        return None
+    if summary_root is None:
+        try:
+            summary_root = settings.batch_summary.resolve(strict=True).parent
+        except OSError:
+            return None
+    else:
+        summary_root = summary_root.resolve(strict=False)
     case_dir = Path(raw_case_dir)
     if not case_dir.is_absolute():
         case_dir = summary_root / case_dir

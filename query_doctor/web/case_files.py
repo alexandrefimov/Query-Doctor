@@ -27,11 +27,14 @@ def build_query_id_summary_case(
     *,
     collection_status: str = "ok",
     analysis_status: str = "ok",
+    case_index: int = 1,
+    include_batch_fields: bool = False,
+    case_dir_reference: str | None = None,
 ) -> dict[str, object]:
     metadata = read_case_metadata(case_dir)
     profile_summary = read_profile_summary_fields(case_dir)
     case = batch_recent.CaseResult(
-        index=1,
+        index=case_index,
         query_id=query_id,
         duration_sec=case_duration_sec(metadata),
         user=profile_summary.get("user") or case_metadata_string(metadata, "user"),
@@ -48,8 +51,12 @@ def build_query_id_summary_case(
     batch_recent.inspect_case_outputs(case)
     batch_recent.score_case(case)
     summary_case = batch_recent.case_to_summary(case)
-    summary_case.pop("case_index", None)
-    summary_case.pop("case_dir", None)
+    if include_batch_fields:
+        if case_dir_reference is not None:
+            summary_case["case_dir"] = case_dir_reference
+    else:
+        summary_case.pop("case_index", None)
+        summary_case.pop("case_dir", None)
     return summary_case
 
 

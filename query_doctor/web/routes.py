@@ -140,11 +140,13 @@ def route_get_request(
     parsed = urlparse(path)
     if parsed.path in {"/", "/index.html", "/batch"}:
         query = parse_qs(parsed.query, keep_blank_values=True)
+        effective_settings = batch_page_settings(settings, store)
         return WebRouteResponse.html(
             200,
             render_batch_page(
-                batch_page_settings(settings, store),
-                query_group=first_form_value(query, "query_group"),
+                effective_settings,
+                query_group=first_form_value(query, "query_group")
+                or default_batch_query_group(effective_settings),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
                 workload_admin_scope=first_form_value(query, "workload_admin_scope"),
                 workload_admin_signal=first_form_value(query, "workload_admin_signal"),
@@ -207,6 +209,12 @@ def route_get_request(
     if job_response is not None:
         return job_response
     return None
+
+
+def default_batch_query_group(settings: WebSettings) -> str:
+    if settings.corpus_summary is not None:
+        return "all"
+    return "bad"
 
 
 def route_static_asset_get(path: str) -> WebRouteResponse | None:

@@ -67,27 +67,34 @@ def render_batch_card(
     details_base_path: str = "/batch/case",
 ) -> str:
     summary_path = getattr(settings, "batch_summary", None)
-    escaped_title = html.escape(title)
-    aria_label = html.escape(title.lower())
-    if summary_path is None:
+    corpus_summary = getattr(settings, "corpus_summary", None)
+    if summary_path is None and not isinstance(corpus_summary, dict):
         return ""
-    try:
-        payload = json.loads(Path(summary_path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return (
-            f'<section class="panel batch-panel" aria-label="{aria_label}">'
-            f'<div class="batch-head"><div><h1>{escaped_title}</h1>'
-            "<p>Configured batch summary could not be read.</p></div></div>"
-            f'<div class="batch-note">{html.escape(type(exc).__name__)}</div>'
-            "</section>"
-        )
+    if isinstance(corpus_summary, dict):
+        payload = corpus_summary
+    else:
+        escaped_title = html.escape(title)
+        aria_label = html.escape(title.lower())
+        try:
+            payload = json.loads(Path(summary_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return (
+                f'<section class="panel batch-panel" aria-label="{aria_label}">'
+                f'<div class="batch-head"><div><h1>{escaped_title}</h1>'
+                "<p>Configured batch summary could not be read.</p></div></div>"
+                f'<div class="batch-note">{html.escape(type(exc).__name__)}</div>'
+                "</section>"
+            )
     if not isinstance(payload, dict):
+        escaped_title = html.escape(title)
+        aria_label = html.escape(title.lower())
         return (
             f'<section class="panel batch-panel" aria-label="{aria_label}">'
             f'<div class="batch-head"><div><h1>{escaped_title}</h1>'
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
+    effective_title = corpus_summary_title(payload) or title
     return render_batch_summary(
         decorate_cases_with_optimizer_artifact_status(payload),
         query_group=query_group,
@@ -97,11 +104,17 @@ def render_batch_card(
         workload_group_scope=workload_group_scope,
         workload_group_name=workload_group_name,
         workload_group_signal=workload_group_signal,
-        title=title,
+        title=effective_title,
         details_base_path=details_base_path,
         action_outcomes_recorded=action_outcome_count(),
         workload_outcome_metrics=workload_outcome_metrics_by_fingerprint(),
     )
+
+
+def corpus_summary_title(summary: dict[str, Any]) -> str | None:
+    if str(summary.get("mode") or "").strip().lower() == "manual-profile-corpus":
+        return "Exported Profiles"
+    return None
 
 
 def render_batch_summary(

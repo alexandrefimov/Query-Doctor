@@ -16,23 +16,46 @@ from query_doctor.web.config import (
     validate_web_startup_config,
 )
 from query_doctor.web.models import WebError
+from query_doctor.web.corpus_summary import prepare_corpus_summary_runtime
 from query_doctor.web.public_demo import prepare_public_demo_runtime
 from query_doctor.web.server_args import parse_args
+
+
+def quickstart_corpus_settings_without_default_config(args, cwd: Path):
+    if (
+        getattr(args, "config", None)
+        or not getattr(args, "corpus_dir", None)
+        or getattr(args, "batch_summary", None)
+        or getattr(args, "public_demo", False)
+    ):
+        return None
+    settings = build_web_settings(args, cwd=cwd, ignore_default_config=True)
+    runtime = prepare_corpus_summary_runtime(settings)
+    return None if runtime is None else runtime.settings
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        settings = build_web_settings(args, cwd=Path.cwd())
+        cwd = Path.cwd()
+        try:
+            settings = build_web_settings(args, cwd=cwd)
+        except cm_collector.ConfigError:
+            settings = quickstart_corpus_settings_without_default_config(args, cwd)
+            if settings is None:
+                raise
         public_demo_runtime = prepare_public_demo_runtime(settings)
         if public_demo_runtime is not None:
             settings = public_demo_runtime.settings
+        corpus_summary_runtime = prepare_corpus_summary_runtime(settings)
+        if corpus_summary_runtime is not None:
+            settings = corpus_summary_runtime.settings
         validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
         validate_public_demo_settings(settings)
         startup_warnings = validate_web_startup_config(
             settings.config,
-            cwd=Path.cwd(),
-            require_cm=settings.batch_summary is None,
+            cwd=cwd,
+            require_cm=settings.batch_summary is None and settings.corpus_summary is None,
         )
     except WebError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
