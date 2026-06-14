@@ -1,6 +1,6 @@
 # Query Doctor Code Audit
 
-Last updated: 2026-06-12
+Last updated: 2026-06-14
 
 This public audit tracks current engineering and safety risk areas at a level
 that is useful to contributors without publishing local calibration history.
@@ -503,13 +503,16 @@ ignore rules and staged public-safety checks.
 
 Severity: high if regressed.
 
-Browser-visible UI and trusted reports must not expose raw SQL, raw profile
-text, raw metadata, local paths, `case_dir`, process logs, secrets, model
-names, runtime internals, or raw artifact filenames.
+Trusted browser/report surfaces must not expose raw SQL, raw profile text, raw
+metadata, local paths, `case_dir`, process logs, secrets, model names, runtime
+internals, or raw artifact filenames. The isolated owner-only selected-case
+source surface is the narrow raw-SQL browser exception and must keep the
+stricter rules in `docs/safety-contract.md`.
 
 Any change that renders analyzer facts, report content, optimizer content,
 collector errors, or generated artifacts must include focused tests proving the
-new surface remains raw-free.
+new trusted/report surface remains raw-free, or that an isolated owner-raw
+surface stays policy-gated and non-persisted.
 
 Recent audit coverage found the current route and artifact path boundary sound:
 case identifiers are revalidated before path use, server-written case indexes

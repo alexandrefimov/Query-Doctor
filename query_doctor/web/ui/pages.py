@@ -209,6 +209,7 @@ def render_batch_case_detail_view_page(
     workflow_title: str = "Finished Queries",
     list_href: str = "/#recent-results",
     detail_base_path: str = "/batch/case",
+    owner_raw_source_href: str = "",
     active_nav: str = "batch",
 ) -> str:
     trusted_report_html = (
@@ -235,6 +236,7 @@ def render_batch_case_detail_view_page(
             workflow_title=workflow_title,
             list_href=list_href,
             detail_base_path=detail_base_path,
+            owner_raw_source_href=owner_raw_source_href,
             llm_enabled=not getattr(settings, "no_llm", False),
             language=getattr(settings, "language", "en"),
         )

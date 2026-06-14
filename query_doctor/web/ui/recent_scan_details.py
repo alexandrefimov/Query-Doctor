@@ -81,6 +81,7 @@ def render_recent_scan_case_detail_view(
     workflow_title: str = "Finished Queries",
     list_href: str = "/#recent-results",
     detail_base_path: str = "/batch/case",
+    owner_raw_source_href: str = "",
     llm_enabled: bool = True,
     language: str = "en",
 ) -> str:
@@ -133,6 +134,7 @@ def render_recent_scan_case_detail_view(
         f'<div class="batch-head"><div><h1>{safe_details_title}</h1>'
         f"<p>{html.escape(ui_text(language, 'Use the verdict to decide priority, then read the recommended change and verification path before opening diagnostics.', 'Используйте вердикт для приоритета, затем смотрите рекомендуемое изменение и способ проверки до раскрытия диагностики.'))}</p></div>"
         '<div class="batch-head-actions">'
+        f"{render_owner_raw_source_link(owner_raw_source_href, language=language)}"
         f'<a class="button primary" href="/#new-scan" data-open-new-scan>{html.escape(ui_text(language, "New scan", "Новый скан"))}</a>'
         f'<span class="badge blue">{html.escape(view.case_id)}</span></div></div>'
         f"{render_case_verdict(view, language=language)}"
@@ -145,6 +147,15 @@ def render_recent_scan_case_detail_view(
 
 def report_generation_enabled(view: RecentScanCaseDetailView) -> bool:
     return str(view.score_severity or "").strip().lower() in {"high", "suspicious"}
+
+
+def render_owner_raw_source_link(href: str, *, language: str = "en") -> str:
+    if not href:
+        return ""
+    return (
+        f'<a class="button secondary owner-raw-source-link" href="{html.escape(href, quote=True)}">'
+        f"{html.escape(ui_text(language, 'Owner raw source', 'Сырой SQL владельца'))}</a>"
+    )
 
 
 def report_generation_disabled_reason(

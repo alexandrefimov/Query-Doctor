@@ -351,20 +351,22 @@ the read-only `query-doctor-web --public-demo` mode.
 
 - Python/analyzer-owned facts are the only trusted diagnostic evidence.
 - Raw LLM output is untrusted unless normalized, sanitized, and validated.
-- Browser-visible UI and trusted reports must not expose raw SQL, raw profiles,
-  raw metadata, local paths, secrets, subprocess output, model/runtime internals,
-  or raw artifact filenames.
+- Trusted browser/report surfaces must not expose raw SQL, raw profiles, raw
+  metadata, local paths, secrets, subprocess output, model/runtime internals, or
+  raw artifact filenames. The isolated owner-only selected-case source surface is
+  the narrow raw-SQL browser exception.
 - External collection must be explicit, bounded, read-only, redacted, and safe
   by default.
 - Local config `privacy_mode` defaults to `true`; disabling it can relax local
-  artifact identifier/host masking, but browser-visible UI and trusted reports
-  still do not show raw SQL, profiles, or metadata.
+  artifact identifier/host masking, but trusted browser/report surfaces still do
+  not show raw SQL, profiles, or metadata.
 - Local config `no_llm=true` keeps report and optimizer actions on deterministic
   Python-owned output.
-- Validated optimizer SQL drafts are the only SQL exception in the browser:
-  Details shows them only for explicit selected-case optimizer actions when
-  `source_visibility=owner_raw`; the default `safe` mode shows trusted
-  recommendations/no-rewrite guidance instead.
+- SQL browser exceptions are selected-case and owner-gated: Details can show a
+  validated optimizer SQL draft for an explicit optimizer action when
+  `source_visibility=owner_raw`, and the isolated owner-only source view can
+  show read-only original SQL for an authorized query owner. The default `safe`
+  mode shows trusted recommendations/no-rewrite guidance instead.
 - Query Optimizer accepts only a single safe read-only statement and never
   executes pasted SQL.
 

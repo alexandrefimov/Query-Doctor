@@ -1,6 +1,6 @@
 # Query Doctor Codex Instructions
 
-Last updated: 2026-06-04
+Last updated: 2026-06-14
 
 ## Project
 
@@ -41,9 +41,11 @@ backfill fake metrics or events.
 
 - Never execute user SQL or optimizer draft SQL.
 - Never echo pasted Query Optimizer SQL back into the browser after submit.
-- Never show browser-visible UI or trusted reports containing raw SQL, raw
-  profile text, raw metadata, local paths, `case_dir`, subprocess output,
-  secrets, model names, runtime internals, or raw artifact filenames.
+- Never show trusted browser/report surfaces containing raw SQL, raw profile
+  text, raw metadata, local paths, `case_dir`, subprocess output, secrets,
+  model names, runtime internals, or raw artifact filenames. The isolated
+  owner-only selected-case source surface is the narrow raw-SQL browser
+  exception and must follow `docs/safety-contract.md`.
 - Never state root causes without direct support in deterministic analysis
   facts.
 - Treat raw LLM output as untrusted until deterministic validation accepts it.

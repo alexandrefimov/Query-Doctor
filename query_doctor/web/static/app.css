@@ -2335,6 +2335,130 @@ html[data-theme=dark] select.input {
   overflow-wrap:anywhere
 }
 
+.owner-raw-source-panel {
+  display:grid;
+  gap:14px
+}
+
+.owner-raw-source-head {
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:flex-start
+}
+
+.owner-raw-boundary {
+  display:inline-flex;
+  align-items:center;
+  min-height:22px;
+  margin-bottom:8px;
+  padding:0 8px;
+  border:1px solid var(--amber);
+  border-radius:6px;
+  color:var(--amber);
+  background:var(--amber-bg);
+  font-size:12px;
+  font-weight:700
+}
+
+.owner-raw-source-policy {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:12px
+}
+
+.owner-raw-source-locations {
+  display:grid;
+  gap:8px;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface)
+}
+
+.owner-raw-source-locations ul {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none
+}
+
+.owner-raw-source-locations li {
+  display:inline-grid;
+  grid-template-columns:max-content max-content minmax(0,1fr);
+  gap:6px;
+  align-items:center;
+  max-width:100%;
+  padding:4px 8px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  color:var(--muted);
+  font-size:12px
+}
+
+.owner-raw-source-locations li span {
+  color:var(--accent-strong);
+  font-family:var(--mono);
+  font-weight:700
+}
+
+.owner-raw-source-locations li em {
+  color:var(--muted);
+  font-style:normal;
+  overflow-wrap:anywhere
+}
+
+.owner-raw-source-code {
+  display:grid;
+  overflow:auto;
+  max-width:100%;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--code-bg);
+  font-family:var(--mono);
+  font-size:12px;
+  line-height:1.55
+}
+
+.owner-raw-source-line {
+  display:grid;
+  grid-template-columns:4.5ch minmax(32ch,1fr) minmax(0,20ch);
+  gap:10px;
+  min-width:max-content;
+  padding:0 10px
+}
+
+.owner-raw-source-line--highlight {
+  background:var(--amber-bg);
+  box-shadow:inset 3px 0 0 var(--amber)
+}
+
+.owner-raw-source-line__number {
+  color:var(--muted);
+  user-select:none;
+  text-align:right
+}
+
+.owner-raw-source-line__text {
+  color:var(--code-text);
+  background:transparent;
+  white-space:pre
+}
+
+.owner-raw-source-line__marker {
+  color:var(--amber);
+  overflow-wrap:anywhere
+}
+
 .action-supporting-facts {
   display:grid;
   gap:8px;

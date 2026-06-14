@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-06-14
 
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
@@ -187,11 +187,14 @@ contents, or real production profile text.
 
 ## Browser Display Boundary
 
-- Browser-visible UI must not render raw SQL, raw profiles, raw metadata,
-  stdout/stderr, local paths, `case_dir`, credentials, secret values, Kerberos
-  ticket contents, metadata connection details, model names, or Ollama
-  internals. Model-family names, model-version strings, local runtime provider
-  names, and internal runtime fingerprints must stay hidden before rendering.
+- Trusted browser/report surfaces must not render raw SQL, raw profiles, raw
+  metadata, stdout/stderr, local paths, `case_dir`, credentials, secret values,
+  Kerberos ticket contents, metadata connection details, model names, or Ollama
+  internals. The isolated owner-only selected-case source surface is the narrow
+  raw-SQL browser exception and must follow the `owner_raw` rules below. Raw
+  profiles, raw metadata, stdout/stderr, local paths, credentials, secret
+  values, Kerberos material, model/runtime internals, and raw artifact filenames
+  remain forbidden there too.
 - Dynamic browser-visible text should use the shared browser display redaction
   policy before rendering.
 - Web Recent and Running scans must not auto-run LLM reports or optimizer jobs.
@@ -207,16 +210,18 @@ contents, or real production profile text.
   validation failures stay hidden.
 - `source_visibility=owner_raw` is an owner-gating mode, not a blanket display
   bypass. In the current implementation it narrows Cloudera Manager or direct
-  Impala Recent and Running scans to a verified owner user and is the only web
-  policy that can display a validated optimizer SQL draft. It does not permit
-  raw browser or trusted-report display. Local-first owner raw visibility must
-  not start on a non-local web bind; shared web access requires authenticated
-  viewer identity before owner raw visibility can be enabled. Any future owner
-  source view that proposes raw SQL source views or plan excerpts requires a
-  separate safety-contract revision, and must remain explicit, selected-case
-  only, source-allowlisted, fail-closed on ownership mismatch, and must still
-  exclude raw profile dumps, raw metadata, local paths, subprocess output,
-  secrets, model names, runtime internals, and raw artifact filenames.
+  Impala Recent and Running scans to verified owner users and is the only web
+  policy that can display a validated optimizer SQL draft. It also permits the
+  separate isolated owner-only selected-case source surface to render the
+  original read-only SQL source for a query whose `query.user` is authorized by
+  the authenticated viewer identity. That source surface is not a trusted
+  report, Details, Recent table, optimizer, handoff, or download surface; it
+  must be source-allowlisted, fail closed on ownership mismatch, use
+  `Cache-Control: no-store`, send nothing to the LLM, and still exclude raw
+  profile dumps, raw metadata, local paths, subprocess output, secrets, model
+  names, runtime internals, and raw artifact filenames. Local-first owner raw
+  visibility must not start on a non-local web bind; shared web access requires
+  authenticated viewer identity before owner raw visibility can be enabled.
 - Keytab-derived Username dropdowns may display simple account names only.
   Keytab paths, full Kerberos principals, keytab contents, ticket contents, and
   `klist` subprocess output must not be rendered in browser-visible UI or
