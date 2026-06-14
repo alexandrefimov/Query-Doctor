@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import sys
+import types
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import Optional
 
@@ -40,6 +42,15 @@ def write_config(home: Path, payload: dict) -> Path:
     config = config_dir / "query-doctor-config.json"
     config.write_text(json.dumps(payload), encoding="utf-8")
     return config
+
+
+def load_script_module():
+    loader = SourceFileLoader("direct_impala_smoke_script_under_test", str(SCRIPT))
+    module = types.ModuleType(loader.name)
+    module.__file__ = str(SCRIPT)
+    module.__loader__ = loader
+    loader.exec_module(module)
+    return module
 
 
 def test_direct_impala_smoke_auto_selects_single_direct_cluster(tmp_path):
@@ -164,3 +175,65 @@ def test_direct_impala_smoke_require_metadata_uses_keytab_without_echoing_secret
     assert principal not in combined_output
     assert str(keytab) not in combined_output
     assert "krb5cc_test_marker" not in combined_output
+
+
+def test_direct_impala_smoke_prints_safe_selection_diagnostics(tmp_path, monkeypatch, capsys):
+    home = tmp_path / "home"
+    write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "direct-impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                }
+            ]
+        },
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "batch_summary.json").write_text(
+        json.dumps(
+            {
+                "selected_count": 0,
+                "summaries_inspected": 4,
+                "candidate_exclusion_count": 4,
+                "query_type_filter": "QUERY",
+                "duration_filter": "none",
+                "candidate_reason_counts": {
+                    "excluded: query type filter mismatch": 2,
+                    "excluded: admin or metadata statement": 1,
+                    "SELECT * FROM private_table": 1,
+                },
+                "candidate_reason_sql_verb_counts": {
+                    "excluded: query type filter mismatch": {"CREATE": 2},
+                    "excluded: admin or metadata statement": {"SHOW": 1},
+                    "SELECT * FROM private_table": {"private_table": 1},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = load_script_module()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(
+        module,
+        "prepare_metadata_ticket",
+        lambda *, require_metadata, no_metadata: (False, "cache", "disabled by test"),
+    )
+    monkeypatch.setattr(module.subprocess, "call", lambda *args, **kwargs: 0)
+
+    exit_code = module.main(["--no-metadata", "--out", str(out), "--query-type", "QUERY"])
+
+    captured = capsys.readouterr()
+    combined_output = captured.out + captured.err
+    assert exit_code == 0
+    assert "selection=selected=0 inspected=4 excluded=4 query_type=query" in captured.out
+    assert "excluded_query_type_filter_mismatch=2" in captured.out
+    assert "excluded_query_type_filter_mismatch.create=2" in captured.out
+    assert "other_candidate_reason=1" in captured.out
+    assert "other_candidate_reason.other_sql_verb=1" in captured.out
+    assert "private_table" not in combined_output
+    assert "impalad-1.example.com" not in combined_output
+    assert str(out) not in combined_output

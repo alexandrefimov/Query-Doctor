@@ -307,7 +307,10 @@ use the web smoke. It starts `scripts/query-doctor-web-local --no-llm`, submits
 the Finished-query scan form for the selected direct-Impala cluster, waits for
 the web job, checks the retained batch summary, and opens one Details page. The
 script prints only aggregate statuses such as selected case count,
-collection/analyzer success count, and metadata collection count.
+collection/analyzer success count, metadata collection count, and normalized
+candidate-selection reason counters. When a scan selects no cases, use those
+reason counters to decide whether to widen Search depth, loosen the query-type
+filter, lower the duration filter, or run a fresh table-backed query.
 
 ```bash
 scripts/query-doctor-web-direct-impala-smoke --cluster <direct-impala-cluster-id>

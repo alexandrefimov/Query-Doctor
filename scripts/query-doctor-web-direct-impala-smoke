@@ -21,6 +21,11 @@ from urllib.parse import urlencode, urlsplit
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from query_doctor.recent.selection_diagnostics import selection_diagnostic_lines
+
 DEFAULT_WEB_WRAPPER = ROOT_DIR / "scripts" / "query-doctor-web-local"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_WINDOW_MINUTES = 120
@@ -529,7 +534,8 @@ def validate_summary(
     cases = summary_cases(summary)
     if not cases:
         raise SmokeError(
-            "Web scan completed but selected no cases. Widen filters or run a test query."
+            "Web scan completed but selected no cases. Widen filters, loosen query-type "
+            "filters, or run a fresh table-backed test query."
         )
     collection_counts = Counter(str(case.get("collection_status") or "unknown") for case in cases)
     analysis_counts = Counter(str(case.get("analysis_status") or "unknown") for case in cases)
@@ -630,6 +636,8 @@ def main(argv: list[str] | None = None) -> int:
         job_id = start_scan(args, cluster_id=cluster_id, port=port)
         poll_job(args, job_id=job_id, port=port, deadline=deadline)
         summary = load_batch_summary(job_id)
+        for line in selection_diagnostic_lines(summary, prefix="[web-direct-impala-smoke]"):
+            print(line, flush=True)
         cases, metrics = validate_summary(args, summary)
         print(
             "[web-direct-impala-smoke] scan="
