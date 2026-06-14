@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from query_doctor.web.models import WebSettings
+from query_doctor.web.surface_taxonomy import (
+    ISOLATED_PREVIEW_WEB_POLICY,
+    SURFACE_CLASS_ISOLATED_PREVIEW_WEB,
+)
 from query_doctor.web.spark_compact import handle_spark_compact_request
 from query_doctor.web.trino_compact import handle_trino_compact_request
 from query_doctor.web.ui.spark import render_spark_compact_page
@@ -25,13 +29,10 @@ class PreviewWebSurface:
     get_paths: tuple[str, ...]
     render_get: PreviewRenderer
     handle_post: PreviewPostHandler
-    surface_class: str = "isolated_preview_web"
+    surface_class: str = SURFACE_CLASS_ISOLATED_PREVIEW_WEB
     product_surface_allowed: bool = False
     forbidden_product_surfaces: tuple[str, ...] = (
-        "recent",
-        "details",
-        "trusted_report",
-        "optimizer",
+        ISOLATED_PREVIEW_WEB_POLICY.forbidden_product_surfaces
     )
 
 
