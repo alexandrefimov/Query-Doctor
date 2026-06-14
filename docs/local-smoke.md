@@ -338,6 +338,20 @@ old query IDs can still validate discovery/profile/analyzer/report routing, but
 they do not prove the Known Query ID metadata path because there may be no
 collectable table reference or retained profile to inspect.
 
+To prepare a local table-backed smoke query from already collected metadata
+context, generate a read-only `SELECT` into an ignored local file and run that
+SQL yourself in Hue or another Impala client:
+
+```bash
+scripts/query-doctor-table-backed-smoke-query \
+  --search-root <ignored-smoke-output-root> \
+  --out <ignored-table-backed-query.sql>
+```
+
+The helper does not execute SQL and does not print table names. It rejects
+placeholder references such as `<db>.<table>` or `db.table`; if it cannot find a
+real table-backed metadata reference, rerun a direct Recent metadata smoke first.
+
 Direct Impala Known Query ID collection must be able to fetch the retained
 profile through the configured `impala_profile_hosts` endpoint. A single
 load-balanced or ingress endpoint may not reach the daemon that coordinated a
