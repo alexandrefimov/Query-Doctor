@@ -17,11 +17,14 @@ from urllib.parse import quote
 
 
 DEFAULT_QUERY_ID = "1111111111111111:2222222222222222"
+FILENAME_FALLBACK_QUERY_ID = "3333333333333333:4444444444444444"
 SELF_TEST_PROFILE_NAME = "exported-impala-profile.txt"
+SELF_TEST_FILENAME_FALLBACK_PROFILE_NAME = "profile_3333333333333333_4444444444444444"
 SELF_TEST_CORPUS_NAME = "query-doctor-self-test-corpus"
 SELF_TEST_DEMO_NAME = "query-doctor-self-test-demo"
 SELF_TEST_REPORT_NAME = "diagnosis_self_test.md"
 SELF_TEST_CORPUS_SMOKE_NAME = "corpus_self_test.json"
+SELF_TEST_EXPECTED_CASE_COUNT = 2
 INSTALLED_CORE_COMMANDS = (
     "query-doctor-self-test",
     "query-doctor-analyze",
@@ -173,10 +176,15 @@ def safe_output_snippet(text: str, *, max_chars: int = 500) -> str:
     return cleaned[: max_chars - 3] + "..."
 
 
-def synthetic_profile_text(query_id: str = DEFAULT_QUERY_ID) -> str:
-    return f"""Query Runtime Profile
-Query ID: {query_id}
-User: query_doctor_self_test_user
+def synthetic_profile_text(
+    query_id: str = DEFAULT_QUERY_ID, *, include_query_id_header: bool = True
+) -> str:
+    header = "Query Runtime Profile\n"
+    if include_query_id_header:
+        header += f"Query ID: {query_id}\n"
+    return (
+        header
+        + """User: query_doctor_self_test_user
 Request Pool: query_doctor_self_test_pool
 Start Time: 2026-06-14 10:00:00.000000000
 End Time: 2026-06-14 10:05:00.000000000
@@ -198,11 +206,24 @@ TotalTime: 5m
 TotalBytesRead: 12.00 GiB
 TotalBytesSent: 2.00 GiB
 """
+    )
 
 
 def write_profile(work_dir: Path) -> Path:
     profile_path = work_dir / SELF_TEST_PROFILE_NAME
     profile_path.write_text(synthetic_profile_text(), encoding="utf-8")
+    return profile_path
+
+
+def write_filename_fallback_profile(work_dir: Path) -> Path:
+    profile_path = work_dir / SELF_TEST_FILENAME_FALLBACK_PROFILE_NAME
+    profile_path.write_text(
+        synthetic_profile_text(
+            FILENAME_FALLBACK_QUERY_ID,
+            include_query_id_header=False,
+        ),
+        encoding="utf-8",
+    )
     return profile_path
 
 
@@ -287,6 +308,55 @@ def check_profile_analysis(
     return SelfTestCheck("profile_analysis", "One-profile analysis", "OK"), corpus_dir, case_dir
 
 
+def check_profile_filename_fallback(
+    *,
+    bin_dir: Path,
+    work_dir: Path,
+    corpus_dir: Path,
+    env: dict[str, str],
+    timeout_sec: float,
+) -> SelfTestCheck:
+    profile_path = write_filename_fallback_profile(work_dir)
+    analyze = installed_executable(bin_dir, "query-doctor-analyze")
+    run_command(
+        [
+            str(analyze),
+            "--profile-text",
+            str(profile_path),
+            "--out",
+            str(corpus_dir),
+            "--redact-identifiers",
+        ],
+        cwd=work_dir,
+        env=env,
+        timeout_sec=timeout_sec,
+        label="query-doctor-analyze filename fallback profile",
+    )
+    case_dir = corpus_dir / FILENAME_FALLBACK_QUERY_ID.replace(":", "_")
+    for name in ("analysis_facts.md", "analysis.json", "query_metadata.json", "profile_digest.md"):
+        if not (case_dir / name).is_file():
+            raise SelfTestFailure(f"filename fallback analysis did not write {name}")
+    try:
+        metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
+        analysis = json.loads((case_dir / "analysis.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SelfTestFailure("filename fallback analysis output was not readable") from exc
+    if metadata.get("query_id") != FILENAME_FALLBACK_QUERY_ID:
+        raise SelfTestFailure("filename fallback profile used an unexpected Query ID")
+    if metadata.get("profile_query_id_source") != "impala_web_profile_filename":
+        raise SelfTestFailure("filename fallback profile did not use the Web UI filename Query ID")
+    if metadata.get("profile_filename_query_id_verified") is not True:
+        raise SelfTestFailure("filename fallback profile filename was not verified")
+    operators = analysis.get("operators")
+    if not isinstance(operators, list) or len(operators) != 2:
+        raise SelfTestFailure("filename fallback profile did not parse expected operators")
+    return SelfTestCheck(
+        "filename_fallback_profile",
+        "Impala Web UI filename fallback",
+        "OK",
+    )
+
+
 def check_web_rendering(*, work_dir: Path, corpus_dir: Path) -> SelfTestCheck:
     from query_doctor.cli import web as web_cli
     from query_doctor.web.config import validate_web_startup_config
@@ -316,6 +386,8 @@ def check_web_rendering(*, work_dir: Path, corpus_dir: Path) -> SelfTestCheck:
     for expected in ("Exported Profiles", "All analyzed", DEFAULT_QUERY_ID):
         if expected not in home.body:
             raise SelfTestFailure("web home route did not include analyzed profile summary")
+    if FILENAME_FALLBACK_QUERY_ID not in home.body:
+        raise SelfTestFailure("web home route did not include the filename fallback profile")
     if DEFAULT_QUERY_ID not in details.body:
         raise SelfTestFailure("web Details route did not include the self-test query")
     for forbidden in ("Query Runtime Profile", str(work_dir), str(corpus_dir)):
@@ -325,6 +397,10 @@ def check_web_rendering(*, work_dir: Path, corpus_dir: Path) -> SelfTestCheck:
     query_details = route_get_request(f"/query/details/{quoted_query_id}", settings, store)
     if query_details is None or query_details.status != 200:
         raise SelfTestFailure("Known Query ID Details route did not render")
+    fallback_query_id = quote(FILENAME_FALLBACK_QUERY_ID, safe="")
+    fallback_details = route_get_request(f"/query/details/{fallback_query_id}", settings, store)
+    if fallback_details is None or fallback_details.status != 200:
+        raise SelfTestFailure("filename fallback Known Query ID Details route did not render")
     return SelfTestCheck("web_rendering", "Local web rendering", "OK")
 
 
@@ -371,6 +447,7 @@ def check_corpus_smoke(
         [
             str(corpus_smoke),
             str(corpus_dir),
+            "--keep-generated",
             "--json-out",
             str(summary_path),
             "--fail-on-analyzer-error",
@@ -387,8 +464,8 @@ def check_corpus_smoke(
         raise SelfTestFailure("corpus smoke summary was not written") from exc
     totals = summary.get("totals")
     cases_scanned = totals.get("cases_scanned") if isinstance(totals, dict) else None
-    if cases_scanned != 1:
-        raise SelfTestFailure("corpus smoke did not inspect the self-test case")
+    if cases_scanned != SELF_TEST_EXPECTED_CASE_COUNT:
+        raise SelfTestFailure("corpus smoke did not inspect all self-test cases")
     return SelfTestCheck("corpus_smoke", "Corpus smoke", "OK")
 
 
@@ -419,6 +496,16 @@ def run_self_test(args: argparse.Namespace, work_dir: Path) -> list[SelfTestChec
     check, corpus_dir, case_dir = check_profile_analysis(
         bin_dir=bin_dir,
         work_dir=work_dir,
+        env=env,
+        timeout_sec=args.timeout_sec,
+    )
+    checks.append(check)
+    output_check(check, json_mode=args.json)
+
+    check = check_profile_filename_fallback(
+        bin_dir=bin_dir,
+        work_dir=work_dir,
+        corpus_dir=corpus_dir,
         env=env,
         timeout_sec=args.timeout_sec,
     )

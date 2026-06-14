@@ -33,10 +33,11 @@ query-doctor-web --corpus-dir cases/cm-corpus
 ```
 
 После установки запустите `query-doctor-self-test`: он проверяет installed
-console scripts, synthetic demo generation, анализ одного профиля, local web
-rendering, deterministic report generation и corpus smoke. Команда использует
-только synthetic local data и не обращается к Cloudera Manager, impalad, Spark,
-Trino, Prometheus, Ollama или external LLM services.
+console scripts, synthetic demo generation, анализ одного профиля, fallback по
+имени скачанного Impala Web UI профиля, local web rendering, deterministic
+report generation и corpus smoke. Команда использует только synthetic local
+data и не обращается к Cloudera Manager, impalad, Spark, Trino, Prometheus,
+Ollama или external LLM services.
 
 Для пути анализа профиля нужен один экспортированный Impala text profile; не
 нужны Cloudera Manager, Kerberos, local config, browser upload, Prometheus или
@@ -155,9 +156,9 @@ query-doctor-self-test
 
 `query-doctor-self-test` - confidence check установленного пакета. Он использует
 synthetic local data и проверяет packaged console scripts, анализ одного
-профиля, local web rendering, deterministic reports и corpus smoke без доступа к
-Cloudera Manager, impalad, Spark, Trino, Prometheus, Ollama или external LLM
-services.
+профиля, fallback по имени скачанного Impala Web UI профиля, local web
+rendering, deterministic reports и corpus smoke без доступа к Cloudera Manager,
+impalad, Spark, Trino, Prometheus, Ollama или external LLM services.
 
 Для локальной разработки из checkout:
 

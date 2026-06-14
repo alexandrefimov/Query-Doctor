@@ -64,6 +64,44 @@ def test_self_test_profile_fixture_is_analyzable_without_repo_fixture(tmp_path):
     assert (case_dir / "query_metadata.json").is_file()
 
 
+def test_self_test_filename_fallback_profile_is_analyzable_without_header(tmp_path):
+    profile_path = tmp_path / self_test.SELF_TEST_FILENAME_FALLBACK_PROFILE_NAME
+    out_dir = tmp_path / "query-doctor-self-test-corpus"
+    profile_path.write_text(
+        self_test.synthetic_profile_text(
+            self_test.FILENAME_FALLBACK_QUERY_ID,
+            include_query_id_header=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "query_doctor.cli.analyze_profile",
+            "--profile-text",
+            str(profile_path),
+            "--out",
+            str(out_dir),
+            "--redact-identifiers",
+        ],
+        cwd=REPO_DIR,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    case_dir = out_dir / self_test.FILENAME_FALLBACK_QUERY_ID.replace(":", "_")
+    metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
+    analysis = json.loads((case_dir / "analysis.json").read_text(encoding="utf-8"))
+    assert metadata["profile_query_id_source"] == "impala_web_profile_filename"
+    assert metadata["profile_filename_query_id_verified"] is True
+    assert len(analysis["operators"]) == 2
+
+
 def test_installed_bin_dir_prefers_console_script_location(tmp_path, monkeypatch):
     bin_dir = tmp_path / "venv-bin"
     bin_dir.mkdir()
@@ -75,7 +113,7 @@ def test_installed_bin_dir_prefers_console_script_location(tmp_path, monkeypatch
     assert self_test.installed_bin_dir(SimpleNamespace(bin_dir=None)) == bin_dir.resolve()
 
 
-def test_self_test_runs_through_console_script_wrappers(tmp_path):
+def test_self_test_runs_through_console_script_wrappers(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for script_name, module_name in SCRIPT_MODULES.items():
@@ -95,6 +133,9 @@ def test_self_test_runs_through_console_script_wrappers(tmp_path):
     )
 
     assert exit_code == 0
+    summary = json.loads(capsys.readouterr().out)
+    check_ids = {check["id"] for check in summary["checks"]}
+    assert "filename_fallback_profile" in check_ids
     assert (work_dir / self_test.SELF_TEST_DEMO_NAME / "batch_summary.json").is_file()
     case_dir = (
         work_dir
@@ -105,8 +146,17 @@ def test_self_test_runs_through_console_script_wrappers(tmp_path):
         )
     )
     assert (case_dir / self_test.SELF_TEST_REPORT_NAME).is_file()
+    fallback_case_dir = (
+        work_dir
+        / self_test.SELF_TEST_CORPUS_NAME
+        / self_test.FILENAME_FALLBACK_QUERY_ID.replace(
+            ":",
+            "_",
+        )
+    )
+    assert (fallback_case_dir / "analysis_facts.md").is_file()
     corpus_summary = json.loads((work_dir / self_test.SELF_TEST_CORPUS_SMOKE_NAME).read_text())
-    assert corpus_summary["totals"]["cases_scanned"] == 1
+    assert corpus_summary["totals"]["cases_scanned"] == self_test.SELF_TEST_EXPECTED_CASE_COUNT
 
 
 def _write_wrapper(path: Path, module_name: str) -> None:
