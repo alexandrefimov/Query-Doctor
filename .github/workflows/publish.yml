@@ -73,8 +73,8 @@ jobs:
         run: |
           QUERY_DOCTOR_INSTALLED_CLI_BIN=/tmp/query-doctor-publish-wheel-venv/bin python -m pytest -q tests/test_installed_cli_contract.py
 
-      - name: Smoke installed one-profile intake
-        run: python scripts/installed_one_profile_smoke.py --bin-dir /tmp/query-doctor-publish-wheel-venv/bin
+      - name: Smoke installed user paths
+        run: python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-publish-wheel-venv/bin
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

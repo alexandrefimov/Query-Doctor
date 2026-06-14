@@ -34,13 +34,18 @@ def test_installed_one_profile_smoke_help_is_available() -> None:
 
 
 def test_package_release_workflows_run_installed_one_profile_smoke() -> None:
+    wrapper_script = "scripts/installed_user_paths_smoke.py"
+    wrapper_text = (ROOT / wrapper_script).read_text(encoding="utf-8")
+    assert SCRIPT in wrapper_text
+
     for workflow in WORKFLOWS:
         text = (ROOT / workflow).read_text(encoding="utf-8")
-        assert SCRIPT in text, workflow
+        assert wrapper_script in text, workflow
 
 
 def test_release_checklist_records_installed_one_profile_smoke() -> None:
     text = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
 
-    assert SCRIPT in text
-    assert "installed one-profile path" in text
+    assert "scripts/installed_user_paths_smoke.py" in text
+    assert "one-profile" in text
+    assert "Quickstart path" in text

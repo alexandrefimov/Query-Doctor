@@ -20,6 +20,13 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Package, release-gate, and publish workflows now run an installed-wheel
+  user-path smoke matrix after wheel installation. The matrix starts from the
+  installed console scripts, clears local source-path and CM secret
+  assumptions, and exercises Quickstart/manual profile intake, corpus web
+  rendering, deterministic report/pipeline/optimizer paths, demo generation,
+  CM and Impala dry-run collectors, direct Impala discover/profile smokes
+  against a local fake daemon, and bounded Trino/Spark compact fixture paths.
 - `query-doctor-web --corpus-dir` now starts without Cloudera Manager settings
   when the corpus already contains complete `query-doctor-analyze
   --profile-text` manual-profile cases, and the Diagnose page renders those

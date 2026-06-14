@@ -73,5 +73,5 @@ jobs:
           /tmp/query-doctor-release-wheel-venv/bin/query-doctor-report --help
           /tmp/query-doctor-release-wheel-venv/bin/query-doctor-optimize-query --help
 
-      - name: Smoke installed one-profile intake
-        run: python scripts/installed_one_profile_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
+      - name: Smoke installed user paths
+        run: python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
