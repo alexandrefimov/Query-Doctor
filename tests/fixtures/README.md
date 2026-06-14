@@ -21,6 +21,12 @@ raw profiles, credentials, local config, or real case paths.
 | `no_action_cards_case/` | Facts without action cards. | Report recommendation fallback behavior. |
 | `raw_cm_profile_case/` | Redaction and raw Cloudera Manager profile handling. | Collector/analyzer safety tests. |
 
+`impala_web_ui_exports/` contains sanitized text-profile exports shaped like
+Impala Web UI downloads. The installed-package smoke uses them to cover
+embedded Query ID intake, strict `profile_<query-id-high>_<query-id-low>`
+filename fallback, and an accepted zero-operator profile without real SQL,
+users, hosts, paths, credentials, or production payloads.
+
 ## Metadata Context Fixture
 
 `cte_context_case/` contains a sanitized profile plus a bounded Impala context

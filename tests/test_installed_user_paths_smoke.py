@@ -49,6 +49,7 @@ def test_installed_user_paths_smoke_script_covers_public_workflow_families():
 
     assert "scripts/installed_one_profile_smoke.py" in text
     assert "scripts/installed_web_e2e_smoke.py" in text
+    assert "scripts/installed_impala_web_ui_exports_smoke.py" in text
     assert "QD_COMMAND_BACKEND" in text
     assert "PYTHONPATH" in text
     assert "CM_" in text

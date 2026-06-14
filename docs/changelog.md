@@ -37,6 +37,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   owner users in one bounded scan, while still excluding service/host
   principals and keeping raw reveal governed by viewer identity rather than the
   collection credential.
+- Installed-wheel user-path smoke now also replays a sanitized Impala Web UI
+  export corpus through packaged `query-doctor-analyze`,
+  `query-doctor-corpus-smoke`, and a real packaged `query-doctor-web` server.
+  The corpus covers embedded Query ID intake, strict Web UI filename-derived
+  Query IDs, and accepted zero-operator profile exports.
 - Direct Impala Recent discovery now ignores inconsistent daemon query-list
   `end_time` values that precede `start_time`, using the sane start timestamp
   for window filtering so fresh SELECT queries are not dropped when the daemon

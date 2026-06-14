@@ -1,0 +1,15 @@
+Query Runtime Profile
+User: synthetic_empty_user
+Request Pool: synthetic_empty_pool
+Start Time: 2026-06-14 12:00:00.000000000
+End Time: 2026-06-14 12:01:00.000000000
+Coordinator: synthetic-impalad.example.invalid:22000
+
+Sql Statement:
+SELECT 1
+
+Query Timeline:
+   Query submitted: 0ns
+   Query finished: 1m
+
+TotalTime: 1m
