@@ -30,6 +30,7 @@ def test_installed_user_paths_smoke_script_covers_public_workflow_families():
         "query-doctor-analyze",
         "query-doctor-web",
         "query-doctor-report",
+        "query-doctor-self-test",
         "query-doctor-pipeline",
         "query-doctor-optimize-query",
         "query-doctor-corpus-smoke",

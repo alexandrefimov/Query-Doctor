@@ -31,6 +31,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   owner/keytab collection choices. The current local-first mode still maps raw
   viewer subjects to collectable owners, while public demo mode remains
   unauthenticated and fail-closed for raw viewer subjects.
+- Added `query-doctor-self-test`, an installed-package confidence check that
+  exercises packaged console scripts, synthetic demo generation, one-profile
+  analysis, local web rendering, deterministic report generation, and corpus
+  smoke using synthetic local data without external services or LLM calls.
 - Package, release-gate, and publish workflows now run an installed-wheel
   user-path smoke matrix after wheel installation. The matrix starts from the
   installed console scripts, clears local source-path and CM secret

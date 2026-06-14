@@ -53,6 +53,7 @@ WORKFLOW_COMMANDS = (
     "query-doctor-analyze",
     "query-doctor-web",
     "query-doctor-report",
+    "query-doctor-self-test",
     "query-doctor-pipeline",
     "query-doctor-optimize-query",
     "query-doctor-corpus-smoke",
@@ -393,6 +394,34 @@ def smoke_demo(
     )
     assert_file(demo_dir / "batch_summary.json", "installed demo batch summary")
     print_ok("public demo generation path")
+
+
+def smoke_self_test(
+    bin_dir: Path,
+    work_dir: Path,
+    env: dict[str, str],
+    timeout_sec: float,
+) -> None:
+    self_test = installed_executable(bin_dir, "query-doctor-self-test")
+    self_test_dir = work_dir / "query-doctor-self-test-command"
+    result = run_command(
+        [
+            str(self_test),
+            "--work-dir",
+            str(self_test_dir),
+            "--timeout-sec",
+            str(timeout_sec),
+            "--json",
+        ],
+        cwd=work_dir,
+        env=env,
+        timeout_sec=timeout_sec,
+        label="installed self-test command",
+    )
+    summary = json.loads(result.stdout)
+    if summary.get("status") != "OK":
+        raise SystemExit("[installed-user-paths-smoke] self-test command did not pass")
+    print_ok("self-test command path")
 
 
 class FakeImpalaHandler(BaseHTTPRequestHandler):
@@ -765,6 +794,7 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
         bin_dir, work_dir, env, args.timeout_sec, args.query_id
     )
     smoke_case_commands(bin_dir, work_dir, env, args.timeout_sec, source_case)
+    smoke_self_test(bin_dir, work_dir, env, args.timeout_sec)
     smoke_optimizer(bin_dir, work_dir, env, args.timeout_sec)
     smoke_demo(bin_dir, work_dir, env, args.timeout_sec)
     smoke_cm_dry_run(bin_dir, work_dir, env, args.timeout_sec)

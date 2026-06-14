@@ -25,18 +25,25 @@ Recent scan - основной workflow. Диагностика по Query ID в
 
 ```bash
 python -m pip install query-doctor
+query-doctor-self-test
 query-doctor-analyze \
   --profile-text ./exported-impala-profile.txt \
   --out cases/cm-corpus
 query-doctor-web --corpus-dir cases/cm-corpus
 ```
 
-Для этого первого пути нужен один экспортированный Impala text profile; не нужны
-Cloudera Manager, Kerberos, local config, browser upload, Prometheus или LLM.
-Direct Impala Web UI download с именем `profile_<query-id-high>_<query-id-low>`
-можно использовать как есть. Web UI автоматически открывает staged cases из
-`--corpus-dir`. Demo и Cloudera Manager варианты описаны ниже в [Выберите первый
-путь](#выберите-первый-путь).
+После установки запустите `query-doctor-self-test`: он проверяет installed
+console scripts, synthetic demo generation, анализ одного профиля, local web
+rendering, deterministic report generation и corpus smoke. Команда использует
+только synthetic local data и не обращается к Cloudera Manager, impalad, Spark,
+Trino, Prometheus, Ollama или external LLM services.
+
+Для пути анализа профиля нужен один экспортированный Impala text profile; не
+нужны Cloudera Manager, Kerberos, local config, browser upload, Prometheus или
+LLM. Direct Impala Web UI download с именем
+`profile_<query-id-high>_<query-id-low>` можно использовать как есть. Web UI
+автоматически открывает staged cases из `--corpus-dir`. Demo и Cloudera Manager
+варианты описаны ниже в [Выберите первый путь](#выберите-первый-путь).
 
 ## Что это / что это не
 
@@ -143,7 +150,14 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install query-doctor
+query-doctor-self-test
 ```
+
+`query-doctor-self-test` - confidence check установленного пакета. Он использует
+synthetic local data и проверяет packaged console scripts, анализ одного
+профиля, local web rendering, deterministic reports и corpus smoke без доступа к
+Cloudera Manager, impalad, Spark, Trino, Prometheus, Ollama или external LLM
+services.
 
 Для локальной разработки из checkout:
 
@@ -308,6 +322,8 @@ collection. Metadata, CM time-series, direct Impala, Prometheus или LLM setti
 
 ## Основные workflows
 
+- `query-doctor-self-test --help`: local installed-package confidence check по
+  synthetic data и core offline user paths.
 - `query-doctor-web --help`: local browser UI для Recent scan, Running now,
   одного Known Query ID, Details pages, explicit report actions и explicit
   details-page optimizer actions.

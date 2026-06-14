@@ -30,17 +30,25 @@ or echo submitted SQL.
 
 ```bash
 python -m pip install query-doctor
+query-doctor-self-test
 query-doctor-analyze \
   --profile-text ./exported-impala-profile.txt \
   --out cases/cm-corpus
 query-doctor-web --corpus-dir cases/cm-corpus
 ```
 
-This first path needs one exported Impala text profile and no Cloudera Manager,
-Kerberos, local config, browser upload, Prometheus, or LLM. A direct Impala Web
-UI download named `profile_<query-id-high>_<query-id-low>` can be used as-is.
-The web UI opens staged cases from `--corpus-dir` automatically. See [Pick A
-First Path](#pick-a-first-path) for the demo and Cloudera Manager options.
+Run `query-doctor-self-test` after installation to verify the installed console
+scripts, synthetic demo generation, one-profile analysis, local web rendering,
+deterministic report generation, and corpus smoke path. It uses synthetic local
+data only and does not contact Cloudera Manager, impalad, Spark, Trino,
+Prometheus, Ollama, or external LLM services.
+
+The profile-analysis path needs one exported Impala text profile and no
+Cloudera Manager, Kerberos, local config, browser upload, Prometheus, or LLM. A
+direct Impala Web UI download named `profile_<query-id-high>_<query-id-low>` can
+be used as-is. The web UI opens staged cases from `--corpus-dir` automatically.
+See [Pick A First Path](#pick-a-first-path) for the demo and Cloudera Manager
+options.
 
 ## What It Is / Is Not
 
@@ -134,7 +142,14 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install query-doctor
+query-doctor-self-test
 ```
+
+`query-doctor-self-test` is the installed-package confidence check. It uses
+synthetic local data to exercise packaged console scripts, one-profile analysis,
+local web rendering, deterministic reports, and corpus smoke without contacting
+Cloudera Manager, impalad, Spark, Trino, Prometheus, Ollama, or external LLM
+services.
 
 For local development from a checkout:
 
@@ -307,6 +322,8 @@ settings only after this basic scan path works. See
 
 ## Main Workflows
 
+- `query-doctor-self-test --help`: local installed-package confidence check
+  over synthetic data and core offline user paths.
 - `query-doctor-web --help`: local browser UI for Recent scan, Running now, one
   Known Query ID, Details pages, explicit report actions, and explicit
   details-page optimizer actions.
