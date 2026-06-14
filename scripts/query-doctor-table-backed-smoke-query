@@ -12,6 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from query_doctor.impala.metadata_policy import quote_table_identifier
+from query_doctor.impala.shell_runner import build_impala_shell_argv, run_impala_shell
+
 
 DEFAULT_LIMIT = 100_000
 DEFAULT_OUT = Path(os.environ.get("TMPDIR") or "/tmp") / "query-doctor-table-backed-smoke.sql"
@@ -41,6 +48,25 @@ class TableCandidate:
     table: str
     mtime_ns: int
     ordinal: int
+
+
+@dataclass(frozen=True)
+class MetadataValidationConfig:
+    coordinator: str
+    impala_shell: str
+    auth: str
+    protocol: str | None
+    kerberos_service_name: str | None
+    kerberos_host_fqdn: str | None
+    ssl: bool
+    ca_cert: str | None
+    timeout_sec: int
+
+
+@dataclass(frozen=True)
+class CandidateSelection:
+    candidate: TableCandidate
+    validation_attempts: int
 
 
 def positive_int(value: str) -> int:
@@ -81,6 +107,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         default=DEFAULT_LIMIT,
         help=f"LIMIT inside the generated sample CTE. Default: {DEFAULT_LIMIT}.",
+    )
+    parser.add_argument(
+        "--validate-with-metadata",
+        action="store_true",
+        help=(
+            "Before writing SQL, validate candidate tables with bounded read-only "
+            "SHOW TABLE STATS through configured impala-shell metadata settings."
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help=(
+            "Local Query Doctor config for --validate-with-metadata. Defaults to "
+            "$QD_CONFIG, then ~/.qdcreds/query-doctor-config.json."
+        ),
+    )
+    parser.add_argument(
+        "--cluster",
+        "--config-cluster",
+        dest="cluster",
+        help="Cluster id from config clusters[] for --validate-with-metadata.",
+    )
+    parser.add_argument(
+        "--metadata-timeout-sec",
+        type=positive_int,
+        default=30,
+        help="Timeout for each validation SHOW TABLE STATS statement. Default: %(default)s.",
     )
     return parser.parse_args(argv)
 
@@ -177,13 +231,106 @@ def collect_candidates(paths: list[Path]) -> list[TableCandidate]:
     return candidates
 
 
-def select_candidate(candidates: list[TableCandidate]) -> TableCandidate:
+def sorted_candidates(candidates: list[TableCandidate]) -> list[TableCandidate]:
+    return sorted(candidates, key=lambda item: (item.mtime_ns, -item.ordinal), reverse=True)
+
+
+def select_candidate(candidates: list[TableCandidate]) -> CandidateSelection:
     if not candidates:
         raise SmokeQueryError(
             "No non-placeholder table-backed metadata reference was found. "
             "Run a direct Recent metadata smoke first, then retry."
         )
-    return max(candidates, key=lambda item: (item.mtime_ns, -item.ordinal))
+    return CandidateSelection(candidate=sorted_candidates(candidates)[0], validation_attempts=0)
+
+
+def default_config_path() -> Path:
+    if os.environ.get("QD_CONFIG"):
+        return Path(os.environ["QD_CONFIG"])
+    return Path.home() / ".qdcreds" / "query-doctor-config.json"
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SmokeQueryError("Config file was not found. Set --config or QD_CONFIG.") from exc
+    except json.JSONDecodeError as exc:
+        raise SmokeQueryError("Config file is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise SmokeQueryError("Config root must be a JSON object.")
+    return payload
+
+
+def selected_config_values(config: dict[str, Any], cluster_id: str | None) -> dict[str, Any]:
+    if cluster_id:
+        clusters = [item for item in config.get("clusters") or [] if isinstance(item, dict)]
+        for cluster in clusters:
+            if str(cluster.get("id") or "") == cluster_id:
+                return {**config, **cluster}
+        raise SmokeQueryError("Requested cluster id was not found in config.")
+    return config
+
+
+def metadata_validation_config(args: argparse.Namespace) -> MetadataValidationConfig:
+    config = load_config(args.config or default_config_path())
+    values = selected_config_values(config, args.cluster)
+    coordinator = str(values.get("metadata_coordinator") or "").strip()
+    impala_shell = str(values.get("metadata_impala_shell") or "impala-shell").strip()
+    if not coordinator:
+        raise SmokeQueryError("Metadata validation requires metadata_coordinator in config.")
+    if not impala_shell:
+        raise SmokeQueryError("Metadata validation requires metadata_impala_shell in config.")
+    return MetadataValidationConfig(
+        coordinator=coordinator,
+        impala_shell=impala_shell,
+        auth=str(values.get("metadata_auth") or "kerberos").strip() or "kerberos",
+        protocol=str(values.get("metadata_protocol") or "").strip() or None,
+        kerberos_service_name=str(values.get("metadata_kerberos_service_name") or "").strip()
+        or None,
+        kerberos_host_fqdn=str(values.get("metadata_kerberos_host_fqdn") or "").strip() or None,
+        ssl=bool(values.get("metadata_ssl") or False),
+        ca_cert=str(values.get("metadata_ca_cert") or "").strip() or None,
+        timeout_sec=args.metadata_timeout_sec,
+    )
+
+
+def candidate_passes_metadata_validation(
+    candidate: TableCandidate,
+    config: MetadataValidationConfig,
+) -> bool:
+    sql = "SHOW TABLE STATS " + quote_table_identifier(candidate.table)
+    argv = build_impala_shell_argv(
+        impala_shell=config.impala_shell,
+        coordinator=config.coordinator,
+        auth=config.auth,
+        sql=sql,
+        protocol=config.protocol,
+        ssl=config.ssl,
+        ca_cert=config.ca_cert,
+        kerberos_service_name=config.kerberos_service_name,
+        kerberos_host_fqdn=config.kerberos_host_fqdn,
+    )
+    completed = run_impala_shell(argv, timeout_sec=config.timeout_sec)
+    return completed.returncode == 0
+
+
+def select_validated_candidate(
+    candidates: list[TableCandidate],
+    config: MetadataValidationConfig,
+) -> CandidateSelection:
+    attempts = 0
+    for candidate in sorted_candidates(candidates):
+        attempts += 1
+        try:
+            if candidate_passes_metadata_validation(candidate, config):
+                return CandidateSelection(candidate=candidate, validation_attempts=attempts)
+        except Exception:
+            continue
+    raise SmokeQueryError(
+        "No candidate table passed metadata validation. "
+        "Rerun a direct Recent metadata smoke or widen the search root."
+    )
 
 
 def quote_identifier(value: str) -> str:
@@ -222,8 +369,11 @@ def main(argv: list[str] | None = None) -> int:
     paths = analysis_paths(search_roots)
     candidates = collect_candidates(paths)
     try:
-        candidate = select_candidate(candidates)
-        write_query(args.out, build_query(candidate.table, limit=args.limit))
+        if args.validate_with_metadata:
+            selection = select_validated_candidate(candidates, metadata_validation_config(args))
+        else:
+            selection = select_candidate(candidates)
+        write_query(args.out, build_query(selection.candidate.table, limit=args.limit))
     except SmokeQueryError as exc:
         print(f"[table-backed-smoke-query] {exc}", file=sys.stderr)
         return 2
@@ -231,6 +381,13 @@ def main(argv: list[str] | None = None) -> int:
     print("[table-backed-smoke-query] generated=ok")
     print(f"[table-backed-smoke-query] analysis_files_scanned={len(paths)}")
     print(f"[table-backed-smoke-query] candidate_tables={len(candidates)}")
+    print(
+        "[table-backed-smoke-query] metadata_validation="
+        + ("enabled" if args.validate_with_metadata else "disabled")
+    )
+    print(
+        f"[table-backed-smoke-query] metadata_validation_attempts={selection.validation_attempts}"
+    )
     print(f"[table-backed-smoke-query] limit={args.limit}")
     print("[table-backed-smoke-query] output=written")
     return 0

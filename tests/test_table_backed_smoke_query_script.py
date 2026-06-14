@@ -24,6 +24,44 @@ def write_analysis(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def write_config(path: Path, impala_shell: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "clusters": [
+                    {
+                        "id": "direct",
+                        "metadata_coordinator": "coordinator.example.com:21000",
+                        "metadata_impala_shell": str(impala_shell),
+                        "metadata_auth": "kerberos",
+                        "metadata_protocol": "beeswax",
+                        "metadata_kerberos_service_name": "hive",
+                        "metadata_kerberos_host_fqdn": "coordinator.example.com",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_fake_impala_shell(path: Path) -> None:
+    path.write_text(
+        """#!/usr/bin/env python3
+import sys
+
+sql = sys.argv[sys.argv.index("-q") + 1] if "-q" in sys.argv else ""
+if "valid_fact" in sql:
+    print("fake metadata ok for valid_fact")
+    raise SystemExit(0)
+print("fake metadata failed for missing_fact", file=sys.stderr)
+raise SystemExit(1)
+""",
+        encoding="utf-8",
+    )
+    os.chmod(path, 0o755)
+
+
 def test_table_backed_smoke_query_writes_sql_without_echoing_table_or_paths(tmp_path):
     root = tmp_path / "cases"
     out = tmp_path / "generated" / "query.sql"
@@ -116,3 +154,92 @@ def test_table_backed_smoke_query_prefers_latest_analysis_candidate(tmp_path):
     assert "old_fact" not in sql
     assert "mart" not in result.stdout
     assert "new_fact" not in result.stdout
+
+
+def test_table_backed_smoke_query_metadata_validation_skips_stale_candidate(tmp_path):
+    root = tmp_path / "cases"
+    out = tmp_path / "query.sql"
+    config = tmp_path / "config.json"
+    fake_shell = tmp_path / "fake-impala-shell"
+    write_fake_impala_shell(fake_shell)
+    write_config(config, fake_shell)
+    stale = root / "case-002" / "analysis.json"
+    valid = root / "case-001" / "analysis.json"
+    write_analysis(
+        stale,
+        {"table_metadata_context": {"tables": [{"table": "analytics.missing_fact"}]}},
+    )
+    write_analysis(
+        valid,
+        {"table_metadata_context": {"tables": [{"table": "mart.valid_fact"}]}},
+    )
+    os.utime(valid, (1000, 1000))
+    os.utime(stale, (2000, 2000))
+
+    result = run_helper(
+        [
+            "--search-root",
+            str(root),
+            "--out",
+            str(out),
+            "--validate-with-metadata",
+            "--config",
+            str(config),
+            "--cluster",
+            "direct",
+        ]
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 0, combined_output
+    assert "metadata_validation=enabled" in result.stdout
+    assert "metadata_validation_attempts=2" in result.stdout
+    assert "analytics" not in combined_output
+    assert "missing_fact" not in combined_output
+    assert "mart" not in combined_output
+    assert "valid_fact" not in combined_output
+    assert str(root) not in combined_output
+    assert str(out) not in combined_output
+    assert str(config) not in combined_output
+    assert "fake metadata failed" not in combined_output
+    sql = out.read_text(encoding="utf-8")
+    assert "FROM `mart`.`valid_fact`" in sql
+    assert "missing_fact" not in sql
+
+
+def test_table_backed_smoke_query_metadata_validation_fails_safely(tmp_path):
+    root = tmp_path / "cases"
+    out = tmp_path / "query.sql"
+    config = tmp_path / "config.json"
+    fake_shell = tmp_path / "fake-impala-shell"
+    write_fake_impala_shell(fake_shell)
+    write_config(config, fake_shell)
+    write_analysis(
+        root / "case-001" / "analysis.json",
+        {"table_metadata_context": {"tables": [{"table": "analytics.missing_fact"}]}},
+    )
+
+    result = run_helper(
+        [
+            "--search-root",
+            str(root),
+            "--out",
+            str(out),
+            "--validate-with-metadata",
+            "--config",
+            str(config),
+            "--cluster",
+            "direct",
+        ]
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "No candidate table passed metadata validation" in result.stderr
+    assert "analytics" not in combined_output
+    assert "missing_fact" not in combined_output
+    assert "fake metadata failed" not in combined_output
+    assert str(root) not in combined_output
+    assert str(out) not in combined_output
+    assert str(config) not in combined_output
+    assert not out.exists()
