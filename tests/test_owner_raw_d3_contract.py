@@ -123,10 +123,40 @@ def assert_raw_markers_hidden(body: str) -> None:
             False,
             False,
         ),
+        (
+            {"Host": "127.0.0.1", "X-QD-Viewer": "analyst@EXAMPLE.COM"},
+            403,
+            False,
+            False,
+        ),
+        (
+            {
+                "Host": "127.0.0.1",
+                "X-QD-Viewer": "CN=Analyst One,OU=Users,DC=example,DC=com",
+            },
+            403,
+            False,
+            False,
+        ),
+        (
+            {"Host": "127.0.0.1", "X-QD-Viewer": "group:analytics"},
+            403,
+            False,
+            False,
+        ),
         ({"Host": "127.0.0.1", "X-QD-Viewer": "other_user"}, 403, False, False),
         ({"Host": "127.0.0.1", "X-QD-Viewer": "analyst"}, 200, True, True),
     ),
-    ids=("missing", "duplicate", "service-principal", "mismatch", "match"),
+    ids=(
+        "missing",
+        "duplicate",
+        "service-principal",
+        "upn",
+        "ad-distinguished-name",
+        "group-like",
+        "mismatch",
+        "match",
+    ),
 )
 def test_owner_raw_d3_viewer_header_matrix_gates_source_and_details(
     tmp_path,

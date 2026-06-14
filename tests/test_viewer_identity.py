@@ -7,6 +7,7 @@ from query_doctor.web.viewer_identity import (
     authenticated_viewer_identity,
     authenticated_viewer_identity_from_header_value,
     local_first_viewer_identity,
+    normalize_header_viewer_user,
     normalize_viewer_identity_header,
     unauthenticated_viewer_identity,
     viewer_can_see_raw_query,
@@ -100,3 +101,23 @@ def test_authenticated_viewer_identity_from_header_value_fails_closed():
     assert identity.viewer_raw_subjects == ("analyst_one",)
     assert missing.viewer_raw_subjects == ()
     assert service.viewer_raw_subjects == ()
+
+
+def test_header_viewer_identity_requires_already_normalized_simple_owner_user():
+    assert normalize_header_viewer_user(" analyst_one ") == "analyst_one"
+    assert normalize_header_viewer_user("analyst-1.v2") == "analyst-1.v2"
+
+    for value in (
+        "analyst_one@EXAMPLE.COM",
+        "analyst@example.com",
+        "analyst one",
+        "analyst,other_user",
+        "group:analytics",
+        "role=admin",
+        "CN=Analyst One,OU=Users,DC=example,DC=com",
+        "oidc|00u123456789",
+    ):
+        assert normalize_header_viewer_user(value) is None
+        identity = authenticated_viewer_identity_from_header_value(value)
+        assert identity.mode != VIEWER_IDENTITY_AUTHENTICATED
+        assert identity.viewer_raw_subjects == ()

@@ -72,15 +72,19 @@ The proxy or ingress must:
 - authenticate every request before forwarding it;
 - remove inbound copies of `viewer_identity_header`;
 - set one trusted viewer header after authentication;
-- set a simple owner user, not an email address, opaque subject, service
-  principal, host principal, group name, role, or display name;
+- set an already normalized simple owner user, such as an Active Directory
+  `sAMAccountName` or Kerberos primary, not a UPN/email address, distinguished
+  name, opaque subject, service principal, host principal, group name, role, or
+  display name;
 - avoid forwarding raw identity-provider tokens or authorization material to
   Query Doctor unless a separate non-secret field explicitly needs them.
 
 Query Doctor treats missing, invalid, service-principal, and host-principal
-viewer header values as unauthenticated. If the HTTP request exposes duplicate
-viewer header values, Query Doctor also treats the viewer as unauthenticated.
-Raw source access then fails closed.
+viewer header values as unauthenticated. UPN/email-style values, distinguished
+names, group/role-like values, opaque subjects, whitespace-separated display
+names, and comma-separated subjects are also unauthenticated. If the HTTP
+request exposes duplicate viewer header values, Query Doctor also treats the
+viewer as unauthenticated. Raw source access then fails closed.
 
 ## Runtime Checks
 
