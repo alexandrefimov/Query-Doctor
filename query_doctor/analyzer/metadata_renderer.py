@@ -31,6 +31,18 @@ def availability_label(item: dict[str, Any]) -> str:
     return "available" if item.get("available") else "missing"
 
 
+def metadata_counts_text(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    parts: list[str] = []
+    for key in sorted(value):
+        count = value.get(key)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            continue
+        parts.append(f"{key}={count}")
+    return ", ".join(parts)
+
+
 def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("table_metadata_context") or {}
     lines = ["## Table Metadata Context", ""]
@@ -43,6 +55,16 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
     read_only = context.get("read_only_statements_only")
     if read_only is not None:
         lines.append(f"- read-only statements only: {'yes' if read_only else 'no'}")
+    if context.get("statement_result_count") is not None:
+        lines.append(f"- statement result count: {context['statement_result_count']}")
+    status_counts = metadata_counts_text(context.get("statement_status_counts"))
+    if status_counts:
+        lines.append(f"- statement status counts: {status_counts}")
+    issue_counts = metadata_counts_text(context.get("statement_issue_counts"))
+    if issue_counts:
+        lines.append(f"- statement issue counts: {issue_counts}")
+    if context.get("metadata_output_limit_bytes") is not None:
+        lines.append(f"- metadata output limit bytes: {context['metadata_output_limit_bytes']}")
     if context.get("error"):
         lines.append(f"- error: {context['error']}")
     lines.append("")
