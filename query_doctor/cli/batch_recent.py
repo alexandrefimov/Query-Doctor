@@ -340,8 +340,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--source-owner-user",
+        action="append",
         help=(
-            "Query owner user allowed for owner_raw source visibility. "
+            "Query owner user allowed for owner_raw source visibility. May be passed multiple times. "
             "If omitted, a simple Kerberos principal may be used."
         ),
     )
@@ -803,10 +804,10 @@ def filter_impala_summaries_for_owner(
 ) -> list[cm_profiles.CMQuerySummary]:
     if config.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
         return summaries
-    owner_user = config.source_owner_user
-    if not owner_user:
+    owner_users = set(config.collectable_owner_users)
+    if not owner_users:
         return []
-    return [summary for summary in summaries if summary.user == owner_user]
+    return [summary for summary in summaries if summary.user in owner_users]
 
 
 def filter_impala_summaries_for_window(

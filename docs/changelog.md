@@ -25,6 +25,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   `query-doctor-analyze`, starts packaged `query-doctor-web`, fetches Diagnose,
   Details, Known Query ID Details, and static assets over HTTP, and checks that
   raw profile text and local paths stay out of browser-visible pages.
+- Local `owner_raw` Recent scans can now collect across all configured/keytab
+  owner users in one bounded scan, while still excluding service/host
+  principals and keeping raw reveal governed by viewer identity rather than the
+  collection credential.
 - Direct Impala Recent discovery now ignores inconsistent daemon query-list
   `end_time` values that precede `start_time`, using the sane start timestamp
   for window filtering so fresh SELECT queries are not dropped when the daemon

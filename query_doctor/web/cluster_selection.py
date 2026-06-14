@@ -10,6 +10,7 @@ from typing import Mapping
 from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE, normalize_cm_metrics_profile
 from query_doctor.source_visibility import (
     SOURCE_VISIBILITY_SAFE,
+    collectable_owner_users,
     normalize_source_owner_user,
     normalize_source_visibility,
     source_owner_user_from_env,
@@ -32,7 +33,6 @@ from query_doctor.web.models import (
 )
 from query_doctor.web.viewer_identity import (
     VIEWER_IDENTITY_LOCAL_FIRST,
-    collectable_owner_users,
     local_first_viewer_identity,
 )
 

@@ -121,10 +121,6 @@ def render_running_queries_run_panel(
         selected_settings = settings_for_cluster_key(settings, str(values.get("cluster_key") or ""))
     except WebError:
         selected_settings = settings
-    if getattr(selected_settings, "source_visibility", "") == "owner_raw" and not values.get(
-        "user"
-    ):
-        values["user"] = getattr(selected_settings, "source_owner_user", "") or ""
     owner_required = getattr(selected_settings, "source_visibility", "") == "owner_raw"
     user_options = user_filter_options(selected_settings)
     owner_missing = owner_required and not user_options
@@ -149,7 +145,7 @@ def render_running_queries_run_panel(
         owner_required=owner_required,
         disabled_reason=owner_missing_reason() if owner_missing else "",
         help_text=(
-            "Required owner filter for this source visibility. It is prefilled from local config."
+            "Optional owner filter for this source visibility. Empty means all configured owners."
             if owner_required
             else "Optional exact query user filter. Empty means all users."
         ),

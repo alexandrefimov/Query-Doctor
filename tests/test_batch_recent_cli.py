@@ -359,6 +359,85 @@ def test_batch_recent_owner_raw_direct_impala_filters_to_owner_user(monkeypatch,
     ] == ["aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"]
 
 
+def test_batch_recent_owner_raw_direct_impala_filters_to_collectable_owner_users(
+    monkeypatch, tmp_path
+):
+    module = load_batch_module()
+    summaries = [
+        module.cm_profiles.CMQuerySummary(
+            query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+            end_time="2026-05-12T10:15:00Z",
+            duration_ms=120000,
+            status="finished",
+            user="analyst_one",
+            query_type="QUERY",
+            statement="SELECT 1",
+        ),
+        module.cm_profiles.CMQuerySummary(
+            query_id="cccccccccccccccc:dddddddddddddddd",
+            end_time="2026-05-12T10:20:00Z",
+            duration_ms=180000,
+            status="finished",
+            user="report_user",
+            query_type="QUERY",
+            statement="SELECT 2",
+        ),
+        module.cm_profiles.CMQuerySummary(
+            query_id="eeeeeeeeeeeeeeee:ffffffffffffffff",
+            end_time="2026-05-12T10:25:00Z",
+            duration_ms=240000,
+            status="finished",
+            user="other_user",
+            query_type="QUERY",
+            statement="SELECT 3",
+        ),
+    ]
+
+    def fake_fetch_impala_query_summaries(**_kwargs):
+        return type("Result", (), {"summaries": summaries, "warnings": []})()
+
+    monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
+    args = module.parse_args(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--from-time",
+            "2026-05-12T10:00:00Z",
+            "--to-time",
+            "2026-05-12T11:00:00Z",
+            "--select-limit",
+            "5",
+            "--metadata-mode",
+            "off",
+            "--no-min-duration-filter",
+            "--source-visibility",
+            "owner_raw",
+            "--source-owner-user",
+            "report_user",
+            "--source-owner-user",
+            "analyst_one",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+
+    discovery = module.discover_candidates(config, env={})
+
+    assert config.user is None
+    assert config.source_owner_user == "report_user"
+    assert config.collectable_owner_users == ("analyst_one", "report_user")
+    assert discovery.summaries_inspected == 2
+    assert [
+        candidate.summary.query_id for candidate in discovery.candidates if candidate.selected
+    ] == [
+        "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+        "cccccccccccccccc:dddddddddddddddd",
+    ]
+
+
 def test_batch_recent_owner_raw_cm_adds_owner_user_filter(tmp_path):
     module = load_batch_module()
     args = module.parse_args(
@@ -381,7 +460,76 @@ def test_batch_recent_owner_raw_cm_adds_owner_user_filter(tmp_path):
     assert config.query_profile_source == "cm"
     assert config.user == "analyst_one"
     assert config.source_owner_user == "analyst_one"
+    assert config.collectable_owner_users == ("analyst_one",)
     assert params["filter"] == 'user = "analyst_one" AND executing = false'
+
+
+def test_batch_recent_owner_raw_cm_filters_collectable_owners_client_side(monkeypatch, tmp_path):
+    module = load_batch_module()
+    calls = []
+    summaries = [
+        module.cm_profiles.CMQuerySummary(
+            query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+            duration_ms=120000,
+            status="finished",
+            user="analyst_one",
+            query_type="QUERY",
+            statement="SELECT 1",
+        ),
+        module.cm_profiles.CMQuerySummary(
+            query_id="cccccccccccccccc:dddddddddddddddd",
+            duration_ms=180000,
+            status="finished",
+            user="report_user",
+            query_type="QUERY",
+            statement="SELECT 2",
+        ),
+        module.cm_profiles.CMQuerySummary(
+            query_id="eeeeeeeeeeeeeeee:ffffffffffffffff",
+            duration_ms=240000,
+            status="finished",
+            user="other_user",
+            query_type="QUERY",
+            statement="SELECT 3",
+        ),
+    ]
+
+    def fake_fetch_page(_client, filters, page_token):
+        _path, params = module.cm_profiles.build_cm_query_summary_page_request(filters)
+        calls.append((params, page_token))
+        return module.cm_profiles.CMQueryPage(items=summaries)
+
+    monkeypatch.setattr(module, "make_cm_http_client", lambda config, env: object())
+    monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
+
+    args = module.parse_args(
+        base_args(tmp_path)
+        + [
+            "--metadata-mode",
+            "off",
+            "--no-min-duration-filter",
+            "--source-visibility",
+            "owner_raw",
+            "--source-owner-user",
+            "report_user",
+            "--source-owner-user",
+            "analyst_one",
+        ]
+    )
+    config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+    discovery = module.discover_candidates(config, env=auth_env())
+
+    assert config.user is None
+    assert config.collectable_owner_users == ("analyst_one", "report_user")
+    assert calls[0][0]["filter"] == "executing = false"
+    assert discovery.summaries_inspected == 2
+    assert [
+        candidate.summary.query_id for candidate in discovery.candidates if candidate.selected
+    ] == [
+        "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+        "cccccccccccccccc:dddddddddddddddd",
+    ]
 
 
 def test_batch_recent_config_cluster_loads_owner_raw_source_visibility(tmp_path):
@@ -525,13 +673,36 @@ def test_batch_recent_owner_raw_fails_closed_for_service_principal(tmp_path):
         ]
     )
 
-    with pytest.raises(ValueError, match="source_visibility=owner_raw requires source_owner_user"):
+    with pytest.raises(ValueError, match="requires at least one collectable source_owner_user"):
         module.build_batch_config(
             args,
             env={"KRB5_PRINCIPAL": "query-doctor/host.example.com@EXAMPLE.COM"},
             cwd=tmp_path,
             repo_root=REPO_DIR,
         )
+
+
+def test_batch_recent_owner_raw_fails_closed_for_explicit_service_principal(tmp_path):
+    module = load_batch_module()
+    args = module.parse_args(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--metadata-mode",
+            "off",
+            "--source-visibility",
+            "owner_raw",
+            "--source-owner-user",
+            "impala/host.example.com@EXAMPLE.COM",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="requires at least one collectable source_owner_user"):
+        module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
 
 def test_batch_recent_owner_raw_rejects_conflicting_user_filter(tmp_path):
@@ -555,7 +726,7 @@ def test_batch_recent_owner_raw_rejects_conflicting_user_filter(tmp_path):
         ]
     )
 
-    with pytest.raises(ValueError, match="requires recent_user to match source_owner_user"):
+    with pytest.raises(ValueError, match="requires recent_user to match a collectable"):
         module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
 

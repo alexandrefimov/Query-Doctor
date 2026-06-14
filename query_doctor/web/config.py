@@ -40,7 +40,6 @@ from query_doctor.web.models import (
 from query_doctor.web.public_demo import default_public_demo_summary_path
 from query_doctor.web.viewer_identity import (
     VIEWER_IDENTITY_AUTHENTICATED,
-    collectable_owner_users,
     local_first_viewer_identity,
     unauthenticated_viewer_identity,
 )
@@ -52,6 +51,7 @@ from query_doctor.prometheus.timeseries import (
 from query_doctor.source_visibility import (
     SOURCE_VISIBILITY_OWNER_RAW,
     SOURCE_VISIBILITY_SAFE,
+    collectable_owner_users,
     normalize_source_owner_user,
     normalize_source_visibility,
     owner_user_from_kerberos_principal,

@@ -10,6 +10,7 @@ import re
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.recent.batch_config import MAX_RAW_CM_SUMMARY_SCAN_LIMIT, secret_values
 from query_doctor.recent.batch_models import BatchConfig, DiscoveryResult
+from query_doctor.source_visibility import SOURCE_VISIBILITY_OWNER_RAW
 
 CMClientFactory = Callable[[BatchConfig, dict[str, str]], cm_profiles.CMHttpClient]
 CM_SUMMARY_SCAN_LIMIT_WARNING_RE = re.compile(
@@ -113,6 +114,7 @@ def discover_candidates(
         duration_filter_mode = sharded_collection.duration_filter_mode
         time_sharded = True
         raw_scan_cap_hit = sharded_collection.raw_scan_cap_hit
+    summaries = filter_summaries_for_collectable_owners(config, summaries)
     candidates = cm_profiles.select_recent_query_candidates(
         summaries,
         select_limit=config.triage_profile_limit,
@@ -164,6 +166,18 @@ def discover_candidates(
         time_shard_min_minutes=CM_SUMMARY_MIN_TIME_SHARD_MINUTES if time_sharded else None,
         time_shard_scan_limit_warning_count=time_shard_scan_limit_warning_count,
     )
+
+
+def filter_summaries_for_collectable_owners(
+    config: BatchConfig,
+    summaries: list[cm_profiles.CMQuerySummary],
+) -> list[cm_profiles.CMQuerySummary]:
+    if config.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
+        return summaries
+    owner_users = set(config.collectable_owner_users)
+    if not owner_users:
+        return []
+    return [summary for summary in summaries if summary.user in owner_users]
 
 
 def raw_cm_summary_scan_limit(candidate_limit: int) -> int:

@@ -175,7 +175,7 @@ def build_summary(
         update_collectable_metadata_table_count(config, case)
     collectable_metadata_distribution = collectable_metadata_table_count_distribution(cases)
     include_source_coordinates = config.source_visibility == "owner_raw" and bool(
-        config.source_owner_user
+        config.collectable_owner_users
     )
     ranked_case_summaries, workload_groups = case_summaries_with_workload_groups(
         cases,
@@ -196,7 +196,7 @@ def build_summary(
         "impala_collect_admission_context": config.impala_collect_admission_context,
         "source_visibility": config.source_visibility,
         "source_owner_filter_present": bool(
-            config.source_visibility == "owner_raw" and config.source_owner_user
+            config.source_visibility == "owner_raw" and config.collectable_owner_users
         ),
         "collect_prometheus_timeseries": config.collect_prometheus_timeseries,
         "prometheus_metrics_profile": config.prometheus_metrics_profile,

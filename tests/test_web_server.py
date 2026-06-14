@@ -8512,11 +8512,11 @@ def test_web_batch_form_renders_keytab_usernames_as_dropdown(tmp_path):
 
     assert '<select class="input" id="user" name="user"' in body
     assert "Select username" not in body
-    assert '<option value=""' not in body
-    assert '<option value="analyst_one" selected>analyst_one</option>' in body
+    assert '<option value="" selected>All configured owners</option>' in body
+    assert '<option value="analyst_one">analyst_one</option>' in body
     assert '<option value="sa">sa</option>' in body
     assert (
-        "Required owner filter for this source visibility. It is prefilled from local config."
+        "Optional owner filter for this source visibility. Empty means all configured owners."
         in body
     )
     assert body.count('id="user" name="user"') == 1
@@ -9113,6 +9113,31 @@ def test_web_batch_command_uses_selected_keytab_owner_for_owner_raw(tmp_path):
 
     assert cmd[cmd.index("--source-owner-user") + 1] == "analyst_one"
     assert cmd[cmd.index("--user") + 1] == "analyst_one"
+
+
+def test_web_batch_command_passes_all_keytab_owners_for_owner_raw_without_user(tmp_path):
+    module = load_web_module()
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        repo_dir=REPO_DIR,
+        cm_url="https://cm.example.com:7183/",
+        cm_cluster="prod_cluster",
+        cm_service="impala",
+        source_visibility="owner_raw",
+        source_owner_user="sa",
+        source_owner_user_options=("sa", "analyst_one"),
+    )
+    settings.config.write_text("{}", encoding="utf-8")
+    batch_config = module.parse_batch_run_config(
+        {"metadata_top_limit": ["0"]},
+        settings=settings,
+    )
+
+    cmd, _out_dir = module.build_batch_command("f" * 32, batch_config, settings)
+
+    owner_indexes = [index + 1 for index, token in enumerate(cmd) if token == "--source-owner-user"]
+    assert [cmd[index] for index in owner_indexes] == ["analyst_one", "sa"]
+    assert "--user" not in cmd
 
 
 def test_web_batch_command_accepts_selected_keytab_owner_without_configured_owner(tmp_path):

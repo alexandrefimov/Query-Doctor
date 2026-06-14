@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from query_doctor.source_visibility import collectable_owner_users
 from query_doctor.web.cluster_selection import (
     cluster_select_options,
     default_cluster_key,
@@ -114,10 +115,6 @@ def render_batch_run_panel(
         values["scan_date"] = default_scan_date
     if not values.get("scan_hour"):
         values["scan_hour"] = str(default_scan_hour)
-    if getattr(selected_settings, "source_visibility", "") == "owner_raw" and not values.get(
-        "user"
-    ):
-        values["user"] = getattr(selected_settings, "source_owner_user", "") or ""
     user_options = user_filter_options(selected_settings)
     metadata_configured = bool(getattr(selected_settings, "metadata_coordinator", None))
     selected_diagnosis_target = str(values.get("diagnosis_target") or diagnosis_target or "recent")
@@ -156,7 +153,7 @@ def render_batch_run_panel(
         owner_required=owner_required,
         disabled_reason=owner_missing_reason() if owner_missing else "",
         help_text=(
-            "Required owner filter for this source visibility. It is prefilled from local config."
+            "Optional owner filter for this source visibility. Empty means all configured owners."
             if owner_required
             else "Optional exact query user filter. Empty means all users."
         ),
@@ -745,12 +742,15 @@ def render_batch_user_field(
         dict.fromkeys(str(option) for option in user_options if option),
         key=lambda option: (option.casefold(), option),
     )
-    if owner_required and not selected_raw and options:
-        selected_raw = options[0]
     if selected_raw and selected_raw not in options:
         options.append(selected_raw)
     rendered_options = ""
-    if not owner_required:
+    if owner_required:
+        rendered_options = (
+            f'<option value=""{" selected" if not selected_raw else ""}>'
+            "All configured owners</option>"
+        )
+    else:
         rendered_options = (
             f'<option value=""{" selected" if not selected_raw else ""}>All users</option>'
         )
@@ -778,17 +778,10 @@ def render_disabled_owner_select(name: str, label: str, *, help_text: str = "") 
 
 
 def user_filter_options(settings: Any) -> tuple[str, ...]:
-    options: list[str] = []
-    seen: set[str] = set()
-    for owner in (
+    return collectable_owner_users(
         getattr(settings, "source_owner_user", None),
-        *getattr(settings, "source_owner_user_options", ()),
-    ):
-        if not owner or owner in seen:
-            continue
-        seen.add(owner)
-        options.append(str(owner))
-    return tuple(options)
+        getattr(settings, "source_owner_user_options", ()),
+    )
 
 
 def owner_missing_reason() -> str:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 
 SOURCE_VISIBILITY_SAFE = "safe"
 SOURCE_VISIBILITY_OWNER_RAW = "owner_raw"
@@ -43,6 +45,29 @@ def owner_user_from_kerberos_principal(principal: object | None) -> str | None:
     if not primary or "/" in primary:
         return None
     return normalize_source_owner_user(primary)
+
+
+def collectable_owner_user(value: object | None) -> str | None:
+    text = normalize_source_owner_user(value)
+    if text is None:
+        return None
+    if "/" in text:
+        return None
+    if "@" in text:
+        return owner_user_from_kerberos_principal(text)
+    return text
+
+
+def collectable_owner_users(
+    source_owner_user: object | None,
+    source_owner_user_options: Iterable[object] = (),
+) -> tuple[str, ...]:
+    unique: dict[str, str] = {}
+    for value in (source_owner_user, *tuple(source_owner_user_options)):
+        owner = collectable_owner_user(value)
+        if owner and owner not in unique:
+            unique[owner] = owner
+    return tuple(sorted(unique, key=lambda item: (item.casefold(), item)))
 
 
 def source_owner_user_from_env(env: dict[str, str]) -> str | None:

@@ -23,6 +23,15 @@ def test_local_first_raw_subjects_equal_collectable_owner_users():
     assert viewer_can_see_raw_query(identity, "other_user") is False
 
 
+def test_collectable_owner_users_excludes_service_principals():
+    collectable = collectable_owner_users(
+        "impala/host.example.com@EXAMPLE.COM",
+        ("analyst_one@EXAMPLE.COM", "hive/host.example.com@EXAMPLE.COM"),
+    )
+
+    assert collectable == ("analyst_one",)
+
+
 def test_authenticated_viewer_identity_can_differ_from_collectable_users():
     collectable = collectable_owner_users("operator_keytab_user", ("batch_owner",))
     identity = authenticated_viewer_identity("analyst_one")
