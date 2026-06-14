@@ -1291,6 +1291,8 @@ def test_public_demo_validation_rejects_external_source_settings(tmp_path):
 
 def test_public_demo_settings_ignore_default_local_config_discovery(tmp_path):
     module = load_web_module()
+    from query_doctor.web.viewer_identity import VIEWER_IDENTITY_UNAUTHENTICATED
+
     default_config = tmp_path / module.cm_collector.DEFAULT_LOCAL_CONFIG_NAME
     default_config.write_text(
         json.dumps(
@@ -1312,17 +1314,23 @@ def test_public_demo_settings_ignore_default_local_config_discovery(tmp_path):
     assert settings.batch_summary == module.default_public_demo_summary_path()
     assert settings.cm_url is None
     assert settings.clusters == ()
+    assert settings.viewer_identity.mode == VIEWER_IDENTITY_UNAUTHENTICATED
+    assert settings.viewer_identity.viewer_raw_subjects == ()
     module.validate_public_demo_settings(settings)
 
 
 def test_public_demo_settings_ignore_owner_source_env(tmp_path, monkeypatch):
     module = load_web_module()
+    from query_doctor.web.viewer_identity import VIEWER_IDENTITY_UNAUTHENTICATED
+
     monkeypatch.setenv("QD_SOURCE_OWNER_USER", "private_user")
 
     settings = module.build_web_settings(module.parse_args(["--public-demo"]), cwd=tmp_path)
 
     assert settings.source_owner_user is None
     assert settings.source_owner_user_options == ()
+    assert settings.viewer_identity.mode == VIEWER_IDENTITY_UNAUTHENTICATED
+    assert settings.viewer_identity.viewer_raw_subjects == ()
 
 
 def test_public_demo_runtime_generates_pack_and_action_outcome_env(tmp_path):
@@ -8111,6 +8119,7 @@ def test_web_parses_keytab_principals_to_username_options():
 def test_web_settings_loads_keytab_username_options(tmp_path, monkeypatch):
     module = load_web_module()
     from query_doctor.web import config as web_config
+    from query_doctor.web.viewer_identity import VIEWER_IDENTITY_LOCAL_FIRST
 
     config = tmp_path / "cm-config.json"
     config.write_text("{}", encoding="utf-8")
@@ -8126,6 +8135,8 @@ def test_web_settings_loads_keytab_username_options(tmp_path, monkeypatch):
 
     assert settings.source_owner_user_options == ("analyst_one", "sa")
     assert settings.source_owner_user == "analyst_one"
+    assert settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
+    assert settings.viewer_identity.viewer_raw_subjects == ("analyst_one", "sa")
 
 
 def test_web_keytab_username_options_fall_back_to_ktutil(tmp_path, monkeypatch):
@@ -8156,6 +8167,7 @@ def test_web_keytab_username_options_fall_back_to_ktutil(tmp_path, monkeypatch):
 def test_web_settings_derives_single_keytab_owner_without_config(tmp_path, monkeypatch):
     module = load_web_module()
     from query_doctor.web import config as web_config
+    from query_doctor.web.viewer_identity import VIEWER_IDENTITY_LOCAL_FIRST
 
     config = tmp_path / "cm-config.json"
     config.write_text(json.dumps({"source_visibility": "owner_raw"}), encoding="utf-8")
@@ -8173,11 +8185,14 @@ def test_web_settings_derives_single_keytab_owner_without_config(tmp_path, monke
 
     assert settings.source_owner_user == "analyst_one"
     assert settings.source_owner_user_options == ("analyst_one",)
+    assert settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
+    assert settings.viewer_identity.viewer_raw_subjects == ("analyst_one",)
 
 
 def test_web_cluster_settings_keep_keytab_derived_owner(tmp_path, monkeypatch):
     module = load_web_module()
     from query_doctor.web import config as web_config
+    from query_doctor.web.viewer_identity import VIEWER_IDENTITY_LOCAL_FIRST
 
     config = tmp_path / "cm-config.json"
     config.write_text(
@@ -8211,6 +8226,8 @@ def test_web_cluster_settings_keep_keytab_derived_owner(tmp_path, monkeypatch):
     assert settings.active_cluster_key == "direct"
     assert settings.source_visibility == "owner_raw"
     assert settings.source_owner_user == "analyst_one"
+    assert settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
+    assert settings.viewer_identity.viewer_raw_subjects == ("analyst_one",)
 
 
 def test_canonical_local_config_template_contains_web_metadata_placeholders():
@@ -8428,8 +8445,16 @@ def test_web_batch_form_keeps_all_users_option_for_optional_user_filter(tmp_path
     assert "Select username" not in body
 
 
-def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path):
+def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path, monkeypatch):
     module = load_web_module()
+    from query_doctor.web import config as web_config
+    from query_doctor.web.cluster_selection import settings_for_cluster_key
+    from query_doctor.web.viewer_identity import VIEWER_IDENTITY_LOCAL_FIRST
+
+    monkeypatch.delenv("KRB5_PRINCIPAL", raising=False)
+    monkeypatch.delenv("QD_KRB5_PRINCIPAL", raising=False)
+    monkeypatch.delenv("QD_SOURCE_OWNER_USER", raising=False)
+    monkeypatch.setattr(web_config, "source_owner_user_options_from_keytab", lambda _env: ())
     config = tmp_path / "cm-config.json"
     config.write_text(
         json.dumps(
@@ -8490,6 +8515,11 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path)
     assert settings.clusters[1].recent_scan_timezone == "Europe/Berlin"
     assert settings.clusters[1].source_visibility == "owner_raw"
     assert settings.clusters[1].source_owner_user == "stage_user"
+    assert settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
+    assert settings.viewer_identity.viewer_raw_subjects == ()
+    stage_settings = settings_for_cluster_key(settings, "stage")
+    assert stage_settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
+    assert stage_settings.viewer_identity.viewer_raw_subjects == ("stage_user",)
     assert '<div class="batch-source-settings">' in body
     assert '<label for="diagnosis_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
