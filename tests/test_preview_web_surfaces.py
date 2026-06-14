@@ -12,6 +12,15 @@ from query_doctor.web.preview_surfaces import (
     preview_surface_for_post_path,
 )
 from query_doctor.web.routes import post_route_is_allowed, route_get_request
+from query_doctor.web.surface_taxonomy import (
+    ISOLATED_PREVIEW_WEB_POLICY,
+    OWNER_RAW_SOURCE_WEB_POLICY,
+    SURFACE_CLASS_ISOLATED_PREVIEW_WEB,
+    SURFACE_CLASS_OWNER_RAW_SOURCE_WEB,
+    TRUSTED_PRODUCT_SURFACES,
+    WebSurfacePolicy,
+    policy_allows_raw_source_display,
+)
 
 
 def web_settings() -> WebSettings:
@@ -56,13 +65,59 @@ def test_preview_web_route_maps_have_unique_get_and_post_paths():
 def test_preview_web_surfaces_stay_out_of_product_workflows():
     for surface in PREVIEW_WEB_SURFACES:
         assert surface.product_surface_allowed is False
-        assert surface.surface_class == "isolated_preview_web"
+        assert surface.surface_class == SURFACE_CLASS_ISOLATED_PREVIEW_WEB
+        assert surface.forbidden_product_surfaces == TRUSTED_PRODUCT_SURFACES
         assert surface.forbidden_product_surfaces == (
-            "recent",
-            "details",
-            "trusted_report",
-            "optimizer",
+            ISOLATED_PREVIEW_WEB_POLICY.forbidden_product_surfaces
         )
+        assert policy_allows_raw_source_display(ISOLATED_PREVIEW_WEB_POLICY) is False
+
+
+def test_owner_raw_source_surface_taxonomy_is_isolated_and_stricter_than_product():
+    policy = OWNER_RAW_SOURCE_WEB_POLICY
+
+    assert policy.surface_class == SURFACE_CLASS_OWNER_RAW_SOURCE_WEB
+    assert policy.product_surface_allowed is False
+    assert policy.forbidden_product_surfaces == TRUSTED_PRODUCT_SURFACES
+    assert policy.raw_source_display_allowed is True
+    assert policy.requires_authenticated_viewer is True
+    assert policy.source_allowlist_required is True
+    assert policy.selected_case_only is True
+    assert policy.cache_control == "no-store"
+    assert policy.download_allowed is False
+    assert policy.handoff_export_allowed is False
+    assert policy.llm_input_allowed is False
+    assert policy_allows_raw_source_display(policy) is True
+
+
+def test_raw_source_display_policy_requires_owner_raw_class_and_all_guards():
+    assert (
+        policy_allows_raw_source_display(
+            WebSurfacePolicy(
+                surface_class="details",
+                product_surface_allowed=False,
+                raw_source_display_allowed=True,
+                requires_authenticated_viewer=True,
+                source_allowlist_required=True,
+                selected_case_only=True,
+            )
+        )
+        is False
+    )
+    assert (
+        policy_allows_raw_source_display(
+            WebSurfacePolicy(
+                surface_class=SURFACE_CLASS_OWNER_RAW_SOURCE_WEB,
+                product_surface_allowed=False,
+                raw_source_display_allowed=True,
+                requires_authenticated_viewer=True,
+                source_allowlist_required=True,
+                selected_case_only=True,
+                download_allowed=True,
+            )
+        )
+        is False
+    )
 
 
 def test_preview_web_routes_are_allowed_and_render_registered_pages():
