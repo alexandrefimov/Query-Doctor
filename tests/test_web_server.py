@@ -200,6 +200,7 @@ def test_web_parse_args_defaults_to_localhost():
     assert args.port is None
     assert args.allow_nonlocal_web_bind is False
     assert args.viewer_identity_header is None
+    assert args.disable_owner_raw_source is False
     assert args.optimizer_model is None
     assert args.batch_summary is None
     assert args.public_demo is False
@@ -213,6 +214,14 @@ def test_web_parse_args_accepts_viewer_identity_header():
     args = module.parse_args(["--viewer-identity-header", "X-QD-Viewer"])
 
     assert args.viewer_identity_header == "X-QD-Viewer"
+
+
+def test_web_parse_args_accepts_owner_raw_source_kill_switch():
+    module = load_web_module()
+
+    args = module.parse_args(["--disable-owner-raw-source"])
+
+    assert args.disable_owner_raw_source is True
 
 
 SERVER_REEXPORTS = [
@@ -4029,6 +4038,35 @@ def test_web_owner_raw_source_route_uses_request_viewer_identity_header(tmp_path
     assert "qdleak_db_20260611" not in service_body
 
 
+def test_web_owner_raw_source_route_can_be_disabled_by_kill_switch(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        owner_raw_source_enabled=False,
+        viewer_identity=local_first_viewer_identity(("analyst",)),
+    )
+
+    response = route_get_request("/batch/case/case-001/source", settings, module.WebJobStore())
+
+    assert response is not None
+    assert response.status == 403
+    assert 'data-reason-code="owner_raw_source_disabled"' in response.body
+    assert "qdleak_db_20260611" not in response.body
+    assert "supersecret" not in response.body
+    assert response.audit_event is not None
+    audit_fields = dict(response.audit_event.fields)
+    assert response.audit_event.name == "owner_raw_source_access"
+    assert audit_fields["allowed"] == "false"
+    assert audit_fields["reason"] == "owner_raw_source_disabled"
+    assert audit_fields["source_switch"] == "disabled"
+    assert audit_fields["status"] == "403"
+
+
 def test_web_case_details_uses_request_viewer_identity_header_for_owner_raw_link(tmp_path):
     module = load_web_module()
     summary = write_owner_raw_source_summary(tmp_path)
@@ -4062,6 +4100,63 @@ def test_web_case_details_uses_request_viewer_identity_header_for_owner_raw_link
     assert missing["status"] == 200
     assert 'href="/batch/case/case-001/source"' not in missing_body
     assert "qdleak_db_20260611" not in missing_body
+
+
+def test_web_case_details_hides_owner_raw_source_link_when_disabled(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        owner_raw_source_enabled=False,
+        viewer_identity=local_first_viewer_identity(("analyst",)),
+    )
+
+    response = route_get_request("/batch/case/case-001", settings, module.WebJobStore())
+
+    assert response is not None
+    assert response.status == 200
+    assert 'href="/batch/case/case-001/source"' not in response.body
+    assert "Owner raw source" not in response.body
+    assert "qdleak_db_20260611" not in response.body
+
+
+def test_web_owner_raw_source_audit_log_is_reason_coded_and_raw_free(tmp_path, capsys):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = owner_raw_web_settings(module, tmp_path, summary)
+    handler = module.make_handler(
+        settings,
+        job_store=module.WebJobStore(),
+        request_id_factory=lambda: "req-owner-raw-1",
+    )
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {"headers": []}
+    output = io.BytesIO()
+
+    request.path = "/batch/case/case-001/source"
+    request.headers = {"Host": "127.0.0.1"}
+    request.wfile = output
+    request.send_response = lambda status: captured.__setitem__("status", status)
+    request.send_header = lambda name, value: captured["headers"].append((name, value))
+    request.end_headers = lambda: None
+
+    request.do_GET()
+
+    captured_err = capsys.readouterr().err
+    assert captured["status"] == 200
+    assert "event=owner_raw_source_access" in captured_err
+    assert "request_id=req-owner-raw-1" in captured_err
+    assert "allowed=true" in captured_err
+    assert "reason=viewer_matches_query_user" in captured_err
+    assert "route_source=batch" in captured_err
+    assert "qdleak_db_20260611" not in captured_err
+    assert "supersecret" not in captured_err
+    assert "case-001" not in captured_err
+    assert "analyst" not in captured_err
 
 
 def test_web_owner_raw_source_route_requires_read_only_source_scope(tmp_path):
@@ -8637,6 +8732,31 @@ def test_web_settings_rejects_invalid_viewer_identity_header(tmp_path):
 
     with pytest.raises(module.WebError, match="HTTP header token"):
         module.build_web_settings(module.parse_args(["--config", str(config)]), cwd=tmp_path)
+
+
+def test_web_settings_loads_owner_raw_source_kill_switch_from_config(tmp_path):
+    module = load_web_module()
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(json.dumps({"owner_raw_source_enabled": False}), encoding="utf-8")
+
+    settings = module.build_web_settings(module.parse_args(["--config", str(config)]), cwd=tmp_path)
+
+    assert settings.owner_raw_source_enabled is False
+
+
+def test_web_settings_cli_owner_raw_source_kill_switch_overrides_config(tmp_path):
+    module = load_web_module()
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(json.dumps({"owner_raw_source_enabled": True}), encoding="utf-8")
+
+    settings = module.build_web_settings(
+        module.parse_args(["--config", str(config), "--disable-owner-raw-source"]),
+        cwd=tmp_path,
+    )
+
+    assert settings.owner_raw_source_enabled is False
 
 
 def test_web_keytab_username_options_fall_back_to_ktutil(tmp_path, monkeypatch):

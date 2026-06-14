@@ -222,6 +222,15 @@ contents, or real production profile text.
   names, runtime internals, and raw artifact filenames. Local-first owner raw
   visibility must not start on a non-local web bind; shared web access requires
   authenticated viewer identity before owner raw visibility can be enabled.
+- The isolated owner-raw source surface must remain behind a global kill switch.
+  `owner_raw_source_enabled=false` and `--disable-owner-raw-source` disable only
+  the original source page/link; they must not silently rewrite collection owner
+  filters or optimizer policy.
+- Every isolated owner-raw source page attempt must emit a server-side audit
+  line with request id, route source, HTTP status, reason code, viewer
+  mode/source, and switch state. Audit lines must not contain raw SQL, query
+  ids, case ids, query users, local paths, header values, secrets, raw artifact
+  filenames, model names, or runtime internals.
 - Shared/D3 web deployments may provide the authenticated viewer identity
   through `viewer_identity_header` only when Query Doctor is behind a trusted
   auth proxy or ingress that authenticates the request and strips inbound

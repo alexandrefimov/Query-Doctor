@@ -90,6 +90,9 @@ details, local output paths и планы следующей сессии дол
   authenticated per-request viewer identity, например `viewer_identity_header`
   за trusted proxy. Collection credential/keytab owner set не должен
   авторизовать raw reveal.
+- Isolated owner-raw source surface должна оставаться за kill switch и
+  reason-coded raw-free audit line; audit не должен включать raw SQL, query
+  ids, case ids, users, paths, header values или secrets.
 - `engine_fact_boundary_v1` является raw-free contract seam, а не product
   engine registry или support claim.
 - Known Query ID analysis может готовить deterministic Python report внутри

@@ -494,6 +494,16 @@ def configured_viewer_identity_header(
         raise WebError(str(exc)) from exc
 
 
+def owner_raw_source_enabled_setting(
+    args: argparse.Namespace,
+    config_values: dict[str, object],
+) -> bool:
+    if getattr(args, "disable_owner_raw_source", False):
+        return False
+    value = optional_config_bool(config_values, "owner_raw_source_enabled")
+    return True if value is None else value
+
+
 def merged_bool_setting(
     cli_value: bool, config_value: bool | None, *, default: bool = False
 ) -> bool:
@@ -818,6 +828,7 @@ def build_web_settings(
         language=language,
         source_owner_user_options=source_owner_user_options,
         viewer_identity_header=configured_viewer_identity_header(args, config_values),
+        owner_raw_source_enabled=owner_raw_source_enabled_setting(args, config_values),
         viewer_identity=viewer_identity,
     )
     if clusters:

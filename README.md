@@ -370,8 +370,11 @@ ingress that strips inbound copies of the same header.
   `source_visibility=owner_raw`, and the isolated owner-only source view can
   show read-only original SQL for an authorized query owner. On localhost, raw
   viewer subjects come from local collectable owner users; on shared binds they
-  must come from authenticated per-request viewer identity. The default `safe`
-  mode shows trusted recommendations/no-rewrite guidance instead.
+  must come from authenticated per-request viewer identity. The original source
+  view can be disabled globally with `owner_raw_source_enabled=false` or
+  `--disable-owner-raw-source`, and each attempt writes a reason-coded raw-free
+  server audit line. The default `safe` mode shows trusted
+  recommendations/no-rewrite guidance instead.
 - Query Optimizer accepts only a single safe read-only statement and never
   executes pasted SQL.
 

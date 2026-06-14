@@ -510,7 +510,9 @@ source surface is the narrow raw-SQL browser exception and must keep the
 stricter rules in `docs/safety-contract.md`. Shared or non-local owner-raw
 deployments must resolve per-request viewer identity from an authenticated
 front door such as `viewer_identity_header` behind a trusted proxy; keytab or
-collection owner sets must not authorize raw reveal by themselves.
+collection owner sets must not authorize raw reveal by themselves. The isolated
+owner-raw source surface must keep its global kill switch and emit only
+reason-coded raw-free audit lines.
 
 Any change that renders analyzer facts, report content, optimizer content,
 collector errors, or generated artifacts must include focused tests proving the

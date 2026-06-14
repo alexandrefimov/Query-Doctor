@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from query_doctor.web.audit import WebAuditEvent, render_web_audit_log_line
 from query_doctor.web.app import (
     MAX_WEB_POST_BODY_BYTES,
     explicit_request_host_port,
@@ -135,6 +136,25 @@ def test_request_host_allows_external_host_for_explicit_nonlocal_bind():
     settings = WebSettings(config=Path(".query-doctor-cm.local.json"), allow_nonlocal_web_bind=True)
 
     assert request_host_allowed("external.example:8765", settings) is True
+
+
+def test_render_web_audit_log_line_keeps_tokens_safe():
+    event = WebAuditEvent(
+        name="owner_raw_source_access",
+        fields=(
+            ("reason", "viewer_matches_query_user"),
+            ("raw", "SELECT secret FROM table"),
+        ),
+    )
+
+    line = render_web_audit_log_line(event, request_id="req-123")
+
+    assert line.startswith("[Query Doctor audit] ")
+    assert "event=owner_raw_source_access" in line
+    assert "request_id=req-123" in line
+    assert "reason=viewer_matches_query_user" in line
+    assert "SELECT secret" not in line
+    assert "raw=redacted" in line
 
 
 def test_settings_for_request_headers_uses_configured_viewer_identity_header():
