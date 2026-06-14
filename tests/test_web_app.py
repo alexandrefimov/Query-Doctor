@@ -189,6 +189,34 @@ def test_settings_for_request_headers_fails_closed_without_valid_viewer_header()
     assert service.viewer_identity.viewer_raw_subjects == ()
 
 
+def test_settings_for_request_headers_fails_closed_for_duplicate_viewer_header_values():
+    class MultiValueHeaders:
+        def __init__(self, values):
+            self.values = values
+
+        def get_all(self, name):
+            return self.values.get(name)
+
+    settings = WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        viewer_identity_header="X-QD-Viewer",
+    )
+
+    single = settings_for_request_headers(
+        settings,
+        MultiValueHeaders({"X-QD-Viewer": ["analyst_one"]}),
+    )
+    duplicate = settings_for_request_headers(
+        settings,
+        MultiValueHeaders({"X-QD-Viewer": ["analyst_one", "other_user"]}),
+    )
+
+    assert single.viewer_identity.mode == VIEWER_IDENTITY_AUTHENTICATED
+    assert single.viewer_identity.viewer_raw_subjects == ("analyst_one",)
+    assert duplicate.viewer_identity.mode == VIEWER_IDENTITY_UNAUTHENTICATED
+    assert duplicate.viewer_identity.viewer_raw_subjects == ()
+
+
 def test_settings_for_request_headers_ignores_unconfigured_spoof_header():
     settings = WebSettings(config=Path(".query-doctor-cm.local.json"))
 

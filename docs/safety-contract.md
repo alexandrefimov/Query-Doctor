@@ -234,11 +234,11 @@ contents, or real production profile text.
 - Shared/D3 web deployments may provide the authenticated viewer identity
   through `viewer_identity_header` only when Query Doctor is behind a trusted
   auth proxy or ingress that authenticates the request and strips inbound
-  copies of that header before setting it. Missing, invalid, or service/host
-  principal header values are unauthenticated and must fail closed for raw
-  source access. The header is C2 viewer identity only; it must not widen C1
-  collection credentials or owner-user collection scope. The required
-  deployment checklist is
+  copies of that header before setting exactly one value. Missing, duplicate,
+  invalid, or service/host principal header values are unauthenticated and must
+  fail closed for raw source access. The header is C2 viewer identity only; it
+  must not widen C1 collection credentials or owner-user collection scope. The
+  required deployment checklist is
   [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md).
 - Keytab-derived Username dropdowns may display simple account names only.
   Keytab paths, full Kerberos principals, keytab contents, ticket contents, and

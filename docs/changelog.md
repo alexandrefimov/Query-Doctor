@@ -24,6 +24,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   for common Recent scan setup failures, including metadata Kerberos, metadata
   shell, CM credentials, missing direct-Impala hosts, cluster selection, and
   output-directory validation, while still hiding raw stdout/stderr.
+- `viewer_identity_header` now fails closed when a request exposes duplicate
+  viewer header values. Shared/D3 `owner_raw` source access still requires a
+  trusted proxy or ingress to strip inbound copies and set exactly one
+  authenticated viewer value.
 - Added [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md), an active
   shared/non-local `owner_raw` deployment contract covering trusted ingress
   header stripping, C1/C2 identity separation, kill-switch behavior, raw-free
