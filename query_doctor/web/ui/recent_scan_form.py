@@ -26,7 +26,7 @@ WEB_RECENT_SCAN_DEFAULTS = {
     "parallelism": "50",
     "metadata_jobs": "5",
 }
-WEB_ADVANCED_FILTER_CHOICES = ("user", "pool")
+WEB_ADVANCED_FILTER_CHOICES = ("user", "pool", "query_type")
 WEB_ADVANCED_FILTER_DEFAULTS = ("user", "pool")
 RUNNING_SCAN_FRAMING_TEXT = (
     "Running scan is a live snapshot: no date/hour window is used, profiles can be incomplete while queries execute, "
@@ -102,6 +102,9 @@ def render_batch_run_panel(
         "pool": form_or_config_value(
             form_values, "pool", config_values=local_config, config_key="recent_pool"
         ),
+        "query_type": form_or_config_value(
+            form_values, "query_type", config_values=local_config, config_key="query_type"
+        ),
     }
     if form_values:
         values.update(form_values)
@@ -173,11 +176,21 @@ def render_batch_run_panel(
         if "pool" in advanced_filter_names
         else ""
     )
+    advanced_query_type_field = (
+        render_batch_text_field(
+            "query_type",
+            "Query type",
+            value("query_type"),
+            help_text="Optional query type filter such as QUERY. Empty means all query types.",
+        )
+        if "query_type" in advanced_filter_names
+        else ""
+    )
     advanced_panel_html = render_configured_advanced_settings(
         metadata_note_html=metadata_note_html,
         finished_scope_class=finished_scope_class,
         running_scope_class=running_scope_class,
-        advanced_fields=f"{advanced_owner_field}{advanced_pool_field}",
+        advanced_fields=f"{advanced_owner_field}{advanced_pool_field}{advanced_query_type_field}",
     )
     owner_grid_class = " batch-form-grid--owner" if owner_required else ""
     panel_tag = "details" if collapsed else "section"

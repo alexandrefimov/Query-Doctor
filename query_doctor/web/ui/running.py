@@ -114,6 +114,9 @@ def render_running_queries_run_panel(
         "pool": form_or_config_value(
             form_values, "pool", config_values=local_config, config_key="recent_pool"
         ),
+        "query_type": form_or_config_value(
+            form_values, "query_type", config_values=local_config, config_key="query_type"
+        ),
     }
     if form_values:
         values.update(form_values)
@@ -161,6 +164,13 @@ def render_running_queries_run_panel(
             "Resource pool",
             value("pool"),
             help_text="Optional resource pool filter. Empty means all pools.",
+        )
+    if "query_type" in advanced_filter_names:
+        advanced_fields += render_batch_text_field(
+            "query_type",
+            "Query type",
+            value("query_type"),
+            help_text="Optional query type filter such as QUERY. Empty means all query types.",
         )
     advanced_panel_html = render_running_advanced_settings(
         metadata_note_html=metadata_note_html,

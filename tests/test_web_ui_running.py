@@ -31,6 +31,7 @@ def test_web_running_page_renders_without_scan_window_fields_and_with_compact_he
     assert '<summary aria-label="Minimum duration (sec) help">i</summary>' in body
     assert "Username" not in body
     assert "Resource pool" not in body
+    assert "Query type" not in body
     assert "Metadata parallelism" not in body
     assert "Advanced settings" not in body
 

@@ -57,6 +57,13 @@ SCORING_ANALYSIS_LIST_KEYS = (
 )
 MISSING_TABLE_STATS_VALUES = {"missing", "unknown", "missing/unknown"}
 INCOMPLETE_COLUMN_STATS_VALUES = {"incomplete", "unknown", "incomplete/unknown"}
+SHORT_STATS_ONLY_DURATION_SEC = 30.0
+STATS_HYGIENE_SCORE_REASONS = frozenset(
+    {
+        "table stats row-count completeness missing/unknown",
+        "column stats completeness incomplete/unknown",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -362,9 +369,20 @@ def score_scoring_evidence(
     if evidence.metadata_too_large:
         score += 1
         reasons.append("metadata output too_large limitation")
+    if is_short_stats_hygiene_only_score(reasons, components["duration_sec"]):
+        score = 0
+        reasons = []
     if score == 0:
         reasons.append("no analyzer-supported suspicious facts")
     return score, reasons
+
+
+def is_short_stats_hygiene_only_score(reasons: list[str], duration_sec: object) -> bool:
+    if not reasons or any(reason not in STATS_HYGIENE_SCORE_REASONS for reason in reasons):
+        return False
+    if isinstance(duration_sec, bool) or not isinstance(duration_sec, (int, float)):
+        return False
+    return duration_sec < SHORT_STATS_ONLY_DURATION_SEC
 
 
 def markdown_scoring_evidence(facts: str, *, fallback_reason: str | None = None) -> ScoringEvidence:

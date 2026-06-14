@@ -6743,6 +6743,67 @@ def test_scoring_does_not_score_zero_gap_labels_when_counts_are_zero():
     assert reasons == ["no analyzer-supported suspicious facts"]
 
 
+def test_scoring_suppresses_short_stats_hygiene_only_attention():
+    module = load_batch_module()
+    facts = "\n".join(
+        [
+            "# Query Doctor Analysis Facts",
+            "",
+            "## Summary",
+            "- Parsed operators: 1",
+            "- Cardinality anomalies: 0",
+            "- Memory anomalies: 0",
+            "- Zero/unknown row estimate gaps: 0",
+            "- Zero/unknown memory estimate gaps: 0",
+            "",
+            "## CM Query Context",
+            "- duration: 12.0s",
+            "",
+            "## Table Metadata Context",
+            "- table stats row-count completeness: missing/unknown",
+            "- column stats completeness: incomplete/unknown",
+            "",
+        ]
+    )
+
+    score, reasons = module.score_analysis_facts(facts)
+
+    assert score == 0
+    assert reasons == ["no analyzer-supported suspicious facts"]
+
+
+def test_scoring_keeps_longer_stats_hygiene_attention():
+    module = load_batch_module()
+    facts = "\n".join(
+        [
+            "# Query Doctor Analysis Facts",
+            "",
+            "## Summary",
+            "- Parsed operators: 1",
+            "- Cardinality anomalies: 0",
+            "- Memory anomalies: 0",
+            "- Zero/unknown row estimate gaps: 0",
+            "- Zero/unknown memory estimate gaps: 0",
+            "",
+            "## CM Query Context",
+            "- duration: 1.0m",
+            "",
+            "## Table Metadata Context",
+            "- table stats row-count completeness: missing/unknown",
+            "- column stats completeness: incomplete/unknown",
+            "",
+        ]
+    )
+
+    score, reasons = module.score_analysis_facts(facts)
+
+    assert score == 3
+    assert reasons == [
+        "table stats row-count completeness missing/unknown",
+        "column stats completeness incomplete/unknown",
+    ]
+
+
 def test_scoring_prefers_structured_limited_memory_pressure_over_legacy_findings():
     module = load_batch_module()
     from query_doctor.recent.query_optimization_score import (

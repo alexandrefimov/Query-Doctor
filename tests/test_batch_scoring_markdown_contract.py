@@ -196,6 +196,52 @@ def test_score_case_characterizes_rendered_markdown_and_structured_primary(tmp_p
     assert "primary_bottleneck_is_runtime_skew" in case.stats_optimization_candidate.counter_signals
 
 
+def test_score_case_suppresses_short_typed_stats_hygiene_only_attention(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    analysis = {
+        "cardinality_anomalies": [],
+        "memory_anomalies": [],
+        "zero_row_estimate_gaps": [],
+        "zero_memory_estimate_gaps": [],
+        "query_context": {
+            "available": True,
+            "status": "succeeded",
+            "query_state": "FINISHED",
+            "duration_ms": 12_000,
+        },
+        "stats_metadata_quality": {
+            "table_stats": "missing/unknown",
+            "column_stats": "incomplete/unknown",
+        },
+    }
+    (case_dir / "analysis.json").write_text(json.dumps(analysis), encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text(
+        "# Query Doctor Analysis Facts\n\n## Summary\n",
+        encoding="utf-8",
+    )
+    case = CaseResult(
+        index=1,
+        query_id="aaaaaaaaaaaaaaaa:0000000000000001",
+        duration_sec=12,
+        user=None,
+        pool=None,
+        query_type="QUERY",
+        sql_verb="SELECT",
+        wrapper_dir=case_dir,
+        actual_case_dir=case_dir,
+        collection_status="ok",
+        analysis_status="ok",
+        metadata_status="collected",
+    )
+
+    score_case(case)
+
+    assert case.score == 0
+    assert case.score_reasons == ["no analyzer-supported suspicious facts"]
+    assert case.scoring_evidence_source == "analysis_json"
+
+
 def test_score_case_uses_analysis_json_when_markdown_labels_change(tmp_path):
     analysis = _rendered_scoring_analysis()
     case_dir = tmp_path / "case"

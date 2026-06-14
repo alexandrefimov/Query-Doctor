@@ -48,7 +48,7 @@ METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
 IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
-WEB_ADVANCED_FILTER_CHOICES = ("user", "pool")
+WEB_ADVANCED_FILTER_CHOICES = ("user", "pool", "query_type")
 KERBEROS_SERVICE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 HOST_LABEL_RE = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 KERBEROS_HOST_FQDN_RE = re.compile(rf"(?=^.{{1,253}}\Z){HOST_LABEL_RE}(?:\.{HOST_LABEL_RE})*\Z")

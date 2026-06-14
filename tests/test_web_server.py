@@ -7217,9 +7217,10 @@ def test_web_running_queries_page_shows_configured_advanced_filters(tmp_path):
         json.dumps(
             {
                 "web_advanced_settings_enabled": True,
-                "web_advanced_filters": ["user", "pool"],
+                "web_advanced_filters": ["user", "pool", "query_type"],
                 "recent_user": "analyst",
                 "recent_pool": "root.running",
+                "query_type": "QUERY",
             }
         ),
         encoding="utf-8",
@@ -7227,11 +7228,19 @@ def test_web_running_queries_page_shows_configured_advanced_filters(tmp_path):
     settings = module.WebSettings(config=config)
 
     body = module.render_running_queries_page(settings)
+    running_config = module.parse_running_run_config(
+        {"metadata_top_limit": ["0"]}, settings=settings
+    )
+    cmd, _out_dir = module.build_batch_command("r" * 32, running_config, settings)
 
     assert "Advanced settings" in body
     assert "Secondary filters" in body
     assert 'name="user" type="text" value="analyst"' in body
     assert 'name="pool" type="text" value="root.running"' in body
+    assert 'name="query_type" type="text" value="QUERY"' in body
+    assert running_config.query_type == "QUERY"
+    assert cmd[cmd.index("--query-type") + 1] == "QUERY"
+    assert "--only-running" in cmd
     assert "Parallelism" not in body
     assert "Metadata parallelism" not in body
 
@@ -7973,6 +7982,26 @@ def test_web_batch_form_rejects_future_hour_without_subprocess():
     assert "Scan hour must not be in the future." in body
 
 
+def test_web_batch_form_rejects_unsafe_query_type_without_subprocess(tmp_path):
+    module = load_web_module()
+
+    status, body = module.start_batch_job(
+        {
+            "query_type": ["SELECT hidden"],
+            "metadata_top_limit": ["0"],
+        },
+        module.WebSettings(config=tmp_path / "cm-config.json"),
+        module.WebJobStore(),
+        runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("unsafe query type must not run subprocess")
+        ),
+    )
+
+    assert status == 400
+    assert "Query type filter must be a short identifier" in body
+    assert "SELECT hidden" not in body
+
+
 def test_web_batch_form_uses_local_recent_config_defaults(tmp_path):
     module = load_web_module()
     config = tmp_path / "cm-config.json"
@@ -8121,6 +8150,32 @@ def test_web_batch_form_shows_configured_advanced_filters_only_when_enabled(tmp_
     assert body.index('<button class="run-button" type="submit">Run scan</button>') < body.index(
         '<details class="batch-advanced"><summary>Advanced settings</summary>'
     )
+
+
+def test_web_batch_form_can_show_query_type_advanced_filter(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "web_advanced_settings_enabled": True,
+                "web_advanced_filters": ["query_type"],
+                "query_type": "QUERY",
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(config=config, repo_dir=REPO_DIR)
+
+    body = module.render_batch_page(settings)
+    batch_config = module.parse_batch_run_config({"metadata_top_limit": ["0"]}, settings=settings)
+    cmd, _out_dir = module.build_batch_command("q" * 32, batch_config, settings)
+
+    assert "Advanced settings" in body
+    assert "Query type" in body
+    assert 'name="query_type" type="text" value="QUERY"' in body
+    assert batch_config.query_type == "QUERY"
+    assert cmd[cmd.index("--query-type") + 1] == "QUERY"
 
 
 def test_web_batch_form_renders_configured_24_hour_search_depth_as_standard_option(tmp_path):
@@ -8327,7 +8382,7 @@ def test_web_batch_job_builds_safe_analyzer_only_command(tmp_path):
     assert cmd[cmd.index("--max-duration-sec") + 1] == "99"
     assert cmd[cmd.index("--user") + 1] == "alice"
     assert cmd[cmd.index("--pool") + 1] == "root.pool"
-    assert "--query-type" not in cmd
+    assert cmd[cmd.index("--query-type") + 1] == "QUERY"
     assert "--include-failed" in cmd
     assert "--include-running" not in cmd
     assert "--collect-cm-events" in cmd
@@ -9880,7 +9935,7 @@ def test_web_batch_default_post_uses_fast_mode_without_metadata_config(tmp_path)
     assert cmd[cmd.index("--cm-jobs") + 1] == "4"
     assert cmd[cmd.index("--triage-profile-limit") + 1] == "200"
     assert cmd[cmd.index("--metadata-jobs") + 1] == "1"
-    assert "--query-type" not in cmd
+    assert cmd[cmd.index("--query-type") + 1] == "QUERY"
     assert cmd[cmd.index("--metadata-top-limit") + 1] == "0"
     assert "--metadata-coordinator" not in cmd
     assert "--allow-high-jobs" not in cmd
