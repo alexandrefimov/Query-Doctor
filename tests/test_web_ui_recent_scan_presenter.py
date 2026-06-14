@@ -1913,7 +1913,13 @@ def test_recent_scan_source_locators_accept_typed_line_spans_without_raw_coordin
                     "id": "plan_cardinality_anomaly",
                     "coordinate": "SELECT secret_col FROM example_guarded_table",
                     "line_span": {"start_line": 12, "end_line": 12},
+                    "line_span_source": "SELECT secret_col FROM example_guarded_table",
                     "detail": "node 02 HASH JOIN",
+                },
+                {
+                    "id": "sql_cte_block",
+                    "coordinate": "lines 2-4",
+                    "detail": "2 CTEs",
                 },
             ]
         }
@@ -1922,8 +1928,13 @@ def test_recent_scan_source_locators_accept_typed_line_spans_without_raw_coordin
     query_locators = locators["query_optimization"]
     assert query_locators[0].coordinate == "lines 7-9"
     assert query_locators[0].line_span == (7, 9)
+    assert query_locators[0].line_span_source == "line_range_from_sql_parser"
     assert query_locators[1].coordinate == "line 12"
     assert query_locators[1].line_span == (12, 12)
+    assert query_locators[1].line_span_source == "line_range_from_sql_parser"
+    assert query_locators[2].coordinate == "lines 2-4"
+    assert query_locators[2].line_span == (2, 4)
+    assert query_locators[2].line_span_source == "line_range_from_legacy_coordinate"
     assert_no_forbidden_fragments(query_locators)
 
 

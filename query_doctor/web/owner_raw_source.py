@@ -61,6 +61,7 @@ class OwnerRawSourceHighlight:
     end_line: int
     label: str
     detail: str = ""
+    line_span_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -263,6 +264,7 @@ def owner_raw_source_highlights(
                     end_line=end_line,
                     label=locator.label,
                     detail=locator.detail,
+                    line_span_source=locator.line_span_source,
                 )
             )
     return tuple(highlights[:8])

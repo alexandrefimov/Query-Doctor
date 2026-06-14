@@ -15,9 +15,12 @@ from query_doctor.recent.batch_models import CaseResult
 from query_doctor.recent.source_coordinates import sql_source_line_spans
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.source_spans import (
+    SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE,
+    SOURCE_LINE_SPAN_SOURCE_SQL_PARSER,
     SourceLineSpan,
     format_source_line_span,
     parse_source_coordinate,
+    safe_source_line_span_source,
     source_line_span_from_payload,
     source_line_span_payload,
 )
@@ -277,11 +280,24 @@ def locator(
     *,
     coordinate: str = "",
     line_span: SourceLineSpan | None = None,
+    line_span_source: str = "",
 ) -> dict[str, object]:
     if locator_id not in SOURCE_LOCATOR_IDS:
         raise ValueError(f"unknown source locator id: {locator_id}")
     clean_detail = safe_detail(detail)
-    clean_line_span = safe_line_span(line_span) or parse_source_coordinate(coordinate)
+    provided_line_span = safe_line_span(line_span)
+    coordinate_line_span = parse_source_coordinate(coordinate)
+    clean_line_span = provided_line_span or coordinate_line_span
+    default_line_span_source = (
+        SOURCE_LINE_SPAN_SOURCE_SQL_PARSER
+        if provided_line_span
+        else SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE
+    )
+    clean_line_span_source = (
+        safe_source_line_span_source(line_span_source, fallback=default_line_span_source)
+        if clean_line_span
+        else ""
+    )
     clean_coordinate = (
         format_source_line_span(clean_line_span) if clean_line_span else safe_coordinate(coordinate)
     )
@@ -290,6 +306,7 @@ def locator(
         result["coordinate"] = clean_coordinate
     if clean_line_span:
         result["line_span"] = source_line_span_payload(clean_line_span)
+        result["line_span_source"] = clean_line_span_source
     if clean_detail:
         result["detail"] = clean_detail
     return result
@@ -305,6 +322,14 @@ def dedupe_locators(
     for item in locators:
         locator_id = str(item.get("id", ""))
         line_span = source_line_span_from_payload(item.get("line_span"))
+        line_span_source = (
+            safe_source_line_span_source(
+                item.get("line_span_source"),
+                fallback=SOURCE_LINE_SPAN_SOURCE_SQL_PARSER,
+            )
+            if line_span
+            else ""
+        )
         coordinate = (
             format_source_line_span(line_span)
             if line_span
@@ -322,6 +347,7 @@ def dedupe_locators(
                 "id": locator_id,
                 **({"coordinate": coordinate} if coordinate else {}),
                 **({"line_span": source_line_span_payload(line_span)} if line_span else {}),
+                **({"line_span_source": line_span_source} if line_span_source else {}),
                 **({"detail": detail} if detail else {}),
             }
         )
