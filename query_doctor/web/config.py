@@ -38,6 +38,11 @@ from query_doctor.web.models import (
     WebSettings,
 )
 from query_doctor.web.public_demo import default_public_demo_summary_path
+from query_doctor.web.viewer_identity import (
+    collectable_owner_users,
+    local_first_viewer_identity,
+    unauthenticated_viewer_identity,
+)
 from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
     DEFAULT_PROMETHEUS_STEP_SEC,
@@ -381,11 +386,12 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.metadata_kerberos_host_fqdn,
             settings.source_owner_user,
             settings.source_owner_user_options,
+            settings.viewer_identity.viewer_raw_subjects,
             settings.krb5ccname,
         )
     ):
         raise WebError(
-            "Public demo mode must not load CM, Impala, Prometheus, metadata, or owner source settings."
+            "Public demo mode must not load CM, Impala, Prometheus, metadata, owner source, or raw viewer settings."
         )
 
 
@@ -484,6 +490,13 @@ def build_web_settings(
                 source_owner_user_from_env(dict(os.environ)),
                 source_owner_user_from_keytab_options(source_owner_user_options),
             )
+        )
+    )
+    viewer_identity = (
+        unauthenticated_viewer_identity()
+        if public_demo
+        else local_first_viewer_identity(
+            collectable_owner_users(source_owner_user, source_owner_user_options)
         )
     )
     report_llm_provider = normalize_llm_provider(
@@ -746,6 +759,7 @@ def build_web_settings(
         or DEFAULT_RECENT_SCAN_TIMEZONE,
         language=language,
         source_owner_user_options=source_owner_user_options,
+        viewer_identity=viewer_identity,
     )
     if clusters:
         return settings_for_cluster_key(settings, clusters[0].key)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from query_doctor.cli.collect_cm_profiles import DEFAULT_CM_METRICS_PROFILE
@@ -15,6 +15,10 @@ from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
     DEFAULT_PROMETHEUS_STEP_SEC,
     DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+)
+from query_doctor.web.viewer_identity import (
+    ViewerIdentity,
+    unauthenticated_viewer_identity,
 )
 
 
@@ -165,6 +169,7 @@ class WebSettings:
     recent_scan_timezone: str = DEFAULT_RECENT_SCAN_TIMEZONE
     language: str = DEFAULT_LANGUAGE
     source_owner_user_options: tuple[str, ...] = ()
+    viewer_identity: ViewerIdentity = field(default_factory=unauthenticated_viewer_identity)
 
 
 @dataclass(frozen=True)

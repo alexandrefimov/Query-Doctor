@@ -30,6 +30,11 @@ from query_doctor.web.models import (
     WebError,
     WebSettings,
 )
+from query_doctor.web.viewer_identity import (
+    VIEWER_IDENTITY_LOCAL_FIRST,
+    collectable_owner_users,
+    local_first_viewer_identity,
+)
 
 
 def build_web_cluster_configs(config_values: Mapping[str, object]) -> tuple[WebClusterConfig, ...]:
@@ -353,6 +358,15 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
         return settings
     for cluster in settings.clusters:
         if cluster.key == key:
+            source_owner_user = cluster.source_owner_user or settings.source_owner_user
+            viewer_identity = settings.viewer_identity
+            if viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST:
+                viewer_identity = local_first_viewer_identity(
+                    collectable_owner_users(
+                        source_owner_user,
+                        settings.source_owner_user_options,
+                    )
+                )
             return replace(
                 settings,
                 active_cluster_key=cluster.key,
@@ -393,7 +407,8 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 redact_identifiers=cluster.redact_identifiers,
                 redact_hosts=cluster.redact_hosts,
                 source_visibility=cluster.source_visibility,
-                source_owner_user=cluster.source_owner_user or settings.source_owner_user,
+                source_owner_user=source_owner_user,
+                viewer_identity=viewer_identity,
                 krb5ccname=cluster.krb5ccname,
                 recent_scan_timezone=cluster.recent_scan_timezone,
             )
