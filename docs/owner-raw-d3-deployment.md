@@ -109,6 +109,28 @@ Before enabling non-local `owner_raw`, verify:
   paths, header values, secrets, model names, runtime internals, or raw artifact
   filenames.
 
+## Policy Simulator
+
+Use the dev-only `scripts/owner_raw_policy_simulator.py` helper to audit the
+owner-raw source allow/deny matrix without opening cases or reading SQL:
+
+```bash
+python3 scripts/owner_raw_policy_simulator.py \
+  --source-visibility owner_raw \
+  --host 0.0.0.0 \
+  --allow-nonlocal-web-bind \
+  --viewer-identity-header-configured \
+  --viewer-header-value sample_owner \
+  --query-user sample_owner
+```
+
+The output is raw-free JSON: it includes the allow/deny result, reason code,
+route class, source visibility, source switch, viewer mode, bind scope, and
+input shape booleans/counts. It does not echo viewer values, query users, header
+values, SQL, case ids, paths, or secrets. The simulator is an audit aid for the
+policy matrix; it is not an auth proxy, deployment check, or substitute for the
+runtime checks above.
+
 ## Operator Response
 
 If the auth proxy, identity mapping, audit pipeline, or ownership mapping is in

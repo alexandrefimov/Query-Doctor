@@ -17,23 +17,29 @@ from query_doctor.safety.browser_display import (
     redact_credentials_for_display,
     redact_local_paths_for_display,
 )
-from query_doctor.source_visibility import SOURCE_VISIBILITY_OWNER_RAW
 from query_doctor.web.audit import WebAuditEvent
 from query_doctor.web.models import WebSettings
+from query_doctor.web import owner_raw_policy
+from query_doctor.web.owner_raw_policy import (
+    OwnerRawSourcePolicyInput,
+    authenticated_viewer_identity_configured_for_policy,
+    decide_owner_raw_source_policy,
+)
 from query_doctor.web.presenters.recent_scan import present_source_locators
 from query_doctor.web.surface_taxonomy import (
     OWNER_RAW_SOURCE_WEB_POLICY,
     SURFACE_CLASS_OWNER_RAW_SOURCE_WEB,
 )
-from query_doctor.web.viewer_identity import viewer_can_see_raw_query
 
 
 OWNER_RAW_SOURCE_GET_RE = re.compile(r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/source")
-OWNER_RAW_SOURCE_REASON_ALLOWED = "viewer_matches_query_user"
+OWNER_RAW_SOURCE_REASON_ALLOWED = owner_raw_policy.OWNER_RAW_SOURCE_REASON_ALLOWED
 OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND = "case_not_found"
-OWNER_RAW_SOURCE_REASON_SOURCE_VISIBILITY = "source_visibility_not_owner_raw"
-OWNER_RAW_SOURCE_REASON_DISABLED = "owner_raw_source_disabled"
-OWNER_RAW_SOURCE_REASON_OWNER_MISMATCH = "viewer_not_authorized_for_query_user"
+OWNER_RAW_SOURCE_REASON_SOURCE_VISIBILITY = (
+    owner_raw_policy.OWNER_RAW_SOURCE_REASON_SOURCE_VISIBILITY
+)
+OWNER_RAW_SOURCE_REASON_DISABLED = owner_raw_policy.OWNER_RAW_SOURCE_REASON_DISABLED
+OWNER_RAW_SOURCE_REASON_OWNER_MISMATCH = owner_raw_policy.OWNER_RAW_SOURCE_REASON_OWNER_MISMATCH
 OWNER_RAW_SOURCE_REASON_SOURCE_UNAVAILABLE = "source_unavailable"
 OWNER_RAW_SOURCE_REASON_UNSUPPORTED_SCOPE = "unsupported_source_scope"
 
@@ -151,12 +157,22 @@ def decide_owner_raw_source_access(
     case: dict[str, object],
     case_dir: Path | None,
 ) -> OwnerRawSourceDecision:
-    if settings.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
-        return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_SOURCE_VISIBILITY)
-    if not settings.owner_raw_source_enabled:
-        return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_DISABLED)
-    if not viewer_can_see_raw_query(settings.viewer_identity, case.get("user")):
-        return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_OWNER_MISMATCH)
+    policy_decision = decide_owner_raw_source_policy(
+        OwnerRawSourcePolicyInput(
+            source_visibility=settings.source_visibility,
+            owner_raw_source_enabled=settings.owner_raw_source_enabled,
+            viewer_identity=settings.viewer_identity,
+            query_user=case.get("user"),
+            host=settings.host,
+            allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind,
+            authenticated_viewer_configured=authenticated_viewer_identity_configured_for_policy(
+                settings.viewer_identity,
+                viewer_identity_header=settings.viewer_identity_header,
+            ),
+        )
+    )
+    if not policy_decision.allowed:
+        return OwnerRawSourceDecision(False, policy_decision.reason_code)
     if case_dir is None:
         return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_SOURCE_UNAVAILABLE)
     try:
