@@ -66,6 +66,9 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   bookkeeping entries when building Recent candidates, and plain non-CTAS DDL
   statements are reported as `excluded: DDL statement` instead of the generic
   not-analyzable query-text reason.
+- Direct Impala Recent and Running metadata refresh now also consumes
+  collector-extracted source-table references from the selected profile, so
+  metadata can run when daemon query-list statements are redacted or incomplete.
 - Recent source locators now carry typed raw-free `line_span` payloads and
   allowlisted `line_span_source` provenance alongside their legacy display
   coordinates, so owner-raw source highlighting can prefer structured line

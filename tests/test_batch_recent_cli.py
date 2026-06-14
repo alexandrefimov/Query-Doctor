@@ -818,6 +818,71 @@ def test_batch_recent_direct_impala_profile_collection_uses_impala_collector(mon
     assert calls[0][calls[0].index("--prometheus-step-sec") + 1] == "45"
     assert calls[0][calls[0].index("--prometheus-timeseries-padding-sec") + 1] == "180"
     assert calls[0][calls[0].index("--prometheus-timeout-sec") + 1] == "20"
+    assert "--metadata-source-tables-out" not in calls[0]
+
+
+def test_batch_recent_direct_impala_profile_collection_reads_metadata_source_tables(
+    monkeypatch, tmp_path
+):
+    module = load_batch_module()
+    args = module.parse_args(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--cm-inspect-limit",
+            "5",
+            "--select-limit",
+            "2",
+            "--metadata-mode",
+            "on",
+            "--metadata-coordinator",
+            "impala.example.net:21000",
+            "--metadata-top-limit",
+            "1",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+    case = module.CaseResult(
+        index=1,
+        query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+        duration_sec=120.0,
+        user=None,
+        pool=None,
+        query_type="QUERY",
+        sql_verb="SELECT",
+        wrapper_dir=batch_dir(tmp_path) / "cases" / "case-001",
+        metadata_source_tables=("existing.table",),
+    )
+    calls = []
+
+    def fake_run(cmd, cwd, env):
+        calls.append(cmd)
+        out = Path(cmd[cmd.index("--out") + 1])
+        source_tables_out = Path(cmd[cmd.index("--metadata-source-tables-out") + 1])
+        assert source_tables_out.parent == out
+        source_tables_out.write_text(
+            json.dumps(["example_warehouse.real_table"]) + "\n",
+            encoding="utf-8",
+        )
+        write_case(out / "aaaaaaaaaaaaaaaa_bbbbbbbbbbbbbbbb", healthy_facts())
+        return completed()
+
+    monkeypatch.setattr(module.batch_case_processing, "run_subprocess", fake_run)
+
+    module.collect_case_profile(config, case, env={}, repo_root=REPO_DIR)
+
+    collect_cmd = calls[0]
+    assert case.collection_status == "ok"
+    assert command_uses_role(collect_cmd, "collect_impala_profile")
+    assert "--metadata-source-tables-out" in collect_cmd
+    assert case.metadata_source_tables == (
+        "existing.table",
+        "example_warehouse.real_table",
+    )
 
 
 def test_batch_recent_cm_profile_collection_keeps_selected_cluster_with_config_path(
