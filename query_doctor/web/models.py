@@ -170,6 +170,7 @@ class WebSettings:
     language: str = DEFAULT_LANGUAGE
     source_owner_user_options: tuple[str, ...] = ()
     viewer_identity_header: str | None = None
+    owner_raw_source_enabled: bool = True
     viewer_identity: ViewerIdentity = field(default_factory=unauthenticated_viewer_identity)
 
 

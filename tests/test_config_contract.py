@@ -108,6 +108,24 @@ def test_viewer_identity_header_config_field_is_global_only():
         )
 
 
+def test_owner_raw_source_enabled_config_field_is_global_only():
+    values = config_contract.normalize_config_keys(minimal_config(owner_raw_source_enabled=False))
+
+    assert values["owner_raw_source_enabled"] is False
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "owner_raw_source_enabled": False,
+                    }
+                ]
+            )
+        )
+
+
 def test_default_config_is_discovered(tmp_path):
     path = write_config(tmp_path / config_contract.DEFAULT_CONFIG_PATH, minimal_config())
 

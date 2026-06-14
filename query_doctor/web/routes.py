@@ -15,6 +15,7 @@ from query_doctor.web.batch_case_actions import (
     start_batch_case_optimized_query_job,
     start_batch_case_report_job,
 )
+from query_doctor.web.audit import WebAuditEvent
 from query_doctor.web.command_builders import REPORT_VARIANT_LLM, REPORT_VARIANT_PYTHON
 from query_doctor.web.batch_case_pages import render_batch_case_detail_for_request
 from query_doctor.web.batch_jobs import start_batch_job, start_running_job
@@ -37,6 +38,7 @@ from query_doctor.web.owner_raw_source import (
     OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND,
     OwnerRawSourceDecision,
     build_owner_raw_source_view,
+    owner_raw_source_audit_event,
     owner_raw_source_detail_href,
     owner_raw_source_path_match,
     unquote_case_id,
@@ -118,10 +120,17 @@ class WebRouteResponse:
     content_type: str = "text/html; charset=utf-8"
     location: str | None = None
     download_filename: str | None = None
+    audit_event: WebAuditEvent | None = None
 
     @classmethod
-    def html(cls, status: int, body: str) -> "WebRouteResponse":
-        return cls(status=status, body=body)
+    def html(
+        cls,
+        status: int,
+        body: str,
+        *,
+        audit_event: WebAuditEvent | None = None,
+    ) -> "WebRouteResponse":
+        return cls(status=status, body=body, audit_event=audit_event)
 
     @classmethod
     def json(cls, status: int, body: str) -> "WebRouteResponse":
@@ -263,14 +272,21 @@ def route_owner_raw_source_get(
     back_href = owner_raw_source_detail_href(case_id, detail_base_path=detail_base_path)
     if case is None:
         decision = OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND)
+        status = 404
         return WebRouteResponse.html(
-            404,
+            status,
             render_owner_raw_source_unavailable_page(
                 effective_settings,
                 case_id=case_id,
                 back_href=back_href,
                 decision=decision,
                 active_nav=active_nav,
+            ),
+            audit_event=owner_raw_source_audit_event(
+                effective_settings,
+                decision,
+                route_source=source,
+                status=status,
             ),
         )
     case_dir = resolve_batch_case_report_dir(effective_settings, case)
@@ -282,8 +298,9 @@ def route_owner_raw_source_get(
         back_href=back_href,
     )
     if isinstance(view_or_decision, OwnerRawSourceDecision):
+        status = 403
         return WebRouteResponse.html(
-            403,
+            status,
             render_owner_raw_source_unavailable_page(
                 effective_settings,
                 case_id=case_id,
@@ -291,13 +308,27 @@ def route_owner_raw_source_get(
                 decision=view_or_decision,
                 active_nav=active_nav,
             ),
+            audit_event=owner_raw_source_audit_event(
+                effective_settings,
+                view_or_decision,
+                route_source=source,
+                status=status,
+            ),
         )
+    status = 200
+    decision = OwnerRawSourceDecision(True, view_or_decision.reason_code)
     return WebRouteResponse.html(
-        200,
+        status,
         render_owner_raw_source_page(
             effective_settings,
             view_or_decision,
             active_nav=active_nav,
+        ),
+        audit_event=owner_raw_source_audit_event(
+            effective_settings,
+            decision,
+            route_source=source,
+            status=status,
         ),
     )
 

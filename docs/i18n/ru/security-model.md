@@ -34,7 +34,8 @@ filenames. Isolated owner-only selected-case source surface - узкое browser
 safety-contract. Shared/non-local `owner_raw` должен брать raw authorization
 из authenticated per-request viewer identity, например `viewer_identity_header`
 за trusted proxy; collection credential/keytab owner set не являются viewer
-authorization.
+authorization. Isolated owner-raw source surface остается за kill switch и
+пишет только reason-coded raw-free audit lines.
 
 ## Reporting
 

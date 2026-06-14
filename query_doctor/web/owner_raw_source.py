@@ -18,6 +18,7 @@ from query_doctor.safety.browser_display import (
     redact_local_paths_for_display,
 )
 from query_doctor.source_visibility import SOURCE_VISIBILITY_OWNER_RAW
+from query_doctor.web.audit import WebAuditEvent
 from query_doctor.web.models import WebSettings
 from query_doctor.web.presenters.recent_scan import present_source_locators
 from query_doctor.web.surface_taxonomy import (
@@ -31,6 +32,7 @@ OWNER_RAW_SOURCE_GET_RE = re.compile(r"/(?P<source>batch|running)/case/(?P<case_
 OWNER_RAW_SOURCE_REASON_ALLOWED = "viewer_matches_query_user"
 OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND = "case_not_found"
 OWNER_RAW_SOURCE_REASON_SOURCE_VISIBILITY = "source_visibility_not_owner_raw"
+OWNER_RAW_SOURCE_REASON_DISABLED = "owner_raw_source_disabled"
 OWNER_RAW_SOURCE_REASON_OWNER_MISMATCH = "viewer_not_authorized_for_query_user"
 OWNER_RAW_SOURCE_REASON_SOURCE_UNAVAILABLE = "source_unavailable"
 OWNER_RAW_SOURCE_REASON_UNSUPPORTED_SCOPE = "unsupported_source_scope"
@@ -151,6 +153,8 @@ def decide_owner_raw_source_access(
 ) -> OwnerRawSourceDecision:
     if settings.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
         return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_SOURCE_VISIBILITY)
+    if not settings.owner_raw_source_enabled:
+        return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_DISABLED)
     if not viewer_can_see_raw_query(settings.viewer_identity, case.get("user")):
         return OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_OWNER_MISMATCH)
     if case_dir is None:
@@ -174,6 +178,48 @@ def decide_owner_raw_source_access(
 def redact_owner_raw_source_sql(sql: str) -> str:
     safe = redact_credentials_for_display(sql)
     return redact_local_paths_for_display(safe)
+
+
+def owner_raw_source_audit_event(
+    settings: WebSettings,
+    decision: OwnerRawSourceDecision,
+    *,
+    route_source: str,
+    status: int,
+) -> WebAuditEvent:
+    return WebAuditEvent(
+        name="owner_raw_source_access",
+        fields=(
+            ("surface", "owner_raw_source"),
+            ("route_source", owner_raw_source_audit_route_source(route_source)),
+            ("status", str(status)),
+            ("allowed", "true" if decision.allowed else "false"),
+            ("reason", decision.reason_code),
+            ("source_visibility", settings.source_visibility),
+            (
+                "source_switch",
+                "enabled" if settings.owner_raw_source_enabled else "disabled",
+            ),
+            ("viewer_mode", owner_raw_source_audit_viewer_mode(settings)),
+            ("viewer_identity_source", owner_raw_source_audit_viewer_identity_source(settings)),
+        ),
+    )
+
+
+def owner_raw_source_audit_route_source(value: str) -> str:
+    return value if value in {"batch", "running"} else "unknown"
+
+
+def owner_raw_source_audit_viewer_mode(settings: WebSettings) -> str:
+    mode = settings.viewer_identity.mode
+    return mode if mode in {"authenticated", "local_first", "unauthenticated"} else "unknown"
+
+
+def owner_raw_source_audit_viewer_identity_source(settings: WebSettings) -> str:
+    if settings.viewer_identity_header:
+        return "header"
+    mode = owner_raw_source_audit_viewer_mode(settings)
+    return mode if mode != "unauthenticated" else "none"
 
 
 def owner_raw_source_highlights(

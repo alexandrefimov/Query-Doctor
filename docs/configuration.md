@@ -216,6 +216,7 @@ and add the non-secret base URL. Keep the token in `~/.qdcreds/llm-api.env`.
 | `source_visibility` | string | global or cluster | `safe` or `owner_raw`. Default `safe`. `owner_raw` enables fail-closed owner gating for Recent and Running scans; it does not expose raw browser/report fields by itself. |
 | `source_owner_user` | string | global or cluster | Optional query owner user for `owner_raw`. Prefer omitting this for local web runs: Query Doctor derives a simple user from `QD_SOURCE_OWNER_USER`, `QD_KRB5_PRINCIPAL`, `KRB5_PRINCIPAL`, or simple principals in `QD_KEYTAB`. Service principals with `/` are not accepted for inference. Keytab-derived users are sorted alphabetically, and the first user becomes the default Username selection. |
 | `viewer_identity_header` | string | global | Optional HTTP header name to trust as the authenticated viewer user for shared/D3 web deployments. Use only behind an auth proxy or ingress that authenticates the request and strips inbound copies of that header before setting it. The header value is normalized to a simple owner user; missing, invalid, or service/host-principal values are unauthenticated and fail closed for raw source access. |
+| `owner_raw_source_enabled` | boolean | global | Default `true`. Set `false`, or pass `--disable-owner-raw-source`, to disable only the isolated owner-only original source page and Details link. Recent/Running collection owner filters and validated optimizer draft policy keep their existing `source_visibility` behavior. |
 | `language` | string | global | Global language mode shown in the web header. It controls Help, Details static UI, and newly generated trusted report language. Supported values: `en`, `ru`. Default: `en`. Existing reports are not regenerated automatically after changing this field. The web header points to this config key without rendering the absolute config path. |
 | `report_llm_provider` | string | global | Report LLM provider: `ollama` or `openai_compatible`. |
 | `report_llm_model` | string | global | Report model route name. |
@@ -238,6 +239,10 @@ collectable owner users as the local viewer's raw subjects. On non-local binds,
 constructed authenticated identity or from `viewer_identity_header` behind a
 trusted proxy/ingress. The header controls only viewer authorization (C2), not
 which users the collector may gather as the collection credential (C1).
+Every isolated owner-raw source page attempt emits a safe server-side audit line
+with request id, route source, HTTP status, reason code, viewer mode/source, and
+switch state. The audit line must not include SQL, query ids, case ids, query
+users, local paths, header values, or secrets.
 When the local web wrapper exposes `QD_KEYTAB`, Query Doctor reads simple
 account names from that keytab, sorts them alphabetically, and uses the first
 account as the default Username for `owner_raw`. The keytab path and full

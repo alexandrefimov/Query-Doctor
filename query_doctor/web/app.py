@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import BinaryIO, Callable
 from urllib.parse import parse_qs, urlsplit
 
+from query_doctor.web.audit import WebAuditEvent, render_web_audit_log_line
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import run_query_id_analysis
@@ -336,6 +337,7 @@ def make_handler(
             self.write_body(status, body, "text/html; charset=utf-8")
 
         def write_route_response(self, response: WebRouteResponse) -> None:
+            self.write_audit_event(response.audit_event)
             if response.location is not None:
                 self.send_response(response.status)
                 self.send_header("Location", response.location)
@@ -380,6 +382,14 @@ def make_handler(
 
         def write_json(self, status: int, body: str) -> None:
             self.write_body(status, body, "application/json; charset=utf-8")
+
+        def write_audit_event(self, event: WebAuditEvent | None) -> None:
+            if event is None:
+                return
+            print(
+                render_web_audit_log_line(event, request_id=self.request_id()),
+                file=sys.stderr,
+            )
 
         def request_host_is_allowed(self) -> bool:
             headers = getattr(self, "headers", {})

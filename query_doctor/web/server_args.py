@@ -52,6 +52,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--disable-owner-raw-source",
+        action="store_true",
+        help=(
+            "Disable the isolated owner-only raw source page even when "
+            "source_visibility=owner_raw is configured."
+        ),
+    )
+    parser.add_argument(
         "--max-profile-bytes",
         type=positive_int,
         help=f"Override collector max profile bytes. Default comes from config or {cm_collector.DEFAULT_MAX_PROFILE_BYTES}.",

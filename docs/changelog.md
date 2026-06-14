@@ -24,6 +24,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   for common Recent scan setup failures, including metadata Kerberos, metadata
   shell, CM credentials, missing direct-Impala hosts, cluster selection, and
   output-directory validation, while still hiding raw stdout/stderr.
+- Owner-raw source access now has a global kill switch
+  (`owner_raw_source_enabled=false` or `--disable-owner-raw-source`) and emits a
+  request-id correlated safe audit line for every isolated raw source page
+  attempt. The audit line is reason-coded and omits raw SQL, query ids,
+  case ids, query users, paths, header values, and secrets.
 - `query-doctor-web` can now derive per-request authenticated viewer identity
   from an explicitly configured `viewer_identity_header`, intended for D3-style
   deployments behind a trusted auth proxy or ingress that strips inbound copies

@@ -371,8 +371,11 @@ auth proxy или ingress после удаления входящих копи�
   `source_visibility=owner_raw`, а isolated owner-only source view может
   показать read-only original SQL для authorized query owner. На localhost raw
   viewer subjects берутся из local collectable owner users; на shared bind они
-  должны приходить из authenticated per-request viewer identity. Default `safe`
-  mode показывает trusted recommendations/no-rewrite guidance вместо SQL draft.
+  должны приходить из authenticated per-request viewer identity. Original
+  source view можно глобально отключить через
+  `owner_raw_source_enabled=false` или `--disable-owner-raw-source`; каждая
+  попытка пишет reason-coded raw-free server audit line. Default `safe` mode
+  показывает trusted recommendations/no-rewrite guidance вместо SQL draft.
 - Query Optimizer принимает только один safe read-only statement и никогда не
   выполняет pasted SQL.
 

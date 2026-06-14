@@ -89,6 +89,7 @@ ALLOWED_CONFIG_KEYS = {
     "max_timeseries_points",
     "min_duration_sec",
     "no_llm",
+    "owner_raw_source_enabled",
     "optimizer_model",
     "out",
     "pool",
@@ -654,6 +655,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "redact_identifiers",
         "metadata_redact",
         "metadata_ssl",
+        "owner_raw_source_enabled",
         "web_advanced_settings_enabled",
     }:
         if not isinstance(value, bool):

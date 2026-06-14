@@ -43,6 +43,9 @@ local exclude-only note files, not in committed documentation.
   per-request viewer identity, such as `viewer_identity_header` behind a trusted
   proxy that strips inbound copies. Do not gate raw reveal on the collection
   credential or keytab owner set.
+- Keep the isolated owner-raw source surface behind its kill switch and
+  raw-free reason-coded audit line; never audit raw SQL, query ids, case ids,
+  users, paths, header values, or secrets.
 - Never state root causes without direct support in deterministic analysis
   facts.
 - Treat raw LLM output as untrusted until deterministic validation accepts it.
