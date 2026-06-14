@@ -24,6 +24,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   for common Recent scan setup failures, including metadata Kerberos, metadata
   shell, CM credentials, missing direct-Impala hosts, cluster selection, and
   output-directory validation, while still hiding raw stdout/stderr.
+- Added [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md), an active
+  shared/non-local `owner_raw` deployment contract covering trusted ingress
+  header stripping, C1/C2 identity separation, kill-switch behavior, raw-free
+  audit checks, and the absence of admin, group, role, or delegation bypasses.
 - Owner-raw source access now has a global kill switch
   (`owner_raw_source_enabled=false` or `--disable-owner-raw-source`) and emits a
   request-id correlated safe audit line for every isolated raw source page

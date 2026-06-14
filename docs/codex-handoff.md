@@ -42,7 +42,9 @@ local exclude-only note files, not in committed documentation.
 - Shared or non-local `owner_raw` must gate raw source access on authenticated
   per-request viewer identity, such as `viewer_identity_header` behind a trusted
   proxy that strips inbound copies. Do not gate raw reveal on the collection
-  credential or keytab owner set.
+  credential or keytab owner set. Use
+  [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) as the D3 deployment
+  checklist before changing shared owner-raw behavior.
 - Keep the isolated owner-raw source surface behind its kill switch and
   raw-free reason-coded audit line; never audit raw SQL, query ids, case ids,
   users, paths, header values, or secrets.

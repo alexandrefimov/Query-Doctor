@@ -348,7 +348,9 @@ TLS/reverse-proxy trust, and resource limits. Shared public demos should use
 the read-only `query-doctor-web --public-demo` mode. Shared `owner_raw` source
 access requires authenticated per-request viewer identity; today that means an
 explicit `viewer_identity_header` supplied only by a trusted auth proxy or
-ingress that strips inbound copies of the same header.
+ingress that strips inbound copies of the same header. The shared/non-local
+deployment checklist is
+[docs/owner-raw-d3-deployment.md](docs/owner-raw-d3-deployment.md).
 
 ## Safety Model
 
@@ -379,7 +381,10 @@ ingress that strips inbound copies of the same header.
   executes pasted SQL.
 
 See [docs/safety-contract.md](docs/safety-contract.md) for the full trust and
-redaction contract. For a reviewer-oriented overview, see
+redaction contract, including the narrow owner-only source exception. For
+shared/non-local owner-raw deployment, use
+[docs/owner-raw-d3-deployment.md](docs/owner-raw-d3-deployment.md). For a
+reviewer-oriented overview, see
 [docs/security-model.md](docs/security-model.md).
 
 ## Documentation
