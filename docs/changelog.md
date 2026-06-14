@@ -21,6 +21,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 
 ## Unreleased
 
+- Direct-Impala Running scans now treat daemon query-list entries from
+  in-flight/running collections, or entries with `executing=true`, as running
+  even when the daemon also reports a stale terminal `state`.
+
 ## 0.8.0 - 2026-06-14
 
 - Release smoke scripts now fail early on non-empty explicit `--work-dir`

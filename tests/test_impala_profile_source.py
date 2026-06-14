@@ -311,6 +311,10 @@ def test_fetch_impala_query_summaries_parses_completed_and_running_queries():
                             "effective_user": "loader",
                             "duration": "30s",
                             "start_time": "2026-05-12 10:20:00",
+                            "end_time": "2026-05-12 10:20:30",
+                            "executing": True,
+                            "state": "FINISHED",
+                            "stmt_type": "QUERY",
                         }
                     ],
                 }
@@ -331,6 +335,7 @@ def test_fetch_impala_query_summaries_parses_completed_and_running_queries():
     assert result.summaries[0].duration_ms == 120000
     assert result.summaries[0].end_time == "2026-05-12T10:15:00Z"
     assert result.summaries[1].status == "running"
+    assert result.summaries[1].query_state == "running"
     assert result.summaries[1].duration_ms == 30000
 
 
