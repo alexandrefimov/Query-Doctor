@@ -189,6 +189,84 @@ def test_table_metadata_context_renderer_normalizes_stats_placeholders():
     assert ": N/A" not in text
 
 
+def test_table_metadata_context_exposes_safe_statement_issue_counts(tmp_path):
+    context_path = tmp_path / "impala_context.json"
+    context = table_metadata_facts.context_from_payload(
+        {
+            "tables": ["db.fact"],
+            "max_output_bytes": 262144,
+            "read_only_statements_only": True,
+            "results": [
+                {
+                    "table": "db.fact",
+                    "statement": "SHOW CREATE TABLE",
+                    "status": "ok",
+                    "stdout": "CREATE TABLE db.fact (id BIGINT)",
+                    "stderr": "Starting Impala Shell with Kerberos authentication",
+                },
+                {
+                    "table": "db.fact",
+                    "statement": "SHOW TABLE STATS",
+                    "status": "too_large",
+                    "stderr": "captured output exceeded max-output-bytes",
+                },
+                {
+                    "table": "db.fact",
+                    "statement": "SHOW COLUMN STATS",
+                    "status": "error",
+                    "stderr": "GSSAPI Failure: no serverFQDN password=secret",
+                },
+            ],
+        },
+        context_path,
+        tmp_path,
+    )
+
+    assert context["statement_result_count"] == 3
+    assert context["statement_status_counts"] == {"error": 1, "ok": 1, "too_large": 1}
+    assert context["statement_issue_counts"] == {
+        "kerberos_host_fqdn": 1,
+        "too_large": 1,
+    }
+    assert context["metadata_output_limit_bytes"] == 262144
+    assert "secret" not in repr(context)
+    assert "no serverFQDN" not in repr(context)
+    assert "auth_transport" not in context["statement_issue_counts"]
+
+
+def test_table_metadata_context_renderer_and_parser_include_safe_issue_counts():
+    from query_doctor.web.details_facts import parse_table_metadata_context_facts
+
+    text = "\n".join(
+        render_table_metadata_context(
+            {
+                "table_metadata_context": {
+                    "context_file": "present",
+                    "table_metadata_facts": "supported",
+                    "tables_requested": 1,
+                    "read_only_statements_only": True,
+                    "statement_result_count": 3,
+                    "statement_status_counts": {"ok": 2, "too_large": 1},
+                    "statement_issue_counts": {"too_large": 1},
+                    "metadata_output_limit_bytes": 262144,
+                    "tables": [],
+                }
+            }
+        )
+    )
+    parsed = parse_table_metadata_context_facts(text)
+
+    assert "- statement result count: 3" in text
+    assert "- statement status counts: ok=2, too_large=1" in text
+    assert "- statement issue counts: too_large=1" in text
+    assert "- metadata output limit bytes: 262144" in text
+    assert parsed is not None
+    assert parsed["summary"]["statement result count"] == "3"
+    assert parsed["summary"]["statement status counts"] == "ok=2, too_large=1"
+    assert parsed["summary"]["statement issue counts"] == "too_large=1"
+    assert parsed["summary"]["metadata output limit bytes"] == "262144"
+
+
 def test_parse_show_create_extracts_only_safe_storage_location_facts():
     facts = table_metadata_facts.parse_show_create(
         "\n".join(

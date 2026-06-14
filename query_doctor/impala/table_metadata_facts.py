@@ -26,6 +26,7 @@ COLUMN_STATS_STATUS_KEYS = (
     "column_stats_all_missing_columns",
 )
 COLUMN_STATS_STATUS_VALUES = ("complete", "ndv_missing", "size_missing", "all_missing")
+NON_ISSUE_STATUSES = {"ok", "not_applicable", "planned"}
 
 
 def collect_table_metadata_context(case_dir: Path) -> dict[str, Any]:
@@ -83,6 +84,9 @@ def rel_path(path: Path, base: Path) -> str:
 def context_from_payload(payload: dict[str, Any], path: Path, case_dir: Path) -> dict[str, Any]:
     tables = normalized_string_list(payload.get("tables"))
     table_map = {table: empty_table_context(table) for table in tables}
+    status_counts: dict[str, int] = {}
+    issue_counts: dict[str, int] = {}
+    statement_result_count = 0
 
     for result in payload.get("results") or []:
         if not isinstance(result, dict):
@@ -91,6 +95,12 @@ def context_from_payload(payload: dict[str, Any], path: Path, case_dir: Path) ->
         statement = str(result.get("statement") or "").strip()
         if not table or statement not in STATEMENTS:
             continue
+        statement_result_count += 1
+        status = safe_status(result.get("status"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+        issue = classify_statement_issue(result, status)
+        if issue:
+            issue_counts[issue] = issue_counts.get(issue, 0) + 1
         table_map.setdefault(table, empty_table_context(table))
         apply_statement_result(table_map[table], statement, result)
 
@@ -107,6 +117,10 @@ def context_from_payload(payload: dict[str, Any], path: Path, case_dir: Path) ->
         "table_metadata_facts": "supported" if supported_metadata else "unknown",
         "tables_requested": len(tables),
         "read_only_statements_only": read_only if isinstance(read_only, bool) else None,
+        "statement_result_count": statement_result_count,
+        "statement_status_counts": dict(sorted(status_counts.items())),
+        "statement_issue_counts": dict(sorted(issue_counts.items())),
+        "metadata_output_limit_bytes": safe_positive_int(payload.get("max_output_bytes")),
         "tables": sorted_tables,
     }
 
@@ -177,6 +191,51 @@ def safe_status(value: Any) -> str:
         if status in {"ok", "error", "too_large", "timeout", "planned", "not_applicable"}
         else "unknown"
     )
+
+
+def safe_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
+
+
+def classify_statement_issue(result: dict[str, Any], status: str | None = None) -> str:
+    safe = safe_status(status if status is not None else result.get("status"))
+    if safe in NON_ISSUE_STATUSES:
+        return ""
+    if safe == "too_large":
+        return "too_large"
+    if safe == "timeout":
+        return "timeout"
+
+    text = f"{result.get('error') or ''}\n{result.get('stderr') or ''}".lower()
+    if "no serverfqdn" in text or "no server fqdn" in text:
+        return "kerberos_host_fqdn"
+    if "authorization" in text or "not authorized" in text:
+        return "authorization"
+    if "parseexception" in text or "syntax error" in text:
+        return "parse"
+    if (
+        "database does not exist" in text
+        or "table does not exist" in text
+        or "could not resolve" in text
+        or "not found" in text
+    ):
+        return "object_not_found"
+    if "ssl" in text or "tls" in text:
+        return "ssl"
+    if (
+        "connection refused" in text
+        or "could not connect" in text
+        or "failed to connect" in text
+        or "timed out connecting" in text
+    ):
+        return "connection"
+    if "gssapi" in text or "sasl" in text or "kerberos" in text:
+        return "auth_transport"
+    return "collector_error"
 
 
 def apply_not_applicable_result(table_context: dict[str, Any], statement: str) -> None:

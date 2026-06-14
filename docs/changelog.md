@@ -25,6 +25,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   `profile_<query-id-high>_<query-id-low>` shape when the profile body lacks a
   readable Query ID header. Embedded profile IDs, explicit `--query-id` values,
   and filename-derived IDs must still agree before any local case is written.
+- Metadata analysis now records raw-free statement status and issue counters
+  for explicit Impala metadata collection, distinguishing bounded causes such
+  as `too_large`, Kerberos host-FQDN failures, authorization, parse,
+  object-resolution, connection, and timeout issues without exposing raw
+  metadata output or subprocess text.
 - Metadata collection now backtick-quotes validated database and table
   identifiers in generated `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
   `SHOW COLUMN STATS` statements so reserved-word table names do not trip the

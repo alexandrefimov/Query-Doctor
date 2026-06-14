@@ -24,6 +24,10 @@ TABLE_METADATA_SUMMARY_KEYS = {
     "table metadata facts": "table metadata facts",
     "tables requested": "tables requested",
     "read-only statements only": "read-only statements only",
+    "statement result count": "statement result count",
+    "statement status counts": "statement status counts",
+    "statement issue counts": "statement issue counts",
+    "metadata output limit bytes": "metadata output limit bytes",
     "error": "error",
 }
 TABLE_METADATA_TABLE_KEYS = {
@@ -386,6 +390,12 @@ def convert_table_metadata_context_for_web(context: dict[str, Any]) -> dict[str,
             "table metadata facts": context.get("table_metadata_facts", "unknown"),
             "tables requested": str(context.get("tables_requested", "unknown")),
             "read-only statements only": context.get("read_only_statements_only", "unknown"),
+            "statement result count": context.get("statement_result_count", "unknown"),
+            "statement status counts": metadata_counts_text(context.get("statement_status_counts"))
+            or "unknown",
+            "statement issue counts": metadata_counts_text(context.get("statement_issue_counts"))
+            or "none",
+            "metadata output limit bytes": context.get("metadata_output_limit_bytes", "unknown"),
         },
         "tables": converted,
         "statement_counts": metadata_statement_counts(converted),
@@ -971,6 +981,18 @@ def clean_metadata_fact_value(value: str) -> str:
 
 def normalize_metadata_placeholder(value: str) -> str:
     return "unknown" if table_metadata_facts.is_unknown_marker(value) else value
+
+
+def metadata_counts_text(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    parts: list[str] = []
+    for key in sorted(value):
+        count = value.get(key)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            continue
+        parts.append(f"{key}={count}")
+    return ", ".join(parts)
 
 
 def metadata_statement_counts(tables: list[dict[str, Any]]) -> dict[str, int]:
