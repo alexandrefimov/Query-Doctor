@@ -317,6 +317,27 @@ The web smoke requires at least one selected table-backed query to collect
 metadata by default. For a discovery/profile/analyzer-only check, use
 `--allow-no-metadata` or set `--metadata-top-limit 0`.
 
+To validate one explicit Known Query ID through the local web UI, keep the
+Query ID in a local ignored file and use the Known Query smoke. It starts
+`scripts/query-doctor-web-local --no-llm`, submits the normal Known Query ID
+form, waits for the web job, opens the Details page, and checks the
+deterministic Python report route without printing the Query ID.
+
+```bash
+scripts/query-doctor-web-known-query-smoke \
+  --cluster <direct-impala-cluster-id> \
+  --query-id-file <ignored-query-id-file>
+```
+
+For a table-backed query where metadata collection is expected, add
+`--require-metadata`.
+
+Direct Impala Known Query ID collection must be able to fetch the retained
+profile through the configured `impala_profile_hosts` endpoint. A single
+load-balanced or ingress endpoint may not reach the daemon that coordinated a
+particular query; in that case the smoke should fail safely with a collector
+subprocess category while keeping captured output hidden.
+
 Validate the summary before changing wording or behavior:
 
 ```bash
