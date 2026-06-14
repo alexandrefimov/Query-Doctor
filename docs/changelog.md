@@ -24,6 +24,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Owner-raw D3 deployment guidance now includes public-safe front-door review
+  snippets for common header handling, OIDC/SSO claim mapping, and
+  SPNEGO/Kerberos principal mapping, plus an explicit warning that direct
+  browser access to the Query Doctor web process must be blocked to prevent
+  viewer-header spoofing.
 - Russian documentation guidance now defines `docs/i18n/ru/` as a selective
   user/operator companion layer rather than a full mirror of every internal
   document, and the Russian security/configuration companions now pin the same

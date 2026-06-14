@@ -118,6 +118,24 @@ def test_owner_raw_d3_doc_pins_single_front_door_contract():
     assert "Do not add native OIDC, SAML, SPNEGO" in agents_text
 
 
+def test_owner_raw_d3_doc_pins_public_safe_front_door_examples():
+    text = (REPO_DIR / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
+    normalized_text = " ".join(text.split())
+
+    assert "## Public-Safe Front Door Snippets" in text
+    assert "not complete ingress or reverse-proxy configuration" in normalized_text
+    assert "deny direct client network access to Query Doctor" in text
+    assert "browser can spoof `viewer_identity_header`" in normalized_text
+    assert 'strip_request_header("X-Query-Doctor-Viewer")' in text
+    assert 'set_upstream_header("X-Query-Doctor-Viewer", viewer)' in text
+    assert "drop_upstream_identity_tokens()" in text
+    assert "claims = verified_oidc_or_sso_claims()" in text
+    assert "principal = authenticated_kerberos_principal()" in text
+    assert "reject_if_service_or_host_principal(principal)" in text
+    assert "Do not use `sub`, email, UPN, display name, group, role" in normalized_text
+    assert "Query Doctor should receive neither tickets nor principals" in normalized_text
+
+
 def test_owner_raw_d3_russian_companions_pin_selective_i18n_and_contract():
     ru_index = (REPO_DIR / "docs" / "i18n" / "ru" / "README.md").read_text(encoding="utf-8")
     ru_config = (REPO_DIR / "docs" / "i18n" / "ru" / "configuration.md").read_text(encoding="utf-8")
