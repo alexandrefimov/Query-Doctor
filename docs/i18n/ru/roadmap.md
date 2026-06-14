@@ -23,9 +23,10 @@ Last reviewed: 2026-06-03
   digest, analyst action queue и compact action outcome rollups.
 - Общий config `language` для Help, Details static UI copy и новых trusted
   reports; английский остается default, русский - companion mode.
-- `recent_scan_timezone` для Cloudera Manager Finished queries Scan date/hour
-  selector; UI показывает UTC offset в Scan Hour label. Direct Impala Finished
-  queries использует `recent_window_minutes`.
+- Finished-query web scans используют configured `recent_window_minutes`
+  Search depth lookback across Cloudera Manager и direct Impala sources; при
+  больших browser-selected windows UI предупреждает о возможной нагрузке на
+  source endpoints и optional Prometheus collection.
 - Validated reports и read-only optimizer workflows.
 - `no_llm=true` - поддержанный safety/privacy режим: selected-case report и
   optimizer actions остаются Python-owned и не требуют model route.

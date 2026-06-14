@@ -1506,6 +1506,11 @@ html[data-theme=dark] select.input {
   margin-top:4px
 }
 
+.batch-note--large-window {
+  margin:8px 0 0;
+  font-size:13px
+}
+
 .batch-notices {
   display:block;
   margin-bottom:12px;

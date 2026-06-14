@@ -306,7 +306,7 @@ general multi-tenant service mode.
 | --- | --- | --- |
 | `recent_limit` | positive integer | Maximum query summaries to inspect. |
 | `recent_select` | positive integer | Maximum candidates selected for deeper analysis. |
-| `recent_window_minutes` | positive integer | Lookback window for CLI Recent scans and web direct Impala Finished-query scans. Web Cloudera Manager Finished-query scans use the selected Scan date/hour bucket instead. |
+| `recent_window_minutes` | positive integer | Lookback window for CLI Recent scans and web Finished-query scans. Large windows can increase load on Cloudera Manager, direct Impala UI endpoints, and optional Prometheus collection; use filters where possible. |
 | `recent_min_duration_sec` | non-negative number | Lower duration bound. |
 | `recent_max_duration_sec` | non-negative number | Upper duration bound. |
 | `recent_order` | string | One of `recent`, `duration-desc`, `duration-asc`, `recent-duration-desc`, or `status-priority`. |
@@ -315,7 +315,7 @@ general multi-tenant service mode.
 | `recent_include_running` | boolean | Include running queries in candidate selection. |
 | `recent_user` | string | Optional recent-query user filter. |
 | `recent_pool` | string | Optional recent-query pool filter. |
-| `recent_scan_timezone` | string | IANA timezone used for the web Cloudera Manager Finished queries Scan date/hour selector and UTC CM bounds, for example `UTC`. Default is `UTC`; the form label shows the current UTC offset. This field can also be set per cluster. |
+| `recent_scan_timezone` | string | IANA timezone retained for explicit date/hour helper paths. Web Finished-query scans use `recent_window_minutes` by default. This field can also be set per cluster. |
 | `recent_parallelism` | positive integer | Overall Recent scan worker limit. |
 | `recent_cm_jobs` | positive integer | CM profile/context worker limit. |
 | `recent_cm_summary_limit` | positive integer | CM summary scan cap. |

@@ -50,7 +50,8 @@ preview и Impala gate surfaces не являются README screenshot surfaces
 package-index history для installed artifacts. Public source releases
 начинаются с `v0.4.2`; `0.6.0` продолжает эту source release line. Current
 product baseline включает
-config-driven `language`, Recent Scan Hour UTC offset label, Known Query ID
+config-driven `language`, Recent Search depth lookback, large-window load
+warning, Known Query ID
 progress, elapsed scan-progress wording, workload diagnostics для repeated,
 frequent-short и regressed fingerprints, local synthetic action outcomes,
 optional direct Impala `/profile_docs`, optional `/admission?json` context и

@@ -61,10 +61,10 @@ is not a historical audit log. For engineering risks, use
 - Help, Details static UI copy, and newly generated trusted reports are
   controlled by the global `language` config. English is the default; Russian
   remains a localized companion mode, not a separately generated second report.
-- Finished-query Cloudera Manager Scan date/hour selection reads
-  `recent_scan_timezone` from config, renders the current UTC offset in the
-  Scan Hour label, and still sends Cloudera Manager UTC bounds. Direct Impala
-  Finished-query scans use retained-summary `recent_window_minutes`.
+- Finished-query web scans use the configured `recent_window_minutes` Search
+  depth lookback across Cloudera Manager and direct Impala sources, with a
+  browser warning for large windows that may increase source or optional
+  Prometheus load.
 - Query Optimizer is a separate pasted-SQL parse/analyze workflow. It never
   executes SQL and does not echo submitted SQL after submit.
 - Apache Impala upstream work around IMPALA-14953 is an explicit alignment

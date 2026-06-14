@@ -60,12 +60,13 @@ without weakening the safety contract or exposing raw artifacts.
   back to results, and same-tab navigation avoids tab sprawl.
 - Remove the production design-style toggle from the header; keep the light/dark
   theme toggle.
-- Make the fixed scan timezone visible in the Scan Hour label until timezone
-  selection becomes configurable.
+- Use Search depth as the visible Finished-query lookback control across
+  sources, with a warning when large windows may increase collection-source
+  load.
 - Add a short first-run hint above the scan form that tells analysts the basic
   workflow.
 - Split Recent scan setup into a default Basic scan layer with scan target,
-  date/hour, and Run, plus collapsed Source and Advanced settings for source
+  Search depth, and Run, plus collapsed Source and Advanced settings for source
   selection, filters, and collection limits. Owner-gated username selection
   stays visible in Basic scan when required by source visibility.
 - Make the Recent results table read from the analyst signal first: `Finding`
