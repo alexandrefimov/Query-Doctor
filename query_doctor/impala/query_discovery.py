@@ -183,10 +183,8 @@ def parse_impala_query_entry(
     end_time = normalize_impala_timestamp(
         first_present(raw, ("end_time", "endTime", "end_time_utc", "endTimeUtc", "end"))
     )
-    status = (
-        normalize_string(first_present(raw, ("status", "state", "query_state", "queryState")))
-        or default_status
-    )
+    raw_query_state = normalize_string(first_present(raw, ("query_state", "queryState", "state")))
+    status = normalize_impala_query_status(raw, default_status=default_status)
     return CMQuerySummary(
         query_id=query_id,
         start_time=start_time,
@@ -208,8 +206,7 @@ def parse_impala_query_entry(
         statement=normalize_statement(
             first_present(raw, ("stmt", "statement", "query", "sql", "stmt_text", "stmtText"))
         ),
-        query_state=normalize_string(first_present(raw, ("query_state", "queryState", "state")))
-        or status,
+        query_state="running" if status == "running" else raw_query_state or status,
     )
 
 
@@ -225,6 +222,31 @@ def normalize_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def normalize_impala_query_status(raw: dict[str, Any], *, default_status: str | None) -> str | None:
+    if default_status == "running" or parse_bool_flag(
+        first_present(
+            raw,
+            ("executing", "isExecuting", "in_flight", "inFlight", "running", "active"),
+        )
+    ):
+        return "running"
+    return (
+        normalize_string(first_present(raw, ("status", "state", "query_state", "queryState")))
+        or default_status
+    )
+
+
+def parse_bool_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    text = normalize_string(value)
+    if text is None:
+        return False
+    return text.lower() in {"1", "true", "t", "yes", "y", "on", "executing", "running", "active"}
 
 
 def normalize_statement(value: Any) -> str | None:
