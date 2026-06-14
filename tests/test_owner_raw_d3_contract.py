@@ -136,6 +136,22 @@ def test_owner_raw_d3_doc_pins_public_safe_front_door_examples():
     assert "Query Doctor should receive neither tickets nor principals" in normalized_text
 
 
+def test_owner_raw_d3_validation_matrix_pins_broader_checks():
+    text = (REPO_DIR / "docs" / "test-matrix.md").read_text(encoding="utf-8")
+    normalized_text = " ".join(text.split())
+
+    assert "Owner-raw D3 viewer identity, front-door contract" in text
+    assert "docs/owner-raw-d3-deployment.md" in text
+    assert "python3 scripts/owner_raw_front_door_smoke.py --compact" in text
+    assert "python3 scripts/owner_raw_policy_simulator.py" in text
+    assert "--viewer-identity-header-configured" in text
+    assert "--fail-on-deny" in text
+    assert "tests/test_owner_raw_front_door_smoke.py" in text
+    assert "tests/test_owner_raw_d3_contract.py" in text
+    assert 'tests/test_web_server.py -k "owner_raw or viewer_identity_header"' in normalized_text
+    assert "python3 scripts/check_staged_public_safety.py --changed" in text
+
+
 def test_owner_raw_d3_russian_companions_pin_selective_i18n_and_contract():
     ru_index = (REPO_DIR / "docs" / "i18n" / "ru" / "README.md").read_text(encoding="utf-8")
     ru_config = (REPO_DIR / "docs" / "i18n" / "ru" / "configuration.md").read_text(encoding="utf-8")

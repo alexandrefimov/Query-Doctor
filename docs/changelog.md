@@ -24,6 +24,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- The test matrix now has an explicit owner-raw D3 validation path covering the
+  front-door smoke harness, policy simulator, viewer-identity normalization,
+  owner-raw source policy, web route checks, UI/error wording, and public-safety
+  documentation gates.
 - Owner-raw D3 startup and denied-source-page diagnostics now explain the
   trusted front-door viewer-header requirement with safe reason-coded
   remediation, while continuing to fail closed without echoing viewer values,
