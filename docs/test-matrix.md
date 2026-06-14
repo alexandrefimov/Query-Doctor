@@ -1,6 +1,6 @@
 # Test Matrix
 
-Last updated: 2026-06-05
+Last updated: 2026-06-14
 
 This matrix helps agents choose focused validation before broader tests. It is
 not a replacement for judgment: run more when a change crosses boundaries.
@@ -19,6 +19,7 @@ format, whitespace, staged public-safety, and Markdown link hooks all execute.
 | `query_doctor/web/ui/**` | `docs/safety-contract.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_web_ui_home.py tests/test_web_ui_help.py tests/test_web_ui_readme.py tests/test_web_server.py` |
 | Web routes/jobs | `docs/codex-handoff.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_web_server.py tests/test_web_optimizer.py` |
 | Browser safety text | `docs/safety-contract.md` | `python3 -m pytest -q tests/test_web_display_safety.py tests/test_web_server.py` |
+| Owner-raw D3 viewer identity, front-door contract, or isolated raw source surface | `docs/safety-contract.md`, `docs/owner-raw-d3-deployment.md`, `docs/codex-handoff.md` | `python3 scripts/owner_raw_front_door_smoke.py --compact`; `python3 scripts/owner_raw_policy_simulator.py --source-visibility owner_raw --host 0.0.0.0 --allow-nonlocal-web-bind --viewer-identity-header-configured --viewer-header-value sample_owner --query-user sample_owner --fail-on-deny`; `python3 -m pytest -q tests/test_owner_raw_front_door_smoke.py tests/test_owner_raw_d3_contract.py tests/test_viewer_identity.py tests/test_owner_raw_policy.py tests/test_web_app.py tests/test_web_server.py -k "owner_raw or viewer_identity_header"`; for UI/error wording changes, also run `python3 -m pytest -q tests/test_web_server.py tests/test_web_ui_home.py tests/test_web_ui_help.py`; add `python3 scripts/check_staged_public_safety.py --changed` and `python3 scripts/audit_public_docs.py` when public docs or browser-visible safety text change |
 | Trusted artifacts | `docs/code-audit.md`, `docs/query-optimizer-contract.md` | `python3 -m pytest -q tests/test_web_trusted_artifacts.py tests/test_web_optimizer.py` |
 | `query_doctor/report/**` | `docs/safety-contract.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_report_sanitizer.py tests/test_web_ui_report.py` |
 | Optimizer parser/validator | `docs/query-optimizer-contract.md` | `python3 -m pytest -q tests/test_query_optimizer.py tests/test_optimizer_sql.py` |
