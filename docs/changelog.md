@@ -26,6 +26,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   of that header. Non-local `owner_raw` startup now accepts this configured
   auth front door, while missing, invalid, or service/host-principal viewer
   header values fail closed for raw source access.
+- Added a local `scripts/query-doctor-direct-impala-smoke` wrapper for bounded
+  direct-Impala Recent smoke runs. It auto-selects a single direct cluster from
+  local config, prepares Kerberos metadata auth from local keytab state when
+  available, and keeps local cluster ids and endpoints out of committed checks.
 - `owner_raw` now has an isolated owner-only selected-case source surface for
   authorized Recent/Running cases, with no-store responses, source allowlisting,
   safe reason-code denials, local-path/secret masking, and no trusted-report,
