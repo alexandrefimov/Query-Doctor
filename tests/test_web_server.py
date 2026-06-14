@@ -133,6 +133,7 @@ def write_owner_raw_source_summary(
     *,
     user: str = "analyst",
     source_sql=None,
+    source_locators=None,
 ) -> Path:
     case_dir = tmp_path / "case-001"
     write_complete_collected_case(case_dir)
@@ -161,7 +162,8 @@ def write_owner_raw_source_summary(
                         "metadata_status": "skipped",
                         "table_stats_status": "not_checked",
                         "score_reasons": ["cardinality anomaly detected"],
-                        "source_locators": {
+                        "source_locators": source_locators
+                        or {
                             "query_optimization": [
                                 {
                                     "id": "sql_final_select_filter",
@@ -4005,6 +4007,33 @@ def test_web_owner_raw_source_route_renders_owner_sql_with_secret_masking(tmp_pa
     assert "owner-raw-source-line--highlight" in response.body
     assert "final SELECT filter" in response.body
     assert 'data-reason-code="viewer_matches_query_user"' in response.body
+
+
+def test_web_owner_raw_source_route_highlights_typed_line_span_without_coordinate(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(
+        tmp_path,
+        source_locators={
+            "query_optimization": [
+                {
+                    "id": "sql_final_select_filter",
+                    "coordinate": "SELECT secret_col FROM example_guarded_table",
+                    "line_span": {"start_line": 3, "end_line": 3},
+                    "detail": "predicate near final SELECT",
+                }
+            ]
+        },
+    )
+    settings = owner_raw_web_settings(module, tmp_path, summary)
+    store = module.WebJobStore()
+
+    response = route_get_request("/batch/case/case-001/source", settings, store)
+
+    assert response is not None
+    assert response.status == 200
+    assert "owner-raw-source-line--highlight" in response.body
+    assert "final SELECT filter" in response.body
+    assert "secret_col" not in response.body
 
 
 def test_web_owner_raw_source_route_denies_safe_mode_and_mismatched_viewer(tmp_path):

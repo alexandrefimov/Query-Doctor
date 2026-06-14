@@ -15,6 +15,7 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_summary,
     present_recent_scan_technical_details,
     present_report_action,
+    present_source_locators,
     primary_bottleneck_reason_label,
     safe_display_text,
 )
@@ -1897,6 +1898,33 @@ def test_recent_scan_admission_follow_up_points_to_profile_facts_safely():
     assert "db_table" not in html
     assert_no_forbidden_fragments(action_view)
     assert_no_forbidden_fragments(html)
+
+
+def test_recent_scan_source_locators_accept_typed_line_spans_without_raw_coordinates():
+    locators = present_source_locators(
+        {
+            "query_optimization": [
+                {
+                    "id": "sql_final_select_filter",
+                    "line_span": {"start_line": 7, "end_line": 9},
+                    "detail": "predicate near final SELECT",
+                },
+                {
+                    "id": "plan_cardinality_anomaly",
+                    "coordinate": "SELECT secret_col FROM example_guarded_table",
+                    "line_span": {"start_line": 12, "end_line": 12},
+                    "detail": "node 02 HASH JOIN",
+                },
+            ]
+        }
+    )
+
+    query_locators = locators["query_optimization"]
+    assert query_locators[0].coordinate == "lines 7-9"
+    assert query_locators[0].line_span == (7, 9)
+    assert query_locators[1].coordinate == "line 12"
+    assert query_locators[1].line_span == (12, 12)
+    assert_no_forbidden_fragments(query_locators)
 
 
 def test_recent_scan_direct_impala_details_show_source_limitations_safely():

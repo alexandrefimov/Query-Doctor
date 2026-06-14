@@ -19,6 +19,24 @@ def load_batch_module():
     return batch_recent
 
 
+def assert_line_locator(
+    locators: list[dict[str, object]],
+    coordinate: str,
+    start_line: int,
+    end_line: int,
+) -> None:
+    assert {
+        "coordinate": coordinate,
+        "line_span": {"start_line": start_line, "end_line": end_line},
+    } in [
+        {
+            "coordinate": locator.get("coordinate"),
+            "line_span": locator.get("line_span"),
+        }
+        for locator in locators
+    ]
+
+
 def test_package_entrypoint_keeps_repo_root_anchor():
     from query_doctor.cli import batch_recent
 
@@ -5283,17 +5301,22 @@ def test_case_summary_includes_query_optimization_candidate(tmp_path):
     assert all(
         "coordinate" not in locator for locator in summary["source_locators"]["query_optimization"]
     )
+    assert all(
+        "line_span" not in locator for locator in summary["source_locators"]["query_optimization"]
+    )
 
     coordinate_summary = module.case_to_summary(case, include_source_coordinates=True)
     coordinate_locators = coordinate_summary["source_locators"]["query_optimization"]
     assert {
         "id": "sql_cte_block",
         "coordinate": "lines 1-8",
+        "line_span": {"start_line": 1, "end_line": 8},
         "detail": "2 CTEs",
     } in coordinate_locators
     assert {
         "id": "sql_final_select_filter",
         "coordinate": "line 11",
+        "line_span": {"start_line": 11, "end_line": 11},
         "detail": "predicate near final SELECT",
     } in coordinate_locators
 
@@ -5545,12 +5568,12 @@ def test_batch_summary_includes_source_coordinates_for_safe_and_owner_raw(tmp_pa
     owner_locators = owner_summary["cases"][0]["source_locators"]["query_optimization"]
     cm_owner_locators = cm_owner_summary["cases"][0]["source_locators"]["query_optimization"]
 
-    assert any(locator.get("coordinate") == "lines 1-4" for locator in safe_locators)
-    assert any(locator.get("coordinate") == "line 7" for locator in safe_locators)
-    assert any(locator.get("coordinate") == "lines 1-4" for locator in owner_locators)
-    assert any(locator.get("coordinate") == "line 7" for locator in owner_locators)
-    assert any(locator.get("coordinate") == "lines 1-4" for locator in cm_owner_locators)
-    assert any(locator.get("coordinate") == "line 7" for locator in cm_owner_locators)
+    assert_line_locator(safe_locators, "lines 1-4", 1, 4)
+    assert_line_locator(safe_locators, "line 7", 7, 7)
+    assert_line_locator(owner_locators, "lines 1-4", 1, 4)
+    assert_line_locator(owner_locators, "line 7", 7, 7)
+    assert_line_locator(cm_owner_locators, "lines 1-4", 1, 4)
+    assert_line_locator(cm_owner_locators, "line 7", 7, 7)
 
 
 def test_score_case_prefers_structured_analysis_json_for_stats_candidate(tmp_path):

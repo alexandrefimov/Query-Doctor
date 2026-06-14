@@ -17,6 +17,7 @@ from query_doctor.safety.browser_display import (
     redact_credentials_for_display,
     redact_local_paths_for_display,
 )
+from query_doctor.source_spans import parse_source_coordinate
 from query_doctor.web.audit import WebAuditEvent
 from query_doctor.web.models import WebSettings
 from query_doctor.web import owner_raw_policy
@@ -246,9 +247,9 @@ def owner_raw_source_highlights(
     seen: set[tuple[int, int, str, str]] = set()
     for locators in locators_by_group.values():
         for locator in locators:
-            if locator.kind != "sql" or not locator.coordinate:
+            if locator.kind != "sql":
                 continue
-            line_range = line_range_from_coordinate(locator.coordinate)
+            line_range = locator.line_span or line_range_from_coordinate(locator.coordinate)
             if line_range is None:
                 continue
             start_line, end_line = line_range
@@ -268,18 +269,8 @@ def owner_raw_source_highlights(
 
 
 def line_range_from_coordinate(coordinate: str) -> tuple[int, int] | None:
-    line_match = re.fullmatch(r"line ([1-9]\d{0,5})", coordinate)
-    if line_match:
-        line = int(line_match.group(1))
-        return line, line
-    range_match = re.fullmatch(r"lines ([1-9]\d{0,5})-([1-9]\d{0,5})", coordinate)
-    if not range_match:
-        return None
-    start = int(range_match.group(1))
-    end = int(range_match.group(2))
-    if start > end:
-        return None
-    return start, end
+    span = parse_source_coordinate(coordinate)
+    return (span.start_line, span.end_line) if span else None
 
 
 def unquote_case_id(value: str) -> str:

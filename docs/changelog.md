@@ -24,6 +24,9 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Recent source locators now carry typed raw-free `line_span` payloads alongside
+  their legacy display coordinates, so owner-raw source highlighting can prefer
+  structured line ranges without exposing SQL text or weakening older summaries.
 - Added a dev-only owner-raw policy simulator that evaluates the raw source
   allow/deny matrix over sanitized inputs and emits raw-free reason-code JSON,
   while the web owner-raw source route and non-local startup guard now share the

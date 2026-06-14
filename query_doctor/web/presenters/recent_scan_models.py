@@ -442,6 +442,7 @@ class RecentScanSourceLocatorView:
     label: str
     coordinate: str
     detail: str
+    line_span: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)

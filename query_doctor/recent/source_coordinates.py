@@ -17,32 +17,44 @@ from query_doctor.optimizer.sql_fragments import (
     skip_sql_whitespace_and_comments,
 )
 from query_doctor.optimizer.sql_shape import parse_top_level_derived_table
+from query_doctor.source_spans import SourceLineSpan, format_source_line_span
 
 
 def sql_source_coordinates(sql: str) -> dict[str, str]:
     """Return safe structural coordinates only; never return SQL text."""
 
-    coordinates: dict[str, str] = {}
+    return {
+        locator_id: format_source_line_span(span)
+        for locator_id, span in sql_source_line_spans(sql).items()
+    }
+
+
+def sql_source_line_spans(sql: str) -> dict[str, SourceLineSpan]:
+    """Return safe structural line spans only; never return SQL text."""
+
+    coordinates: dict[str, SourceLineSpan] = {}
     cte_offsets = cte_block_offsets(sql)
     if cte_offsets is not None:
-        coordinates["sql_cte_block"] = line_range(sql, *cte_offsets)
+        coordinates["sql_cte_block"] = line_span_range(sql, *cte_offsets)
         cte_where = first_keyword_offset(sql, ("WHERE",), start=cte_offsets[0], end=cte_offsets[1])
         if cte_where is not None:
-            coordinates["sql_downstream_cte_filter"] = line_coordinate(sql, cte_where)
-            coordinates["sql_mixed_downstream_filters"] = line_coordinate(sql, cte_where)
+            coordinates["sql_downstream_cte_filter"] = line_span_at(sql, cte_where)
+            coordinates["sql_mixed_downstream_filters"] = line_span_at(sql, cte_where)
     final_where = first_keyword_offset(sql, ("WHERE",), top_level=True)
     if final_where is not None:
-        coordinates["sql_final_select_filter"] = line_coordinate(sql, final_where)
-        coordinates.setdefault("sql_join_filter_review", line_coordinate(sql, final_where))
+        coordinates["sql_final_select_filter"] = line_span_at(sql, final_where)
+        coordinates.setdefault("sql_join_filter_review", line_span_at(sql, final_where))
     union_offset = first_keyword_offset(sql, ("UNION",))
     if union_offset is not None:
-        coordinates["sql_union_branch"] = line_coordinate(sql, union_offset)
+        coordinates["sql_union_branch"] = line_span_at(sql, union_offset)
     derived = parse_top_level_derived_table(sql)
     if derived is not None:
-        coordinates["sql_derived_table"] = line_range(sql, derived.body_start, derived.body_end)
+        coordinates["sql_derived_table"] = line_span_range(
+            sql, derived.body_start, derived.body_end
+        )
     join_offset = first_keyword_offset(sql, ("JOIN",))
     if join_offset is not None:
-        coordinates["sql_join_filter_review"] = line_coordinate(sql, join_offset)
+        coordinates["sql_join_filter_review"] = line_span_at(sql, join_offset)
     return coordinates
 
 
@@ -140,15 +152,22 @@ def keyword_offsets(
 
 
 def line_coordinate(sql: str, offset: int) -> str:
-    return f"line {line_number(sql, offset)}"
+    return format_source_line_span(line_span_at(sql, offset))
 
 
 def line_range(sql: str, start: int, end: int) -> str:
+    return format_source_line_span(line_span_range(sql, start, end))
+
+
+def line_span_at(sql: str, offset: int) -> SourceLineSpan:
+    line = line_number(sql, offset)
+    return SourceLineSpan(start_line=line, end_line=line)
+
+
+def line_span_range(sql: str, start: int, end: int) -> SourceLineSpan:
     start_line = line_number(sql, start)
     end_line = line_number(sql, max(start, end - 1))
-    if start_line == end_line:
-        return f"line {start_line}"
-    return f"lines {start_line}-{end_line}"
+    return SourceLineSpan(start_line=start_line, end_line=end_line)
 
 
 def line_number(sql: str, offset: int) -> int:
