@@ -26,6 +26,7 @@ def test_installed_impala_web_ui_exports_smoke_help_documents_contract() -> None
     assert "--bin-dir" in result.stdout
     assert "--fixture-dir" in result.stdout
     assert "--work-dir" in result.stdout
+    assert "--replace-work-dir" in result.stdout
     assert "installed wheel" in result.stdout
     assert "Impala Web UI exports" in result.stdout
 
@@ -64,6 +65,7 @@ def test_installed_impala_web_ui_exports_smoke_uses_installed_cli_and_http_serve
     assert "/query/details/" in text
     assert "external_services_used" in text
     assert "llm_used" in text
+    assert "prepare_smoke_work_dir" in text
 
 
 def test_installed_user_paths_matrix_runs_impala_web_ui_exports_smoke() -> None:

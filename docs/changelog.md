@@ -9,9 +9,10 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.7.0 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
-0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+For curated 0.8.0 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
+0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+[release-notes-0.7.0.md](release-notes-0.7.0.md),
 [release-notes-0.6.0.md](release-notes-0.6.0.md),
 [release-notes-0.5.0.md](release-notes-0.5.0.md),
 [release-notes-0.4.3.md](release-notes-0.4.3.md),
@@ -20,6 +21,14 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+## 0.8.0 - 2026-06-14
+
+- Release smoke scripts now fail early on non-empty explicit `--work-dir`
+  values and offer guarded `--replace-work-dir` cleanup for `query-doctor-*`
+  workspaces. Package/release/publish workflows also expose the README
+  Quickstart installed-wheel smoke as a standalone CI step, and release
+  operators can use `scripts/index_install_quickstart_smoke.py` to verify an
+  exact PyPI/TestPyPI install in a clean venv before or after publication.
 - Browser-visible subprocess failures now include allowlisted safe reason hints
   for common Recent scan setup failures, including metadata Kerberos, metadata
   shell, CM credentials, missing direct-Impala hosts, cluster selection, and

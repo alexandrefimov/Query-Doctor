@@ -9,13 +9,14 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlsplit
+
+from smoke_workdir import SmokeWorkDirError, prepare_smoke_work_dir
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -100,6 +101,14 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--keep-work-dir",
         action="store_true",
         help="Keep the temporary workspace for debugging.",
+    )
+    parser.add_argument(
+        "--replace-work-dir",
+        action="store_true",
+        help=(
+            "Remove an existing non-empty --work-dir before running. Requires a "
+            "query-doctor-* work directory."
+        ),
     )
     parser.add_argument(
         "--timeout-sec",
@@ -914,20 +923,27 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
-    if args.work_dir is None:
-        work_dir = Path(tempfile.mkdtemp(prefix="query-doctor-installed-user-paths-"))
-        cleanup = not args.keep_work_dir
-    else:
-        work_dir = args.work_dir.expanduser().resolve()
-        work_dir.mkdir(parents=True, exist_ok=True)
-        cleanup = False
+    requested_work_dir = args.work_dir.expanduser().resolve() if args.work_dir else None
     try:
+        prepared = prepare_smoke_work_dir(
+            args.work_dir,
+            keep_work_dir=args.keep_work_dir,
+            replace_work_dir=args.replace_work_dir,
+            temp_prefix="query-doctor-installed-user-paths-",
+            protected_roots=(ROOT,),
+        )
+        work_dir = prepared.path
         run_smoke(args, work_dir)
+    except SmokeWorkDirError as exc:
+        print(f"[installed-user-paths-smoke] FAILED: {exc}", file=sys.stderr)
+        if requested_work_dir is not None:
+            print(f"[installed-user-paths-smoke] work dir: {requested_work_dir}", file=sys.stderr)
+        return 1
     finally:
-        if cleanup:
-            shutil.rmtree(work_dir, ignore_errors=True)
-        elif args.keep_work_dir or args.work_dir is not None:
-            print(f"[installed-user-paths-smoke] work dir: {work_dir}")
+        if "prepared" in locals() and prepared.cleanup:
+            shutil.rmtree(prepared.path, ignore_errors=True)
+        elif "prepared" in locals() and (args.keep_work_dir or args.work_dir is not None):
+            print(f"[installed-user-paths-smoke] work dir: {prepared.path}")
     print_ok("installed user paths")
     return 0
 

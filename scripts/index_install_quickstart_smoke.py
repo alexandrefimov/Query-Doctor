@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a wheel, install it in a clean venv, and run the README Quickstart smoke."""
+"""Install Query Doctor from a package index in a clean venv and smoke README Quickstart."""
 
 from __future__ import annotations
 
@@ -18,34 +18,54 @@ README_QUICKSTART_SMOKE_SCRIPT = "scripts/installed_readme_quickstart_smoke.py"
 README_QUICKSTART_SMOKE = ROOT / README_QUICKSTART_SMOKE_SCRIPT
 
 
-class CleanWheelSmokeFailure(RuntimeError):
-    """Safe clean-wheel rehearsal failure."""
+class IndexInstallSmokeFailure(RuntimeError):
+    """Safe package-index install smoke failure."""
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--repo-dir",
-        type=Path,
-        default=ROOT,
-        help="Repository checkout to build. Default: %(default)s",
+        "--package",
+        default="query-doctor",
+        help="Package name to install from the configured index. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="Optional exact package version to install, for example 0.7.0.",
+    )
+    parser.add_argument(
+        "--index-url",
+        default=None,
+        help="Optional pip --index-url, for example https://test.pypi.org/simple/.",
+    )
+    parser.add_argument(
+        "--extra-index-url",
+        action="append",
+        default=[],
+        help="Optional pip --extra-index-url. Can be repeated.",
+    )
+    parser.add_argument(
+        "--pre",
+        action="store_true",
+        help="Allow pre-release package versions during pip install.",
     )
     parser.add_argument(
         "--python",
         type=Path,
         default=Path(sys.executable),
-        help="Python interpreter used to build the wheel and create the venv.",
+        help="Python interpreter used to create the clean venv.",
     )
     parser.add_argument(
         "--work-dir",
         type=Path,
         default=None,
-        help="Optional rehearsal workspace. A fresh temporary directory is used by default.",
+        help="Optional install-smoke workspace. A fresh temporary directory is used by default.",
     )
     parser.add_argument(
         "--keep-work-dir",
         action="store_true",
-        help="Keep the rehearsal workspace for debugging.",
+        help="Keep the install-smoke workspace for debugging.",
     )
     parser.add_argument(
         "--replace-work-dir",
@@ -53,14 +73,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Remove an existing non-empty --work-dir before running. Requires a "
             "query-doctor-* work directory."
-        ),
-    )
-    parser.add_argument(
-        "--no-build-isolation",
-        action="store_true",
-        help=(
-            "Pass --no-isolation to python -m build for offline local rehearsals. "
-            "By default the script uses build isolation to match release builds."
         ),
     )
     parser.add_argument(
@@ -77,7 +89,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--timeout-sec",
         type=float,
-        default=240.0,
+        default=300.0,
         help="Per-step timeout in seconds. Default: %(default)s",
     )
     return parser.parse_args(argv)
@@ -107,39 +119,17 @@ def run_command(
     )
     if result.returncode != 0:
         detail = safe_output_snippet(result.stderr) or safe_output_snippet(result.stdout)
-        raise CleanWheelSmokeFailure(f"{label} failed: {detail or result.returncode}")
+        raise IndexInstallSmokeFailure(f"{label} failed: {detail or result.returncode}")
     return result
 
 
-def build_wheel(
-    *,
-    python: Path,
-    repo_dir: Path,
-    dist_dir: Path,
-    timeout_sec: float,
-    no_build_isolation: bool,
-) -> Path:
-    cmd = [
-        str(python),
-        "-m",
-        "build",
-        "--wheel",
-        "--outdir",
-        str(dist_dir),
-    ]
-    if no_build_isolation:
-        cmd.append("--no-isolation")
-    cmd.append(str(repo_dir))
-    run_command(
-        cmd,
-        cwd=repo_dir,
-        timeout_sec=timeout_sec,
-        label="wheel build",
-    )
-    wheels = sorted(dist_dir.glob("query_doctor-*.whl"))
-    if len(wheels) != 1:
-        raise CleanWheelSmokeFailure("wheel build did not produce exactly one query_doctor wheel")
-    return wheels[0]
+def requirement(package: str, version: str | None) -> str:
+    normalized = package.strip()
+    if not normalized:
+        raise IndexInstallSmokeFailure("package name is empty")
+    if version:
+        return f"{normalized}=={version.strip()}"
+    return normalized
 
 
 def create_venv(*, python: Path, venv_dir: Path, timeout_sec: float) -> Path:
@@ -153,37 +143,46 @@ def create_venv(*, python: Path, venv_dir: Path, timeout_sec: float) -> Path:
     if not candidate.is_file():
         candidate = venv_dir / "Scripts" / "python.exe"
     if not candidate.is_file():
-        raise CleanWheelSmokeFailure("clean venv Python executable was not created")
+        raise IndexInstallSmokeFailure("clean venv Python executable was not created")
     return candidate
 
 
-def install_wheel(
+def install_from_index(
     *,
     venv_python: Path,
-    wheel: Path,
+    requirement_text: str,
+    index_url: str | None,
+    extra_index_urls: list[str],
+    pre: bool,
     timeout_sec: float,
 ) -> None:
+    cmd = [str(venv_python), "-m", "pip", "install"]
+    if index_url:
+        cmd.extend(["--index-url", index_url])
+    for extra_index_url in extra_index_urls:
+        cmd.extend(["--extra-index-url", extra_index_url])
+    if pre:
+        cmd.append("--pre")
+    cmd.append(requirement_text)
     run_command(
-        [str(venv_python), "-m", "pip", "install", str(wheel)],
-        cwd=wheel.parent,
+        cmd,
+        cwd=venv_python.parent,
         timeout_sec=timeout_sec,
-        label="wheel install in clean venv",
+        label="package index install",
     )
 
 
-def assert_installed_package_not_from_repo(
-    *,
-    venv_python: Path,
-    repo_dir: Path,
-    timeout_sec: float,
-) -> Path:
+def installed_package_summary(
+    *, venv_python: Path, package: str, repo_dir: Path, timeout_sec: float
+) -> dict[str, str]:
     result = run_command(
         [
             str(venv_python),
             "-c",
             (
-                "import json, pathlib, query_doctor; "
-                "print(json.dumps({'package_file': str(pathlib.Path(query_doctor.__file__).resolve())}))"
+                "import importlib.metadata as md, json, pathlib, query_doctor; "
+                f"print(json.dumps({{'version': md.version({package!r}), "
+                "'package_file': str(pathlib.Path(query_doctor.__file__).resolve())}))"
             ),
         ],
         cwd=repo_dir.parent,
@@ -194,18 +193,17 @@ def assert_installed_package_not_from_repo(
         payload = json.loads(result.stdout)
         package_file = Path(str(payload["package_file"]))
     except (KeyError, json.JSONDecodeError, TypeError) as exc:
-        raise CleanWheelSmokeFailure("could not inspect installed package import path") from exc
+        raise IndexInstallSmokeFailure("could not inspect installed package import path") from exc
     try:
         package_file.resolve().relative_to(repo_dir.resolve())
     except ValueError:
-        return package_file
-    raise CleanWheelSmokeFailure("clean venv imported query_doctor from the repository checkout")
+        return {"version": str(payload["version"]), "package_file": str(package_file)}
+    raise IndexInstallSmokeFailure("clean venv imported query_doctor from the repository checkout")
 
 
 def run_readme_smoke(
     *,
     venv_python: Path,
-    bin_dir: Path,
     work_dir: Path,
     host: str,
     port: int | None,
@@ -215,7 +213,7 @@ def run_readme_smoke(
         str(venv_python),
         str(README_QUICKSTART_SMOKE),
         "--bin-dir",
-        str(bin_dir),
+        str(venv_python.parent),
         "--work-dir",
         str(work_dir),
         "--host",
@@ -229,69 +227,64 @@ def run_readme_smoke(
         cmd,
         cwd=ROOT,
         timeout_sec=timeout_sec,
-        label="README Quickstart smoke against clean wheel venv",
+        label="README Quickstart smoke against package-index install",
     )
     try:
         payload = json.loads(result.stdout.splitlines()[0])
     except (IndexError, json.JSONDecodeError) as exc:
-        raise CleanWheelSmokeFailure("README Quickstart smoke did not emit JSON") from exc
+        raise IndexInstallSmokeFailure("README Quickstart smoke did not emit JSON") from exc
     if payload.get("status") != "OK" or payload.get("real_web_server") is not True:
-        raise CleanWheelSmokeFailure("README Quickstart smoke did not pass")
+        raise IndexInstallSmokeFailure("README Quickstart smoke did not pass")
     return payload
 
 
 def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
-    repo_dir = args.repo_dir.expanduser().resolve()
     python = args.python.expanduser().resolve()
-    if not (repo_dir / "pyproject.toml").is_file():
-        raise CleanWheelSmokeFailure("repo-dir does not contain pyproject.toml")
     if not python.is_file():
-        raise CleanWheelSmokeFailure("Python interpreter does not exist")
-
-    dist_dir = work_dir / "dist"
-    venv_dir = work_dir / "venv"
-    readme_work_dir = work_dir / "readme-quickstart-smoke"
-    dist_dir.mkdir(parents=True, exist_ok=True)
-    wheel = build_wheel(
+        raise IndexInstallSmokeFailure("Python interpreter does not exist")
+    requirement_text = requirement(args.package, args.version)
+    venv_python = create_venv(
         python=python,
-        repo_dir=repo_dir,
-        dist_dir=dist_dir,
-        timeout_sec=args.timeout_sec,
-        no_build_isolation=args.no_build_isolation,
-    )
-    venv_python = create_venv(python=python, venv_dir=venv_dir, timeout_sec=args.timeout_sec)
-    install_wheel(
-        venv_python=venv_python,
-        wheel=wheel,
+        venv_dir=work_dir / "venv",
         timeout_sec=args.timeout_sec,
     )
-    package_file = assert_installed_package_not_from_repo(
+    install_from_index(
         venv_python=venv_python,
-        repo_dir=repo_dir,
+        requirement_text=requirement_text,
+        index_url=args.index_url,
+        extra_index_urls=args.extra_index_url,
+        pre=args.pre,
+        timeout_sec=args.timeout_sec,
+    )
+    package_summary = installed_package_summary(
+        venv_python=venv_python,
+        package=args.package,
+        repo_dir=ROOT,
         timeout_sec=args.timeout_sec,
     )
     readme_summary = run_readme_smoke(
         venv_python=venv_python,
-        bin_dir=venv_python.parent,
-        work_dir=readme_work_dir,
+        work_dir=work_dir / "readme-quickstart-smoke",
         host=args.host,
         port=args.port,
         timeout_sec=args.timeout_sec,
     )
-
     print(
         json.dumps(
             {
-                "schema_version": "query_doctor_clean_wheel_quickstart_smoke_v1",
+                "schema_version": "query_doctor_index_install_quickstart_smoke_v1",
                 "status": "OK",
-                "wheel_filename": wheel.name,
-                "build_isolation": not args.no_build_isolation,
+                "requirement": requirement_text,
+                "installed_version": package_summary["version"],
                 "package_imported_from_repo": False,
-                "package_import_parent": package_file.parent.name,
+                "package_import_parent": Path(package_summary["package_file"]).parent.name,
+                "index_url_configured": bool(args.index_url),
+                "extra_index_url_count": len(args.extra_index_url),
                 "readme_quickstart_smoke": True,
                 "readme_quickstart_schema_version": readme_summary.get("schema_version"),
                 "real_web_server": readme_summary.get("real_web_server") is True,
-                "external_services_used": False,
+                "package_index_used": True,
+                "quickstart_external_services_used": False,
                 "llm_used": False,
             },
             sort_keys=True,
@@ -307,21 +300,22 @@ def main(argv: list[str] | None = None) -> int:
             args.work_dir,
             keep_work_dir=args.keep_work_dir,
             replace_work_dir=args.replace_work_dir,
-            temp_prefix="query-doctor-clean-wheel-quickstart-",
+            temp_prefix="query-doctor-index-install-quickstart-",
             protected_roots=(ROOT,),
         )
-        work_dir = prepared.path
-        run_smoke(args, work_dir)
-    except (CleanWheelSmokeFailure, SmokeWorkDirError) as exc:
-        print(f"[clean-wheel-quickstart-smoke] FAILED: {exc}", file=sys.stderr)
+        run_smoke(args, prepared.path)
+    except (IndexInstallSmokeFailure, SmokeWorkDirError) as exc:
+        print(f"[index-install-quickstart-smoke] FAILED: {exc}", file=sys.stderr)
         if requested_work_dir is not None:
-            print(f"[clean-wheel-quickstart-smoke] work dir: {requested_work_dir}", file=sys.stderr)
+            print(
+                f"[index-install-quickstart-smoke] work dir: {requested_work_dir}", file=sys.stderr
+            )
         return 1
     finally:
         if "prepared" in locals() and prepared.cleanup:
             shutil.rmtree(prepared.path, ignore_errors=True)
         elif "prepared" in locals() and (args.keep_work_dir or args.work_dir is not None):
-            print(f"[clean-wheel-quickstart-smoke] work dir: {prepared.path}")
+            print(f"[index-install-quickstart-smoke] work dir: {prepared.path}")
     return 0
 
 
