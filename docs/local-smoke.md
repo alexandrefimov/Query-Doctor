@@ -302,6 +302,21 @@ Use strict metadata mode only when validating the metadata path itself:
 scripts/query-doctor-direct-impala-smoke --cluster <direct-impala-cluster-id> --require-metadata
 ```
 
+To validate the same direct-Impala path through the local web UI and wrapper,
+use the web smoke. It starts `scripts/query-doctor-web-local --no-llm`, submits
+the Finished-query scan form for the selected direct-Impala cluster, waits for
+the web job, checks the retained batch summary, and opens one Details page. The
+script prints only aggregate statuses such as selected case count,
+collection/analyzer success count, and metadata collection count.
+
+```bash
+scripts/query-doctor-web-direct-impala-smoke --cluster <direct-impala-cluster-id>
+```
+
+The web smoke requires at least one selected table-backed query to collect
+metadata by default. For a discovery/profile/analyzer-only check, use
+`--allow-no-metadata` or set `--metadata-top-limit 0`.
+
 Validate the summary before changing wording or behavior:
 
 ```bash

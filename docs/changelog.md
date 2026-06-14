@@ -24,6 +24,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Added a local `scripts/query-doctor-web-direct-impala-smoke` wrapper that
+  starts the local web UI, submits a bounded direct-Impala Finished-query scan,
+  verifies aggregate metadata collection through the web job path, and checks a
+  Details page without printing raw profiles, SQL, metadata, endpoints, local
+  paths, or subprocess output.
 - Owner-raw D3 deployment guidance now separates application-side pre-proxy
   readiness from the required live front-door validation gate, and the roadmap
   tracks the remaining real-proxy proof point without promoting general shared
