@@ -507,7 +507,10 @@ Trusted browser/report surfaces must not expose raw SQL, raw profile text, raw
 metadata, local paths, `case_dir`, process logs, secrets, model names, runtime
 internals, or raw artifact filenames. The isolated owner-only selected-case
 source surface is the narrow raw-SQL browser exception and must keep the
-stricter rules in `docs/safety-contract.md`.
+stricter rules in `docs/safety-contract.md`. Shared or non-local owner-raw
+deployments must resolve per-request viewer identity from an authenticated
+front door such as `viewer_identity_header` behind a trusted proxy; keytab or
+collection owner sets must not authorize raw reveal by themselves.
 
 Any change that renders analyzer facts, report content, optimizer content,
 collector errors, or generated artifacts must include focused tests proving the

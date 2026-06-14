@@ -31,7 +31,10 @@ raw metadata, raw provider JSON, local paths, subprocess output, credentials,
 Kerberos ticket contents, model names, runtime internals или raw artifact
 filenames. Isolated owner-only selected-case source surface - узкое browser
 исключение для authorized raw SQL source и должна следовать canonical
-safety-contract.
+safety-contract. Shared/non-local `owner_raw` должен брать raw authorization
+из authenticated per-request viewer identity, например `viewer_identity_header`
+за trusted proxy; collection credential/keytab owner set не являются viewer
+authorization.
 
 ## Reporting
 

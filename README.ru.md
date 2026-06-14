@@ -345,7 +345,10 @@ credentials. Для web UI используйте localhost или tightly contr
 bind. Не разворачивайте ordinary local mode как shared service без отдельного
 дизайна authentication, authorization, tenant/job isolation, audit logging,
 TLS/reverse-proxy trust и resource limits. Shared public demos должны
-использовать read-only режим `query-doctor-web --public-demo`.
+использовать read-only режим `query-doctor-web --public-demo`. Shared
+`owner_raw` source access требует authenticated per-request viewer identity:
+сейчас это явный `viewer_identity_header`, который выставляет только trusted
+auth proxy или ingress после удаления входящих копий того же header.
 
 ## Safety model
 
@@ -366,7 +369,9 @@ TLS/reverse-proxy trust и resource limits. Shared public demos должны
 - SQL browser exceptions остаются selected-case и owner-gated: Details может
   показать validated optimizer SQL draft для explicit optimizer action при
   `source_visibility=owner_raw`, а isolated owner-only source view может
-  показать read-only original SQL для authorized query owner. Default `safe`
+  показать read-only original SQL для authorized query owner. На localhost raw
+  viewer subjects берутся из local collectable owner users; на shared bind они
+  должны приходить из authenticated per-request viewer identity. Default `safe`
   mode показывает trusted recommendations/no-rewrite guidance вместо SQL draft.
 - Query Optimizer принимает только один safe read-only statement и никогда не
   выполняет pasted SQL.

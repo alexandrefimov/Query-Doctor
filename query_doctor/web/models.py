@@ -169,6 +169,7 @@ class WebSettings:
     recent_scan_timezone: str = DEFAULT_RECENT_SCAN_TIMEZONE
     language: str = DEFAULT_LANGUAGE
     source_owner_user_options: tuple[str, ...] = ()
+    viewer_identity_header: str | None = None
     viewer_identity: ViewerIdentity = field(default_factory=unauthenticated_viewer_identity)
 
 

@@ -41,6 +41,7 @@ from query_doctor.web.public_demo import default_public_demo_summary_path
 from query_doctor.web.viewer_identity import (
     VIEWER_IDENTITY_AUTHENTICATED,
     local_first_viewer_identity,
+    normalize_viewer_identity_header,
     unauthenticated_viewer_identity,
 )
 from query_doctor.prometheus.timeseries import (
@@ -100,6 +101,12 @@ def viewer_identity_has_authenticated_raw_subjects(settings: WebSettings) -> boo
     )
 
 
+def authenticated_viewer_identity_configured(settings: WebSettings) -> bool:
+    if settings.viewer_identity_header:
+        return True
+    return viewer_identity_has_authenticated_raw_subjects(settings)
+
+
 def validate_owner_raw_nonlocal_bind(settings: WebSettings) -> None:
     if settings.host in LOCAL_BIND_HOSTS:
         return
@@ -107,12 +114,13 @@ def validate_owner_raw_nonlocal_bind(settings: WebSettings) -> None:
         return
     if not settings_include_owner_raw_source_visibility(settings):
         return
-    if viewer_identity_has_authenticated_raw_subjects(settings):
+    if authenticated_viewer_identity_configured(settings):
         return
     raise WebError(
         "Refusing non-local web bind with source_visibility=owner_raw. "
-        "Owner raw visibility is local-only unless authenticated viewer identity is configured; "
-        "bind to 127.0.0.1 or use source_visibility=safe for shared web access."
+        "Owner raw visibility is local-only unless authenticated viewer identity is configured "
+        "through viewer_identity_header; bind to 127.0.0.1 or use source_visibility=safe for "
+        "shared web access."
     )
 
 
@@ -421,6 +429,7 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.metadata_kerberos_host_fqdn,
             settings.source_owner_user,
             settings.source_owner_user_options,
+            settings.viewer_identity_header,
             settings.viewer_identity.viewer_raw_subjects,
             settings.krb5ccname,
         )
@@ -469,6 +478,20 @@ def first_int_value(*values: int | None, default: int | None) -> int | None:
         if value is not None:
             return value
     return default
+
+
+def configured_viewer_identity_header(
+    args: argparse.Namespace,
+    config_values: dict[str, object],
+) -> str | None:
+    value = first_string_value(
+        getattr(args, "viewer_identity_header", None),
+        optional_config_string(config_values, "viewer_identity_header"),
+    )
+    try:
+        return normalize_viewer_identity_header(value)
+    except ValueError as exc:
+        raise WebError(str(exc)) from exc
 
 
 def merged_bool_setting(
@@ -794,6 +817,7 @@ def build_web_settings(
         or DEFAULT_RECENT_SCAN_TIMEZONE,
         language=language,
         source_owner_user_options=source_owner_user_options,
+        viewer_identity_header=configured_viewer_identity_header(args, config_values),
         viewer_identity=viewer_identity,
     )
     if clusters:

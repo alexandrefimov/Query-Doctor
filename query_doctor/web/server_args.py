@@ -45,6 +45,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--viewer-identity-header",
+        help=(
+            "HTTP header name to trust as the authenticated viewer user. "
+            "Use only behind an auth proxy or ingress that strips inbound copies of this header."
+        ),
+    )
+    parser.add_argument(
         "--max-profile-bytes",
         type=positive_int,
         help=f"Override collector max profile bytes. Default comes from config or {cm_collector.DEFAULT_MAX_PROFILE_BYTES}.",

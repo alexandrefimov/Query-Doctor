@@ -88,6 +88,26 @@ def test_web_corpus_dir_config_field_is_allowed():
     assert values["manual_profile_dir"] == "profile-inbox"
 
 
+def test_viewer_identity_header_config_field_is_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(viewer_identity_header="X-QD-Viewer")
+    )
+
+    assert values["viewer_identity_header"] == "X-QD-Viewer"
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "viewer_identity_header": "X-QD-Viewer",
+                    }
+                ]
+            )
+        )
+
+
 def test_default_config_is_discovered(tmp_path):
     path = write_config(tmp_path / config_contract.DEFAULT_CONFIG_PATH, minimal_config())
 

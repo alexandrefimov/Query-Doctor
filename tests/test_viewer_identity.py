@@ -5,7 +5,9 @@ from query_doctor.web.viewer_identity import (
     VIEWER_IDENTITY_LOCAL_FIRST,
     collectable_owner_users,
     authenticated_viewer_identity,
+    authenticated_viewer_identity_from_header_value,
     local_first_viewer_identity,
+    normalize_viewer_identity_header,
     unauthenticated_viewer_identity,
     viewer_can_see_raw_query,
 )
@@ -45,6 +47,14 @@ def test_authenticated_viewer_identity_can_differ_from_collectable_users():
     assert viewer_can_see_raw_query(identity, "operator_keytab_user") is False
 
 
+def test_authenticated_viewer_identity_uses_simple_owner_user():
+    identity = authenticated_viewer_identity("analyst_one@EXAMPLE.COM")
+
+    assert identity.mode == VIEWER_IDENTITY_AUTHENTICATED
+    assert identity.viewer_user == "analyst_one"
+    assert identity.viewer_raw_subjects == ("analyst_one",)
+
+
 def test_authenticated_viewer_identity_includes_explicit_delegated_subjects():
     identity = authenticated_viewer_identity(
         "analyst_one",
@@ -66,3 +76,27 @@ def test_unauthenticated_viewer_identity_is_fail_closed_for_raw_queries():
 def test_authenticated_viewer_identity_requires_simple_user():
     with pytest.raises(ValueError, match="requires viewer_user"):
         authenticated_viewer_identity("")
+
+    with pytest.raises(ValueError, match="requires viewer_user"):
+        authenticated_viewer_identity("impala/host.example.com@EXAMPLE.COM")
+
+
+def test_viewer_identity_header_name_must_be_http_token():
+    assert normalize_viewer_identity_header(" X-QD-Viewer ") == "X-QD-Viewer"
+    assert normalize_viewer_identity_header(None) is None
+    assert normalize_viewer_identity_header(" ") is None
+
+    for value in ("Bad Header", "X-QD-Viewer:", "X-QD-\nViewer"):
+        with pytest.raises(ValueError, match="HTTP header token"):
+            normalize_viewer_identity_header(value)
+
+
+def test_authenticated_viewer_identity_from_header_value_fails_closed():
+    identity = authenticated_viewer_identity_from_header_value("analyst_one")
+    missing = authenticated_viewer_identity_from_header_value(None)
+    service = authenticated_viewer_identity_from_header_value("impala/host.example.com@EXAMPLE.COM")
+
+    assert identity.mode == VIEWER_IDENTITY_AUTHENTICATED
+    assert identity.viewer_raw_subjects == ("analyst_one",)
+    assert missing.viewer_raw_subjects == ()
+    assert service.viewer_raw_subjects == ()
