@@ -39,9 +39,9 @@ query-doctor-web --corpus-dir cases/cm-corpus
 
 Run `query-doctor-self-test` after installation to verify the installed console
 scripts, synthetic demo generation, one-profile analysis, local web rendering,
-deterministic report generation, and corpus smoke path. It uses synthetic local
-data only and does not contact Cloudera Manager, impalad, Spark, Trino,
-Prometheus, Ollama, or external LLM services.
+Impala Web UI filename fallback, deterministic report generation, and corpus
+smoke path. It uses synthetic local data only and does not contact Cloudera
+Manager, impalad, Spark, Trino, Prometheus, Ollama, or external LLM services.
 
 The profile-analysis path needs one exported Impala text profile and no
 Cloudera Manager, Kerberos, local config, browser upload, Prometheus, or LLM. A
@@ -147,9 +147,9 @@ query-doctor-self-test
 
 `query-doctor-self-test` is the installed-package confidence check. It uses
 synthetic local data to exercise packaged console scripts, one-profile analysis,
-local web rendering, deterministic reports, and corpus smoke without contacting
-Cloudera Manager, impalad, Spark, Trino, Prometheus, Ollama, or external LLM
-services.
+Impala Web UI filename fallback, local web rendering, deterministic reports,
+and corpus smoke without contacting Cloudera Manager, impalad, Spark, Trino,
+Prometheus, Ollama, or external LLM services.
 
 For local development from a checkout:
 
