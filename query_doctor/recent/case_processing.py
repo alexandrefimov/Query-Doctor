@@ -16,6 +16,7 @@ from query_doctor.cli.commands import command_prefix, command_spec
 from query_doctor.impala.metadata_workflow import (
     METADATA_SOURCE_TABLES_ENV,
 )
+from query_doctor.metadata_source_tables import read_metadata_source_tables
 from query_doctor.recent.batch_config import elapsed_seconds, format_seconds
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_scoring import inspect_case_outputs, score_case
@@ -117,6 +118,11 @@ def collect_case_profile(
     try:
         target_out_dir = out_dir or case.wrapper_dir
         target_out_dir.mkdir(parents=True, exist_ok=True)
+        metadata_source_tables_out = (
+            target_out_dir / ".metadata-source-tables.json"
+            if direct_impala_metadata_source_tables_enabled(config)
+            else None
+        )
         if config.query_profile_source == "impala":
             cmd = command_prefix(repo_root, "collect_impala_profile") + [
                 "--query-id",
@@ -133,6 +139,8 @@ def collect_case_profile(
                 "--timeout-sec",
                 str(config.impala_profile_timeout_sec),
             ]
+            if metadata_source_tables_out is not None:
+                cmd.extend(["--metadata-source-tables-out", str(metadata_source_tables_out)])
             for host in config.impala_profile_hosts:
                 cmd.extend(["--host", host])
             if config.impala_profile_prefer_json:
@@ -221,10 +229,33 @@ def collect_case_profile(
             case.failure_reason = "Profile collection finished but no profile digest was produced."
             return
         case.collection_status = "ok"
+        if metadata_source_tables_out is not None:
+            merge_case_metadata_source_tables(
+                case,
+                read_metadata_source_tables(metadata_source_tables_out),
+            )
         if out_dir is None:
             case.actual_case_dir = profile_paths[0].parent
     finally:
         case.cm_collect_seconds = elapsed_seconds(started)
+
+
+def direct_impala_metadata_source_tables_enabled(config: BatchConfig) -> bool:
+    return (
+        config.query_profile_source == "impala"
+        and config.metadata_mode != "off"
+        and config.metadata_top_limit > 0
+    )
+
+
+def merge_case_metadata_source_tables(case: CaseResult, tables: tuple[str, ...]) -> None:
+    if not tables:
+        return
+    merged: list[str] = []
+    for table in (*case.metadata_source_tables, *tables):
+        if table not in merged:
+            merged.append(table)
+    case.metadata_source_tables = tuple(merged)
 
 
 def process_cases(
