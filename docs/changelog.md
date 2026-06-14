@@ -24,6 +24,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Russian documentation guidance now defines `docs/i18n/ru/` as a selective
+  user/operator companion layer rather than a full mirror of every internal
+  document, and the Russian security/configuration companions now pin the same
+  owner-raw D3 front-door viewer-header contract as the English docs.
 - Owner-raw D3 deployment guidance now standardizes on one application-level
   contract: a trusted auth front door authenticates the request, strips inbound
   viewer headers, and sets exactly one normalized viewer header for Query
