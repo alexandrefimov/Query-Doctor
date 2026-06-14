@@ -173,6 +173,8 @@ def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
     assert metadata["profile_response_format"] == "text"
     assert metadata["profile_fetch_attempt_count"] == 0
     assert metadata["profile_query_id_verified"] is True
+    assert metadata["profile_filename_query_id_verified"] is False
+    assert metadata["profile_query_id_source"] == "profile_text"
     assert metadata["user"] == "<user>"
     assert metadata["pool"] == "<pool>"
     warnings = (case_dir / "collection_warnings.txt").read_text(encoding="utf-8")
@@ -207,6 +209,30 @@ def test_analyzer_profile_text_allows_explicit_query_id_when_profile_header_miss
     metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
     assert metadata["query_id"] == "aaaaaaaaaaaaaaaa:0000000000000001"
     assert metadata["profile_query_id_verified"] is False
+    assert metadata["profile_filename_query_id_verified"] is False
+    assert metadata["profile_query_id_source"] == "query_id_argument"
+
+
+def test_analyzer_profile_text_uses_impala_web_download_filename_when_header_missing(tmp_path):
+    profile = tmp_path / "profile_aaaaaaaaaaaaaaaa_0000000000000001"
+    profile.write_text(
+        raw_exported_profile_text().replace(
+            "Query ID: aaaaaaaaaaaaaaaa:0000000000000001\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    case_dir = out_dir / "aaaaaaaaaaaaaaaa_0000000000000001"
+    metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["query_id"] == "aaaaaaaaaaaaaaaa:0000000000000001"
+    assert metadata["profile_query_id_verified"] is False
+    assert metadata["profile_filename_query_id_verified"] is True
+    assert metadata["profile_query_id_source"] == "impala_web_profile_filename"
 
 
 def test_analyzer_profile_text_requires_query_id_when_profile_header_missing(tmp_path):
@@ -303,6 +329,23 @@ def test_analyzer_profile_text_rejects_mismatched_profile_query_id_without_writi
     assert "Profile Query ID does not match --query-id" in result.stderr
     assert mismatched_profile_query_id not in result.stderr
     assert requested_query_id not in result.stderr
+    assert not out_dir.exists()
+
+
+def test_analyzer_profile_text_rejects_mismatched_download_filename_without_writing_case(
+    tmp_path,
+):
+    profile = tmp_path / "profile_bbbbbbbbbbbbbbbb_0000000000000002"
+    embedded_query_id = "aaaaaaaaaaaaaaaa:0000000000000001"
+    profile.write_text(raw_exported_profile_text(), encoding="utf-8")
+    out_dir = tmp_path / "cm-corpus"
+
+    result = run_profile_text_analyzer(profile, out_dir=out_dir)
+
+    assert result.returncode == 2
+    assert "Profile filename Query ID does not match" in result.stderr
+    assert embedded_query_id not in result.stderr
+    assert "bbbbbbbbbbbbbbbb:0000000000000002" not in result.stderr
     assert not out_dir.exists()
 
 
