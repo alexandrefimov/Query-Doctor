@@ -66,6 +66,12 @@ def normalize_database_identifier(raw_database: str) -> str:
     return match.group(1) or match.group(2)
 
 
+def quote_table_identifier(table: str) -> str:
+    normalized = normalize_table_identifier(table)
+    database, name = normalized.split(".", 1)
+    return f"`{database}`.`{name}`"
+
+
 def dedupe_preserve_order(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -81,22 +87,23 @@ def build_statement_plan(tables: Iterable[str]) -> list[StatementPlan]:
     plans: list[StatementPlan] = []
     for table in tables:
         normalized_table = normalize_table_identifier(table)
+        quoted_table = quote_table_identifier(normalized_table)
         plans.extend(
             [
                 StatementPlan(
                     table=normalized_table,
                     label="SHOW CREATE TABLE",
-                    sql=f"SHOW CREATE TABLE {normalized_table}",
+                    sql=f"SHOW CREATE TABLE {quoted_table}",
                 ),
                 StatementPlan(
                     table=normalized_table,
                     label="SHOW TABLE STATS",
-                    sql=f"SHOW TABLE STATS {normalized_table}",
+                    sql=f"SHOW TABLE STATS {quoted_table}",
                 ),
                 StatementPlan(
                     table=normalized_table,
                     label="SHOW COLUMN STATS",
-                    sql=f"SHOW COLUMN STATS {normalized_table}",
+                    sql=f"SHOW COLUMN STATS {quoted_table}",
                 ),
             ]
         )
@@ -105,6 +112,12 @@ def build_statement_plan(tables: Iterable[str]) -> list[StatementPlan]:
 
 def validate_read_only_statement(sql: str, table: str) -> None:
     normalized = " ".join(sql.strip().rstrip(";").split())
-    allowed = {f"{prefix} {table}" for prefix in ALLOWED_STATEMENTS}
+    normalized_table = normalize_table_identifier(table)
+    quoted_table = quote_table_identifier(normalized_table)
+    allowed = {
+        f"{prefix} {candidate}"
+        for prefix in ALLOWED_STATEMENTS
+        for candidate in (normalized_table, quoted_table)
+    }
     if normalized not in allowed:
         raise CollectorError(f"Refusing unsupported Impala statement: {sql}")

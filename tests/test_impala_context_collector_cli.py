@@ -103,12 +103,13 @@ def test_generated_sql_is_exactly_allowlisted():
     plans = module.build_statement_plan(["db.table"])
 
     assert [plan.sql for plan in plans] == [
-        "SHOW CREATE TABLE db.table",
-        "SHOW TABLE STATS db.table",
-        "SHOW COLUMN STATS db.table",
+        "SHOW CREATE TABLE `db`.`table`",
+        "SHOW TABLE STATS `db`.`table`",
+        "SHOW COLUMN STATS `db`.`table`",
     ]
     for plan in plans:
         module.validate_read_only_statement(plan.sql, plan.table)
+    module.validate_read_only_statement("SHOW CREATE TABLE db.table", "db.table")
 
 
 def test_repeated_tables_are_deduped_deterministically():
@@ -122,12 +123,12 @@ def test_repeated_tables_are_deduped_deterministically():
 
     assert tables == ["db.table", "db.other_table"]
     assert [plan.sql for plan in plans] == [
-        "SHOW CREATE TABLE db.table",
-        "SHOW TABLE STATS db.table",
-        "SHOW COLUMN STATS db.table",
-        "SHOW CREATE TABLE db.other_table",
-        "SHOW TABLE STATS db.other_table",
-        "SHOW COLUMN STATS db.other_table",
+        "SHOW CREATE TABLE `db`.`table`",
+        "SHOW TABLE STATS `db`.`table`",
+        "SHOW COLUMN STATS `db`.`table`",
+        "SHOW CREATE TABLE `db`.`other_table`",
+        "SHOW TABLE STATS `db`.`other_table`",
+        "SHOW COLUMN STATS `db`.`other_table`",
     ]
 
 
@@ -538,7 +539,7 @@ def test_successful_collection_writes_redacted_bounded_outputs(tmp_path, capsys)
     module = load_collector_module()
 
     outputs = {
-        "SHOW CREATE TABLE db.table": (
+        "SHOW CREATE TABLE `db`.`table`": (
             "CREATE TABLE db.table (id BIGINT, token_column STRING)\n"
             "LOCATION 'hdfs://warehouse01.example.invalid:8020/user/alice/warehouse/db.table'\n"
             "COMMENT 'replica hdfs://[2001:db8::44]:8020/warehouse/db.table'\n"
@@ -547,8 +548,8 @@ def test_successful_collection_writes_redacted_bounded_outputs(tmp_path, capsys)
             "Authorization: Bearer secret-token\n"
             "Cookie: session=secret-cookie\n"
         ),
-        "SHOW TABLE STATS db.table": "Rows=10 Size=128 host=10.1.2.3:22000\n",
-        "SHOW COLUMN STATS db.table": "id BIGINT NDV=10 NULLS=0\n",
+        "SHOW TABLE STATS `db`.`table`": "Rows=10 Size=128 host=10.1.2.3:22000\n",
+        "SHOW COLUMN STATS `db`.`table`": "id BIGINT NDV=10 NULLS=0\n",
     }
 
     def fake_runner(command, **kwargs):
@@ -607,7 +608,7 @@ def test_view_metadata_skips_stats_as_not_applicable(tmp_path):
     def fake_runner(command, **kwargs):
         sql = sql_from_command(command)
         calls.append(sql)
-        assert sql == "SHOW CREATE TABLE db.view_a"
+        assert sql == "SHOW CREATE TABLE `db`.`view_a`"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -631,7 +632,7 @@ def test_view_metadata_skips_stats_as_not_applicable(tmp_path):
     statuses = {item["statement"]: item["status"] for item in payload["results"]}
 
     assert rc == 0
-    assert calls == ["SHOW CREATE TABLE db.view_a"]
+    assert calls == ["SHOW CREATE TABLE `db`.`view_a`"]
     assert statuses == {
         "SHOW CREATE TABLE": "ok",
         "SHOW TABLE STATS": "not_applicable",
@@ -649,14 +650,14 @@ def test_view_stats_not_applicable_error_is_non_fatal(tmp_path):
 
     def fake_runner(command, **kwargs):
         sql = sql_from_command(command)
-        if sql == "SHOW CREATE TABLE db.view_a":
+        if sql == "SHOW CREATE TABLE `db`.`view_a`":
             return subprocess.CompletedProcess(
                 command,
                 0,
                 stdout=b"CREATE TABLE db.view_a (id BIGINT)\n",
                 stderr=b"",
             )
-        if sql in {"SHOW TABLE STATS db.view_a", "SHOW COLUMN STATS db.view_a"}:
+        if sql in {"SHOW TABLE STATS `db`.`view_a`", "SHOW COLUMN STATS `db`.`view_a`"}:
             return subprocess.CompletedProcess(
                 command,
                 1,
@@ -864,7 +865,7 @@ def test_timeout_and_error_status_are_recorded_safely(tmp_path, capsys):
     def fake_runner(command, **kwargs):
         sql = sql_from_command(command)
         calls.append(sql)
-        if sql == "SHOW CREATE TABLE db.table":
+        if sql == "SHOW CREATE TABLE `db`.`table`":
             raise subprocess.TimeoutExpired(command, kwargs["timeout"])
         return subprocess.CompletedProcess(
             command,
