@@ -24,6 +24,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   for common Recent scan setup failures, including metadata Kerberos, metadata
   shell, CM credentials, missing direct-Impala hosts, cluster selection, and
   output-directory validation, while still hiding raw stdout/stderr.
+- Known Query ID profile collection failures now include allowlisted safe
+  reason hints for direct-Impala profile collection failures, including
+  missing retained daemon profiles, unavailable profile endpoints, endpoint
+  request failures, and profile byte-limit failures, while still hiding raw
+  child output.
 - `viewer_identity_header` now fails closed when a request exposes duplicate
   viewer header values. Shared/D3 `owner_raw` source access still requires a
   trusted proxy or ingress to strip inbound copies and set exactly one
