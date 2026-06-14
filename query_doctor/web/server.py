@@ -118,6 +118,13 @@ from query_doctor.web.config import (
     validate_public_demo_settings,
     validate_web_startup_config,
 )
+from query_doctor.web.corpus_summary import (
+    CorpusSummaryRuntime,
+    build_manual_profile_corpus_summary,
+    iter_manual_profile_cases,
+    manual_profile_case_is_renderable,
+    prepare_corpus_summary_runtime,
+)
 from query_doctor.web.public_demo import (
     PublicDemoRuntime,
     default_public_demo_summary_path,
@@ -447,6 +454,16 @@ _FACADE_EXPORT_GROUPS = (
             "validate_bind_host",
             "validate_public_demo_settings",
             "validate_web_startup_config",
+        ),
+    ),
+    (
+        "corpus_summary",
+        (
+            "CorpusSummaryRuntime",
+            "build_manual_profile_corpus_summary",
+            "iter_manual_profile_cases",
+            "manual_profile_case_is_renderable",
+            "prepare_corpus_summary_runtime",
         ),
     ),
     (

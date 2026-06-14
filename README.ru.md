@@ -32,10 +32,11 @@ query-doctor-web --corpus-dir cases/cm-corpus
 ```
 
 Для этого первого пути нужен один экспортированный Impala text profile; не нужны
-Cloudera Manager, Kerberos, browser upload, Prometheus или LLM. Direct Impala
-Web UI download с именем `profile_<query-id-high>_<query-id-low>` можно
-использовать как есть. Demo и Cloudera Manager варианты описаны ниже в
-[Выберите первый путь](#выберите-первый-путь).
+Cloudera Manager, Kerberos, local config, browser upload, Prometheus или LLM.
+Direct Impala Web UI download с именем `profile_<query-id-high>_<query-id-low>`
+можно использовать как есть. Web UI автоматически открывает staged cases из
+`--corpus-dir`. Demo и Cloudera Manager варианты описаны ниже в [Выберите первый
+путь](#выберите-первый-путь).
 
 ## Что это / что это не
 
@@ -193,11 +194,12 @@ filename строгой формы `profile_<query-id-high>_<query-id-low>`. Е�
 источник не читается, добавьте `--query-id <query-id>`; когда есть несколько
 источников Query ID, они должны совпасть до записи local case.
 
-Чтобы открыть staged case в local UI, запустите `query-doctor-web`, выберите
-`One Query ID` и введите Query ID из этого профиля. Known Query ID analysis
-переиспользует complete manual-profile staged cases вместо recollection и
-готовит deterministic Python report в том же explicit submit-job. LLM narrative
-и optimizer actions остаются explicit buttons.
+Чтобы открыть staged cases в local UI, запустите `query-doctor-web
+--corpus-dir cases/cm-corpus` из того же workspace. Diagnose page откроет
+таблицу Exported Profiles из complete manual-profile cases в этом corpus без
+Cloudera Manager settings, credentials или default local config. Вы все еще
+можете выбрать `One Query ID` и ввести Query ID из staged profile, чтобы открыть
+именно этот case. LLM narrative и optimizer actions остаются explicit buttons.
 
 Также можно настроить local profile inbox для web UI. Положите exported text
 profile в `manual_profile_dir`, назвав файл slug-версией Query ID: замените

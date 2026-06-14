@@ -27,6 +27,10 @@ def test_installed_one_profile_smoke_help_is_available() -> None:
     assert result.returncode == 0, result.stderr
     assert "--bin-dir" in result.stdout
     assert "--profile-text" in result.stdout
+    script_text = (ROOT / SCRIPT).read_text(encoding="utf-8")
+    assert "QD_INSTALLED_SMOKE_QUICKSTART_CORPUS" in script_text
+    assert "Exported Profiles" in script_text
+    assert "quickstart_corpus_invalid_default_config_ignored" in script_text
 
 
 def test_package_release_workflows_run_installed_one_profile_smoke() -> None:

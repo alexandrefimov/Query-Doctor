@@ -436,11 +436,19 @@ def merged_bool_setting(
     return bool(cli_value) or (config_value if config_value is not None else default)
 
 
-def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
+def build_web_settings(
+    args: argparse.Namespace,
+    *,
+    cwd: Path,
+    ignore_default_config: bool = False,
+) -> WebSettings:
     public_demo = getattr(args, "public_demo", False)
     if public_demo and not args.config:
         config_path = cwd / cm_collector.DEFAULT_LOCAL_CONFIG_NAME
         config_values: dict[str, object] = {}
+    elif ignore_default_config and not args.config:
+        config_path = cwd / ".query-doctor-quickstart-no-config.json"
+        config_values = {}
     else:
         config_path = resolve_web_config_path(args.config, cwd=cwd)
         config_values = load_web_local_config(args.config, cwd=cwd)

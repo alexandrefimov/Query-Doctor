@@ -181,6 +181,13 @@ SERVER_REEXPORTS = [
         ),
     ),
     (
+        "query_doctor.web.corpus_summary",
+        (
+            "build_manual_profile_corpus_summary",
+            "prepare_corpus_summary_runtime",
+        ),
+    ),
+    (
         "query_doctor.web.subprocesses",
         (
             "WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES",
@@ -801,7 +808,12 @@ def test_web_parse_args_accepts_optimizer_model():
 def test_web_settings_defaults_to_localhost_without_config(tmp_path):
     module = load_web_module()
 
-    settings = module.build_web_settings(module.parse_args([]), cwd=tmp_path)
+    missing_config = tmp_path / "missing-query-doctor-config.json"
+
+    settings = module.build_web_settings(
+        module.parse_args(["--config", str(missing_config)]),
+        cwd=tmp_path,
+    )
 
     assert settings.host == "127.0.0.1"
     assert settings.port == 8765
@@ -898,6 +910,65 @@ def write_web_startup_config(tmp_path, **overrides):
     return path
 
 
+def write_manual_profile_case(
+    corpus_dir: Path,
+    query_id: str,
+    *,
+    score_reason: str = "cardinality estimate anomalies: 2",
+    parsed_operators: int = 3,
+) -> Path:
+    slug = query_id.replace(":", "_")
+    case_dir = corpus_dir / slug
+    case_dir.mkdir(parents=True)
+    metadata = {
+        "query_id": query_id,
+        "profile_source": "manual_profile_text",
+        "profile_response_format": "text",
+        "duration_ms": 90000,
+        "query_type": "QUERY",
+        "user": "<user>",
+        "pool": "<pool>",
+    }
+    (case_dir / "query_metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (case_dir / "profile_digest.md").write_text(
+        f"Query Runtime Profile\nQuery ID: {query_id}\nUser: <user>\n",
+        encoding="utf-8",
+    )
+    (case_dir / "analysis_facts.md").write_text(
+        "# Query Doctor deterministic analysis facts\n\n"
+        f"- Parsed operators: {parsed_operators}\n"
+        "- Cardinality anomalies: 2\n"
+        "- Memory anomalies: 0\n"
+        f"- {score_reason}\n",
+        encoding="utf-8",
+    )
+    (case_dir / "analysis.json").write_text(
+        json.dumps(
+            {
+                "operators": [{} for _ in range(parsed_operators)],
+                "cardinality_anomalies": [{}, {}],
+                "memory_anomalies": [],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (case_dir / "collection_warnings.txt").write_text(
+        "Local exported Impala text profile staged without network collection\n",
+        encoding="utf-8",
+    )
+    return case_dir
+
+
 @pytest.mark.parametrize(
     "missing_key, expected",
     [
@@ -992,6 +1063,189 @@ def test_web_startup_validation_can_skip_cm_for_read_only_batch_summary(tmp_path
     path = tmp_path / "missing-cm-config.json"
 
     assert module.validate_web_startup_config(path, cwd=tmp_path, env={}, require_cm=False) == []
+
+
+def test_web_builds_quickstart_corpus_summary_from_staged_manual_profiles(tmp_path):
+    module = load_web_module()
+    corpus_dir = tmp_path / "cm-corpus"
+    first_case = write_manual_profile_case(
+        corpus_dir,
+        "aaaaaaaaaaaaaaaa:0000000000000001",
+    )
+    write_manual_profile_case(
+        corpus_dir,
+        "bbbbbbbbbbbbbbbb:0000000000000002",
+        score_reason="no analyzer-supported suspicious facts",
+        parsed_operators=0,
+    )
+    non_manual = corpus_dir / "cccccccccccccccc_0000000000000003"
+    non_manual.mkdir()
+    (non_manual / "query_metadata.json").write_text(
+        json.dumps(
+            {
+                "query_id": "cccccccccccccccc:0000000000000003",
+                "profile_source": "cm",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = module.build_manual_profile_corpus_summary(corpus_dir)
+
+    assert summary is not None
+    assert summary["mode"] == "manual-profile-corpus"
+    assert summary["selected_count"] == 2
+    assert summary["summaries_inspected"] == 2
+    assert summary["query_profile_source"] == "manual_profile_text"
+    cases = summary["cases"]
+    assert [case["query_id"] for case in cases] == [
+        "aaaaaaaaaaaaaaaa:0000000000000001",
+        "bbbbbbbbbbbbbbbb:0000000000000002",
+    ]
+    assert cases[0]["case_index"] == 1
+    assert cases[0]["case_dir"] == first_case.name
+    serialized = json.dumps(summary)
+    assert str(corpus_dir) not in serialized
+    assert "profile_aaaaaaaaaaaaaaaa_0000000000000001" not in serialized
+
+
+def test_web_corpus_runtime_skips_cm_startup_requirements(tmp_path):
+    module = load_web_module()
+    corpus_dir = tmp_path / "cm-corpus"
+    write_manual_profile_case(corpus_dir, "aaaaaaaaaaaaaaaa:0000000000000001")
+    config = tmp_path / "cm-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "example_cluster",
+                "service": "impala",
+                "username": "example_cm_user",
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = module.parse_args(["--config", str(config), "--corpus-dir", str(corpus_dir)])
+    settings = module.build_web_settings(args, cwd=tmp_path)
+
+    runtime = module.prepare_corpus_summary_runtime(settings)
+
+    assert runtime is not None
+    assert runtime.case_count == 1
+    assert runtime.settings.corpus_summary is not None
+    assert (
+        module.validate_web_startup_config(
+            runtime.settings.config,
+            cwd=tmp_path,
+            env={},
+            require_cm=runtime.settings.batch_summary is None
+            and runtime.settings.corpus_summary is None,
+        )
+        == []
+    )
+
+
+def test_web_cli_main_starts_from_staged_corpus_without_cm_credentials(
+    monkeypatch, tmp_path, capsys
+):
+    from query_doctor.cli import web as web_cli
+
+    monkeypatch.delenv("CM_PASSWORD", raising=False)
+    monkeypatch.delenv("CM_TOKEN", raising=False)
+    corpus_dir = tmp_path / "cm-corpus"
+    write_manual_profile_case(corpus_dir, "aaaaaaaaaaaaaaaa:0000000000000001")
+    config = tmp_path / "cm-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "example_cluster",
+                "service": "impala",
+                "username": "example_cm_user",
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    class FakeServer:
+        def __init__(self, address, handler):
+            seen["address"] = address
+            seen["handler"] = handler
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            seen["closed"] = True
+
+    monkeypatch.setattr(web_cli, "ThreadingHTTPServer", FakeServer)
+
+    result = web_cli.main(["--config", str(config), "--corpus-dir", str(corpus_dir)])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert seen["address"] == ("127.0.0.1", 8765)
+    assert seen["closed"] is True
+    assert "Missing required CM startup" not in captured.err
+    assert "listening on http://127.0.0.1:8765" in captured.out
+
+
+def test_web_cli_main_quickstart_corpus_ignores_invalid_default_config(
+    monkeypatch, tmp_path, capsys
+):
+    from query_doctor.cli import web as web_cli
+
+    corpus_dir = tmp_path / "cm-corpus"
+    write_manual_profile_case(corpus_dir, "aaaaaaaaaaaaaaaa:0000000000000001")
+    (tmp_path / web_cli.cm_collector.DEFAULT_LOCAL_CONFIG_NAME).write_text(
+        json.dumps({"future_config_field": True}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    seen: dict[str, object] = {}
+
+    class FakeServer:
+        def __init__(self, address, handler):
+            seen["address"] = address
+            seen["handler"] = handler
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            seen["closed"] = True
+
+    monkeypatch.setattr(web_cli, "ThreadingHTTPServer", FakeServer)
+
+    result = web_cli.main(["--corpus-dir", str(corpus_dir)])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert seen["address"] == ("127.0.0.1", 8765)
+    assert seen["closed"] is True
+    assert "Unknown config field" not in captured.err
+    assert "listening on http://127.0.0.1:8765" in captured.out
+
+
+def test_web_cli_main_quickstart_corpus_keeps_explicit_config_strict(monkeypatch, tmp_path, capsys):
+    from query_doctor.cli import web as web_cli
+
+    corpus_dir = tmp_path / "cm-corpus"
+    write_manual_profile_case(corpus_dir, "aaaaaaaaaaaaaaaa:0000000000000001")
+    config = tmp_path / "future-config.json"
+    config.write_text(json.dumps({"future_config_field": True}), encoding="utf-8")
+
+    def fail_server(*_args, **_kwargs):
+        raise AssertionError("server should not start when explicit config is invalid")
+
+    monkeypatch.setattr(web_cli, "ThreadingHTTPServer", fail_server)
+
+    result = web_cli.main(["--config", str(config), "--corpus-dir", str(corpus_dir)])
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "Unknown config field future_config_field." in captured.err
 
 
 def test_public_demo_validation_requires_batch_summary_and_no_llm(tmp_path):
@@ -3083,6 +3337,61 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "/tmp/query-doctor-secret-case" not in body
     assert 'href="/tmp' not in body
     assert "Run diagnosis" not in body
+
+
+def test_web_quickstart_corpus_cases_render_on_home_and_details(tmp_path):
+    module = load_web_module()
+    corpus_dir = tmp_path / "cm-corpus"
+    first_case = write_manual_profile_case(
+        corpus_dir,
+        "aaaaaaaaaaaaaaaa:0000000000000001",
+    )
+    second_case = write_manual_profile_case(
+        corpus_dir,
+        "bbbbbbbbbbbbbbbb:0000000000000002",
+        score_reason="no analyzer-supported suspicious facts",
+        parsed_operators=0,
+    )
+    settings = module.WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        corpus_dir=corpus_dir,
+    )
+    runtime = module.prepare_corpus_summary_runtime(settings)
+    assert runtime is not None
+    handler = module.make_handler(runtime.settings, analysis_func=lambda *args, **kwargs: None)
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {}
+
+    def write_html(status, body):
+        captured["status"] = status
+        captured["body"] = body
+
+    request.write_html = write_html
+    request.path = "/"
+    request.do_GET()
+    body = captured["body"]
+
+    assert captured["status"] == 200
+    assert '<summary class="batch-head"><div><h1>Exported Profiles</h1></div></summary>' in body
+    assert "All analyzed <span>2</span>" in body
+    assert "batch-results-table--all" in body
+    assert "aaaaaaaaaaaaaaaa:0000000000000001" in body
+    assert "bbbbbbbbbbbbbbbb:0000000000000002" in body
+    assert str(corpus_dir) not in body
+    assert str(first_case) not in body
+    assert str(second_case) not in body
+    assert "profile_aaaaaaaaaaaaaaaa_0000000000000001" not in body
+
+    request.path = "/batch/case/case-001"
+    request.do_GET()
+    detail_body = captured["body"]
+
+    assert captured["status"] == 200
+    assert '<section id="case-overview" class="case-verdict"' in detail_body
+    assert "aaaaaaaaaaaaaaaa:0000000000000001" in detail_body
+    assert str(corpus_dir) not in detail_body
+    assert str(first_case) not in detail_body
+    assert "case_dir" not in detail_body
 
 
 def test_web_batch_case_detail_renders_known_case_safely(tmp_path):

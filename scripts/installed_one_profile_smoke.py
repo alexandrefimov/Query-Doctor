@@ -30,6 +30,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import query_doctor
+from query_doctor.cli import web as web_cli
 from query_doctor.web.config import build_web_settings, validate_web_startup_config
 from query_doctor.web.command_builders import REPORT_VARIANT_PYTHON
 from query_doctor.web.job_workers import generate_validated_report_artifact
@@ -49,8 +50,70 @@ def path_contains(parent: Path, child: Path) -> bool:
 
 work_dir = Path(os.environ["QD_INSTALLED_SMOKE_WORK"]).resolve()
 profile_text = Path(os.environ["QD_INSTALLED_SMOKE_PROFILE"]).resolve()
+quickstart_corpus = Path(os.environ["QD_INSTALLED_SMOKE_QUICKSTART_CORPUS"]).resolve()
 query_id = os.environ["QD_INSTALLED_SMOKE_QUERY_ID"]
 slug = query_id.replace(":", "_")
+
+bad_default_config = work_dir / web_cli.cm_collector.DEFAULT_LOCAL_CONFIG_NAME
+bad_default_config.write_text(json.dumps({"future_config_field": True}), encoding="utf-8")
+
+seen_server = {}
+
+class FakeServer:
+    def __init__(self, address, handler):
+        seen_server["address"] = address
+        seen_server["handler"] = handler
+
+    def serve_forever(self):
+        raise KeyboardInterrupt
+
+    def server_close(self):
+        seen_server["closed"] = True
+
+original_server = web_cli.ThreadingHTTPServer
+web_cli.ThreadingHTTPServer = FakeServer
+try:
+    quickstart_main_result = web_cli.main(["--corpus-dir", str(quickstart_corpus)])
+finally:
+    web_cli.ThreadingHTTPServer = original_server
+if quickstart_main_result != 0 or seen_server.get("closed") is not True:
+    raise SystemExit("Quickstart corpus web main did not ignore invalid unused default config")
+
+quickstart_args = parse_args(["--corpus-dir", str(quickstart_corpus)])
+quickstart_settings = web_cli.quickstart_corpus_settings_without_default_config(
+    quickstart_args,
+    work_dir,
+)
+if quickstart_settings is None:
+    raise SystemExit("Quickstart corpus did not produce a web summary")
+quickstart_startup_errors = validate_web_startup_config(
+    quickstart_settings.config,
+    cwd=work_dir,
+    env={},
+    require_cm=quickstart_settings.batch_summary is None
+    and quickstart_settings.corpus_summary is None,
+)
+if quickstart_startup_errors:
+    raise SystemExit(f"Quickstart corpus web startup validation failed: {quickstart_startup_errors}")
+store = WebJobStore()
+home = route_get_request("/", quickstart_settings, store)
+if home is None or home.status != 200:
+    status = None if home is None else home.status
+    raise SystemExit(f"Quickstart corpus home did not render successfully: {status}")
+for expected_text in ("Exported Profiles", "All analyzed", query_id):
+    if expected_text not in home.body:
+        raise SystemExit(f"Quickstart corpus home is missing expected text: {expected_text!r}")
+quickstart_detail = route_get_request("/batch/case/case-001", quickstart_settings, store)
+if quickstart_detail is None or quickstart_detail.status != 200:
+    status = None if quickstart_detail is None else quickstart_detail.status
+    raise SystemExit(f"Quickstart corpus Details did not render successfully: {status}")
+for expected_text in ('<section id="case-overview" class="case-verdict"', query_id):
+    if expected_text not in quickstart_detail.body:
+        raise SystemExit(f"Quickstart corpus Details is missing expected text: {expected_text!r}")
+for forbidden_text in ("Query Runtime Profile", str(work_dir), str(quickstart_corpus)):
+    if forbidden_text in home.body or forbidden_text in quickstart_detail.body:
+        raise SystemExit(f"Quickstart corpus web leaked forbidden text: {forbidden_text!r}")
+
 inbox_dir = work_dir / "profile-inbox"
 inbox_dir.mkdir(parents=True, exist_ok=True)
 inbox_profile = inbox_dir / f"{slug}.txt"
@@ -128,6 +191,9 @@ print(
         {
             "case_under_package_dir": False,
             "corpus_default": "launch_dir",
+            "quickstart_corpus_home_rendered": True,
+            "quickstart_corpus_details_rendered": True,
+            "quickstart_corpus_invalid_default_config_ignored": True,
             "details_rendered": True,
             "python_report_validated": True,
             "score": result.case.get("score"),
@@ -269,6 +335,7 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
         {
             "QD_INSTALLED_SMOKE_WORK": str(work_dir / "web-workspace"),
             "QD_INSTALLED_SMOKE_PROFILE": str(profile_text),
+            "QD_INSTALLED_SMOKE_QUICKSTART_CORPUS": str(cli_out),
             "QD_INSTALLED_SMOKE_QUERY_ID": args.query_id,
         }
     )

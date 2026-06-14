@@ -36,14 +36,14 @@ def batch_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSet
     latest = job_store.latest_batch_summary()
     if latest is None:
         return settings
-    return replace(settings, batch_summary=latest)
+    return replace(settings, batch_summary=latest, corpus_summary=None, corpus_summary_root=None)
 
 
 def running_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSettings:
     latest = job_store.latest_running_summary()
     if latest is None:
-        return replace(settings, batch_summary=None)
-    return replace(settings, batch_summary=latest)
+        return replace(settings, batch_summary=None, corpus_summary=None, corpus_summary_root=None)
+    return replace(settings, batch_summary=latest, corpus_summary=None, corpus_summary_root=None)
 
 
 def running_detail_kwargs() -> dict[str, str]:
@@ -92,6 +92,8 @@ def resolve_case_detail_settings(
 
 
 def load_batch_summary(settings: WebSettings) -> dict[str, object] | None:
+    if settings.corpus_summary is not None:
+        return decorate_cases_with_optimizer_artifact_status(settings.corpus_summary)
     summary_path = settings.batch_summary
     if summary_path is None:
         return None

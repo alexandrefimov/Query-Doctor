@@ -24,6 +24,7 @@ REWRITEABILITY_ORDER = {
     "unknown": 0,
 }
 QUERY_GROUPS = {
+    "all": ("All analyzed", set()),
     "bad": ("Needs attention", {"failed", "high"}),
     "suspicious": ("Worth reviewing", {"suspicious"}),
     "workloads": ("Repeated workloads", set()),
@@ -119,6 +120,8 @@ def filter_rows_by_query_group(
         return frequent_short_workload_representatives(rows)
     if normalized == "regressions":
         return tuple(row for row in rows if is_regressed_workload_row(row))
+    if normalized == "all":
+        return rows
     _label, severities = QUERY_GROUPS[normalized]
     return tuple(row for row in rows if row.score_severity in severities)
 
@@ -330,6 +333,8 @@ def query_group_count(
         return len(frequent_short_workload_representatives(rows))
     if key == "regressions":
         return sum(1 for row in rows if is_regressed_workload_row(row))
+    if key == "all":
+        return len(rows)
     return sum(1 for row in rows if row.score_severity in severities)
 
 
