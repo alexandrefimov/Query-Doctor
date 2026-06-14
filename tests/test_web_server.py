@@ -4244,6 +4244,59 @@ def test_web_owner_raw_source_audit_log_is_reason_coded_and_raw_free(tmp_path, c
     assert "analyst" not in captured_err
 
 
+def test_web_owner_raw_source_duplicate_viewer_header_audit_is_raw_free(tmp_path, capsys):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        viewer_identity_header="X-QD-Viewer",
+    )
+    handler = module.make_handler(
+        settings,
+        job_store=module.WebJobStore(),
+        request_id_factory=lambda: "req-owner-raw-duplicate",
+    )
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {"headers": []}
+    output = io.BytesIO()
+
+    request.path = "/batch/case/case-001/source"
+    request.headers = MultiValueHeaders(
+        {
+            "Host": ["127.0.0.1"],
+            "X-QD-Viewer": ["analyst", "other_user"],
+        }
+    )
+    request.wfile = output
+    request.send_response = lambda status: captured.__setitem__("status", status)
+    request.send_header = lambda name, value: captured["headers"].append((name, value))
+    request.end_headers = lambda: None
+
+    request.do_GET()
+
+    captured_err = capsys.readouterr().err
+    assert captured["status"] == 403
+    assert "event=owner_raw_source_access" in captured_err
+    assert "request_id=req-owner-raw-duplicate" in captured_err
+    assert "allowed=false" in captured_err
+    assert "reason=viewer_not_authorized_for_query_user" in captured_err
+    assert "route_source=batch" in captured_err
+    assert "status=403" in captured_err
+    assert "viewer_mode=unauthenticated" in captured_err
+    assert "viewer_identity_source=header" in captured_err
+    assert "source_switch=enabled" in captured_err
+    assert "qdleak_db_20260611" not in captured_err
+    assert "supersecret" not in captured_err
+    assert "case-001" not in captured_err
+    assert "aaaabbbbccccdddd" not in captured_err
+    assert "1111222233334444" not in captured_err
+    assert "analyst" not in captured_err
+    assert "other_user" not in captured_err
+    assert "X-QD-Viewer" not in captured_err
+
+
 def test_web_owner_raw_source_route_requires_read_only_source_scope(tmp_path):
     module = load_web_module()
     summary = write_owner_raw_source_summary(
