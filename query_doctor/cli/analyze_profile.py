@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -54,11 +55,18 @@ from query_doctor.impala.table_metadata_facts import collect_table_metadata_cont
 
 __all__ = [
     "ManualProfileIntakeError",
+    "extract_query_id_from_profile_filename",
     "main",
     "parse_args",
     "resolve_paths",
     "stage_manual_profile_case",
 ]
+
+
+IMPALA_WEB_PROFILE_FILENAME_RE = re.compile(
+    r"^profile_(?P<query_id_hi>[0-9A-Fa-f]{16})_(?P<query_id_lo>[0-9A-Fa-f]{16})"
+    r"(?:\.[A-Za-z0-9][A-Za-z0-9._-]*)?$"
+)
 
 
 class ManualProfileIntakeError(RuntimeError):
@@ -108,6 +116,14 @@ def read_manual_profile_text(profile_path: Path, *, max_bytes: int) -> str:
     return text
 
 
+def extract_query_id_from_profile_filename(profile_path: Path) -> str | None:
+    """Extract the Query ID encoded by Impala Web UI profile download filenames."""
+    match = IMPALA_WEB_PROFILE_FILENAME_RE.fullmatch(profile_path.name)
+    if not match:
+        return None
+    return f"{match.group('query_id_hi')}:{match.group('query_id_lo')}"
+
+
 def stage_manual_profile_case(
     *,
     profile_text_path: Path,
@@ -120,20 +136,34 @@ def stage_manual_profile_case(
     """Stage one local exported Impala text profile as a collector-shaped case."""
     profile_text = read_manual_profile_text(profile_text_path, max_bytes=max_profile_bytes)
     profile_query_id = extract_query_id_from_profile_text(profile_text)
+    filename_query_id = extract_query_id_from_profile_filename(profile_text_path)
     if query_id:
         validated_query_id = validate_cm_query_id_path_segment(query_id)
+        profile_query_id_source = "query_id_argument"
     elif profile_query_id:
         validated_query_id = validate_cm_query_id_path_segment(profile_query_id)
+        profile_query_id_source = "profile_text"
+    elif filename_query_id:
+        validated_query_id = validate_cm_query_id_path_segment(filename_query_id)
+        profile_query_id_source = "impala_web_profile_filename"
     else:
         raise ManualProfileIntakeError(
-            "Profile text does not include a Query ID. Provide --query-id or export "
-            "a text profile with a Query ID header."
+            "Profile text does not include a Query ID and the filename is not an "
+            "Impala Web UI profile_<query-id-high>_<query-id-low> download. Provide "
+            "--query-id, keep the downloaded profile filename, or export a text "
+            "profile with a Query ID header."
         )
     profile_query_id_verified = profile_query_id == validated_query_id
     if profile_query_id is not None and not profile_query_id_verified:
         raise ManualProfileIntakeError(
             "Profile Query ID does not match --query-id. Select the matching exported profile "
             "or rerun with the Query ID from that profile."
+        )
+    filename_query_id_verified = filename_query_id == validated_query_id
+    if filename_query_id is not None and not filename_query_id_verified:
+        raise ManualProfileIntakeError(
+            "Profile filename Query ID does not match the selected Query ID. "
+            "Select the matching exported profile or rerun with the Query ID from that profile."
         )
     statement = extract_statement_from_profile_text(profile_text)
     summary = CMQuerySummary(query_id=validated_query_id, statement=statement)
@@ -155,6 +185,8 @@ def stage_manual_profile_case(
             "profile_docs_probe_enabled": False,
             "profile_docs_fetch_attempt_count": 0,
             "profile_query_id_verified": profile_query_id_verified,
+            "profile_filename_query_id_verified": filename_query_id_verified,
+            "profile_query_id_source": profile_query_id_source,
         },
         warnings=warnings,
         redact=True,

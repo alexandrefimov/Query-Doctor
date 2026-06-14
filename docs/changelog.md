@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-12
+Last updated: 2026-06-14
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -20,6 +20,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- `query-doctor-analyze --profile-text` now accepts direct Impala Web UI text
+  profile downloads whose filenames use the strict
+  `profile_<query-id-high>_<query-id-low>` shape when the profile body lacks a
+  readable Query ID header. Embedded profile IDs, explicit `--query-id` values,
+  and filename-derived IDs must still agree before any local case is written.
 - Metadata collection now accepts `metadata_kerberos_host_fqdn` /
   `--metadata-kerberos-host-fqdn`, passed through to
   `impala-shell --kerberos_host_fqdn`, so load-balanced Impala metadata

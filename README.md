@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-06-14
 
 Language: English | [Russian](README.ru.md)
 
@@ -37,8 +37,10 @@ query-doctor-web --corpus-dir cases/cm-corpus
 ```
 
 This first path needs one exported Impala text profile and no Cloudera Manager,
-Kerberos, browser upload, Prometheus, or LLM. See [Pick A First Path](#pick-a-first-path)
-for the demo and Cloudera Manager options.
+Kerberos, browser upload, Prometheus, or LLM. A direct Impala Web UI download
+named `profile_<query-id-high>_<query-id-low>` can be used as-is. See
+[Pick A First Path](#pick-a-first-path) for the demo and Cloudera Manager
+options.
 
 ## What It Is / Is Not
 
@@ -180,9 +182,10 @@ redacts users, hosts, credentials, and common secret forms by default, writes
 Use `--redact-identifiers` when the staged local artifacts may be shared. The
 manual profile intake accepts exported text profiles only; JSON, Thrift, and
 profile-v2 payloads remain outside this entry path. The CLI uses the Query ID
-header from the exported profile. If the profile lacks a readable Query ID
-header, add `--query-id <query-id>`; if both are present, they must match
-before the local case is written.
+header from the exported profile, or the downloaded Impala Web UI filename when
+it has the strict `profile_<query-id-high>_<query-id-low>` shape. If neither is
+readable, add `--query-id <query-id>`; when multiple Query ID sources are
+present, they must match before the local case is written.
 
 To inspect the same staged case in the local UI, start `query-doctor-web`,
 choose `One Query ID`, and enter the Query ID from that profile. Known Query ID

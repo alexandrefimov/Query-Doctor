@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-06-14
 
 Язык: [English](README.md) | Русский
 
@@ -32,8 +32,10 @@ query-doctor-web --corpus-dir cases/cm-corpus
 ```
 
 Для этого первого пути нужен один экспортированный Impala text profile; не нужны
-Cloudera Manager, Kerberos, browser upload, Prometheus или LLM. Demo и
-Cloudera Manager варианты описаны ниже в [Выберите первый путь](#выберите-первый-путь).
+Cloudera Manager, Kerberos, browser upload, Prometheus или LLM. Direct Impala
+Web UI download с именем `profile_<query-id-high>_<query-id-low>` можно
+использовать как есть. Demo и Cloudera Manager варианты описаны ниже в
+[Выберите первый путь](#выберите-первый-путь).
 
 ## Что это / что это не
 
@@ -186,9 +188,10 @@ query-doctor-analyze \
 Используйте `--redact-identifiers`, если staged local artifacts могут быть
 переданы наружу. Manual profile intake принимает только exported text profiles;
 JSON, Thrift и profile-v2 payloads остаются вне этого entry path. CLI берет
-Query ID из header внутри exported profile. Если в профиле нет читаемого Query
-ID header, добавьте `--query-id <query-id>`; если оба значения есть, они
-должны совпасть до записи local case.
+Query ID из header внутри exported profile или из downloaded Impala Web UI
+filename строгой формы `profile_<query-id-high>_<query-id-low>`. Если ни один
+источник не читается, добавьте `--query-id <query-id>`; когда есть несколько
+источников Query ID, они должны совпасть до записи local case.
 
 Чтобы открыть staged case в local UI, запустите `query-doctor-web`, выберите
 `One Query ID` и введите Query ID из этого профиля. Known Query ID analysis
