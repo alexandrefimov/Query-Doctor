@@ -41,6 +41,11 @@ def test_installed_web_e2e_smoke_uses_installed_cli_and_real_http_server() -> No
     assert "Query Runtime Profile" in text
     assert "/batch/case/case-001" in text
     assert "/query/details/" in text
+    assert "manual_profile_dir" in text
+    assert "POST /analyze" in text
+    assert "python-report" in text
+    assert "manual_profile_known_query_rendered" in text
+    assert "python_report_action_rendered" in text
     assert "external_services_used" in text
     assert "llm_used" in text
 

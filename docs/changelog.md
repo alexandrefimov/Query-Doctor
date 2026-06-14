@@ -24,10 +24,11 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   renders a redacted source map for locator-backed findings without exposing
   source SQL text.
 - Installed-wheel user-path smoke now includes a real local web-server E2E for
-  the one-profile Quickstart corpus path. The smoke starts packaged
-  `query-doctor-analyze`, starts packaged `query-doctor-web`, fetches Diagnose,
-  Details, Known Query ID Details, and static assets over HTTP, and checks that
-  raw profile text and local paths stay out of browser-visible pages.
+  the one-profile Quickstart corpus path and manual-profile Known Query ID
+  path. The smoke starts packaged `query-doctor-analyze`, starts packaged
+  `query-doctor-web`, fetches Diagnose, Details, Known Query ID Details, static
+  assets, and a generated Python report over HTTP, and checks that raw profile
+  text and local paths stay out of browser-visible pages.
 - Local `owner_raw` Recent scans can now collect across all configured/keytab
   owner users in one bounded scan, while still excluding service/host
   principals and keeping raw reveal governed by viewer identity rather than the
