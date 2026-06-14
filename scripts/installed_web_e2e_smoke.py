@@ -15,7 +15,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -176,6 +176,85 @@ def fetch(host: str, port: int, path: str, *, timeout_sec: float = 5.0) -> HttpR
         connection.close()
 
 
+def post_form(
+    host: str,
+    port: int,
+    path: str,
+    form: dict[str, str],
+    *,
+    timeout_sec: float = 5.0,
+) -> HttpResponse:
+    payload = urlencode(form).encode("utf-8")
+    connection = http.client.HTTPConnection(host, port, timeout=timeout_sec)
+    try:
+        connection.request(
+            "POST",
+            path,
+            body=payload,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": str(len(payload)),
+                "Host": f"{host}:{port}",
+            },
+        )
+        response = connection.getresponse()
+        body = response.read().decode("utf-8", errors="replace")
+        headers = {name.lower(): value for name, value in response.getheaders()}
+        return HttpResponse(status=response.status, headers=headers, body=body)
+    finally:
+        connection.close()
+
+
+def redirect_location_path(response: HttpResponse, *, label: str) -> str:
+    if response.status != 303:
+        raise WebE2EFailure(f"{label} returned HTTP {response.status}, expected redirect")
+    location = response.headers.get("location", "")
+    if not location:
+        raise WebE2EFailure(f"{label} did not include a Location header")
+    parsed = urlsplit(location)
+    path = parsed.path or location.split("#", 1)[0]
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    if not path.startswith("/"):
+        raise WebE2EFailure(f"{label} returned an unsafe redirect target")
+    return path
+
+
+def wait_for_job_ok(
+    *,
+    host: str,
+    port: int,
+    job_path: str,
+    timeout_sec: float,
+    label: str,
+) -> dict[str, object]:
+    if not job_path.startswith("/jobs/"):
+        raise WebE2EFailure(f"{label} did not redirect to a job page")
+    job_id = job_path.rstrip("/").split("/")[-1]
+    status_path = f"/jobs/{job_id}/status"
+    deadline = time.monotonic() + timeout_sec
+    last_status = ""
+    while time.monotonic() < deadline:
+        response = fetch(host, port, status_path, timeout_sec=5.0)
+        if response.status != 200:
+            last_status = f"HTTP {response.status}"
+            time.sleep(0.2)
+            continue
+        try:
+            payload = json.loads(response.body)
+        except json.JSONDecodeError as exc:
+            raise WebE2EFailure(f"{label} returned invalid job status JSON") from exc
+        status = payload.get("status")
+        if status == "ok":
+            return payload
+        if status in {"failed", "cancelled"}:
+            error = safe_output_snippet(str(payload.get("error") or ""))
+            raise WebE2EFailure(f"{label} job ended as {status}: {error}")
+        last_status = str(status)
+        time.sleep(0.3)
+    raise WebE2EFailure(f"{label} job did not complete: last status {last_status!r}")
+
+
 def wait_for_ready(
     process: subprocess.Popen[str],
     *,
@@ -212,6 +291,33 @@ def stop_process(process: subprocess.Popen[str]) -> tuple[str, str]:
             process.kill()
             return process.communicate(timeout=10)
     return process.communicate(timeout=10)
+
+
+def start_web_process(
+    *,
+    web: Path,
+    args: argparse.Namespace,
+    env: dict[str, str],
+    launch_dir: Path,
+    web_args: list[str],
+) -> tuple[subprocess.Popen[str], int]:
+    port = args.port or free_local_port(args.host)
+    process = subprocess.Popen(
+        [
+            str(web),
+            "--host",
+            args.host,
+            "--port",
+            str(port),
+            *web_args,
+        ],
+        cwd=launch_dir,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return process, port
 
 
 def require_page(
@@ -264,6 +370,200 @@ def run_static_smoke(
     )
 
 
+def smoke_quickstart_corpus_web(
+    *,
+    web: Path,
+    args: argparse.Namespace,
+    work_dir: Path,
+    corpus_dir: Path,
+    profile_text: Path,
+    env: dict[str, str],
+) -> None:
+    launch_dir = work_dir / "web-launch"
+    launch_dir.mkdir(parents=True, exist_ok=True)
+    bad_default_config = launch_dir / "query-doctor-config.json"
+    bad_default_config.write_text(json.dumps({"future_config_field": True}), encoding="utf-8")
+
+    process, port = start_web_process(
+        web=web,
+        args=args,
+        env=env,
+        launch_dir=launch_dir,
+        web_args=["--corpus-dir", str(corpus_dir), "--no-llm"],
+    )
+    stdout = ""
+    stderr = ""
+    try:
+        wait_for_ready(process, host=args.host, port=port, timeout_sec=args.timeout_sec)
+        base_url = f"http://{args.host}:{port}"
+        run_static_smoke(
+            base_url=base_url,
+            query_id=args.query_id,
+            env=env,
+            timeout_sec=args.timeout_sec,
+        )
+        forbidden = browser_forbidden_text(work_dir, corpus_dir, profile_text)
+        require_page(
+            fetch(args.host, port, "/"),
+            label="GET /",
+            expected=("Exported Profiles", "All analyzed", args.query_id),
+            forbidden=forbidden,
+        )
+        require_page(
+            fetch(args.host, port, "/batch/case/case-001"),
+            label="GET /batch/case/case-001",
+            expected=('id="case-overview"', args.query_id),
+            forbidden=forbidden,
+        )
+        require_page(
+            fetch(args.host, port, f"/query/details/{quote(args.query_id, safe='')}"),
+            label="GET /query/details/<query-id>",
+            expected=("Known Query ID details", args.query_id),
+            forbidden=forbidden,
+        )
+    finally:
+        stdout, stderr = stop_process(process)
+
+    if process.returncode not in {0, -15, -9, 143}:
+        detail = safe_output_snippet(stderr) or safe_output_snippet(stdout)
+        raise WebE2EFailure(f"installed web server exited unexpectedly: {detail}")
+
+
+def browser_forbidden_text(work_dir: Path, corpus_dir: Path, profile_text: Path) -> tuple[str, ...]:
+    return (
+        "Query Runtime Profile",
+        str(work_dir),
+        str(corpus_dir),
+        str(profile_text),
+        "exported-profile.txt",
+        "analysis.json",
+        "profile_digest.md",
+        "cm_metadata.json",
+        "diagnosis_python.md",
+        "diagnosis_python.validated.json",
+        "stdout",
+        "stderr",
+    )
+
+
+def smoke_manual_profile_report_web(
+    *,
+    web: Path,
+    args: argparse.Namespace,
+    work_dir: Path,
+    profile_text: Path,
+    env: dict[str, str],
+) -> None:
+    manual_dir = work_dir / "manual-profile-web"
+    inbox_dir = manual_dir / "profile-inbox"
+    corpus_dir = manual_dir / "cases" / "cm-corpus"
+    launch_dir = manual_dir / "web-launch"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    corpus_dir.mkdir(parents=True, exist_ok=True)
+    launch_dir.mkdir(parents=True, exist_ok=True)
+
+    slug = args.query_id.replace(":", "_")
+    inbox_profile = inbox_dir / f"{slug}.txt"
+    inbox_profile.write_text(profile_text.read_text(encoding="utf-8"), encoding="utf-8")
+    config_path = manual_dir / "query-doctor-manual-profile.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "manual_profile_dir": str(inbox_dir),
+                "corpus_dir": str(corpus_dir),
+                "no_llm": True,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    process, port = start_web_process(
+        web=web,
+        args=args,
+        env=env,
+        launch_dir=launch_dir,
+        web_args=["--config", str(config_path), "--no-llm"],
+    )
+    stdout = ""
+    stderr = ""
+    try:
+        wait_for_ready(process, host=args.host, port=port, timeout_sec=args.timeout_sec)
+        forbidden = browser_forbidden_text(work_dir, corpus_dir, profile_text) + (
+            str(inbox_profile),
+            str(config_path),
+            "query-doctor-manual-profile.json",
+        )
+        require_page(
+            fetch(args.host, port, "/query"),
+            label="GET /query",
+            expected=("Known Query ID", "Query ID"),
+            forbidden=forbidden,
+        )
+        analyze_job_path = redirect_location_path(
+            post_form(
+                args.host,
+                port,
+                "/analyze",
+                {"query_id": args.query_id},
+                timeout_sec=5.0,
+            ),
+            label="POST /analyze",
+        )
+        wait_for_job_ok(
+            host=args.host,
+            port=port,
+            job_path=analyze_job_path,
+            timeout_sec=args.timeout_sec,
+            label="manual profile Known Query ID analysis",
+        )
+        case_dir = corpus_dir / slug
+        for filename in (
+            "analysis_facts.md",
+            "analysis.json",
+            "cm_metadata.json",
+            "diagnosis_python.md",
+            "diagnosis_python.validated.json",
+        ):
+            if not (case_dir / filename).is_file():
+                raise WebE2EFailure(f"manual profile web analysis did not write {filename}")
+        require_page(
+            fetch(args.host, port, f"/query/details/{quote(args.query_id, safe='')}"),
+            label="GET manual /query/details/<query-id>",
+            expected=("Known Query ID details", args.query_id, "Open full report"),
+            forbidden=forbidden,
+        )
+        report_job_path = redirect_location_path(
+            post_form(
+                args.host,
+                port,
+                f"/query/details/{quote(args.query_id, safe='')}/python-report",
+                {},
+                timeout_sec=5.0,
+            ),
+            label="POST /query/details/<query-id>/python-report",
+        )
+        wait_for_job_ok(
+            host=args.host,
+            port=port,
+            job_path=report_job_path,
+            timeout_sec=args.timeout_sec,
+            label="manual profile Python report action",
+        )
+        require_page(
+            fetch(args.host, port, f"/query/details/{quote(args.query_id, safe='')}/python-report"),
+            label="GET manual Python report",
+            expected=("Query Doctor Report", args.query_id),
+            forbidden=forbidden,
+        )
+    finally:
+        stdout, stderr = stop_process(process)
+
+    if process.returncode not in {0, -15, -9, 143}:
+        detail = safe_output_snippet(stderr) or safe_output_snippet(stdout)
+        raise WebE2EFailure(f"manual profile web server exited unexpectedly: {detail}")
+
+
 def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
     if not args.bin_dir:
         raise WebE2EFailure(f"--bin-dir or ${INSTALLED_BIN_ENV} is required")
@@ -300,74 +600,21 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
         if not (case_dir / filename).is_file():
             raise WebE2EFailure(f"installed analyzer did not write {filename}")
 
-    launch_dir = work_dir / "web-launch"
-    launch_dir.mkdir(parents=True, exist_ok=True)
-    bad_default_config = launch_dir / "query-doctor-config.json"
-    bad_default_config.write_text(json.dumps({"future_config_field": True}), encoding="utf-8")
-
-    port = args.port or free_local_port(args.host)
-    process = subprocess.Popen(
-        [
-            str(web),
-            "--host",
-            args.host,
-            "--port",
-            str(port),
-            "--corpus-dir",
-            str(corpus_dir),
-            "--no-llm",
-        ],
-        cwd=launch_dir,
+    smoke_quickstart_corpus_web(
+        web=web,
+        args=args,
+        work_dir=work_dir,
+        corpus_dir=corpus_dir,
+        profile_text=profile_text,
         env=env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
-    stdout = ""
-    stderr = ""
-    try:
-        wait_for_ready(process, host=args.host, port=port, timeout_sec=args.timeout_sec)
-        base_url = f"http://{args.host}:{port}"
-        run_static_smoke(
-            base_url=base_url,
-            query_id=args.query_id,
-            env=env,
-            timeout_sec=args.timeout_sec,
-        )
-        forbidden = (
-            "Query Runtime Profile",
-            str(work_dir),
-            str(corpus_dir),
-            str(profile_text),
-            "exported-profile.txt",
-            "analysis.json",
-            "profile_digest.md",
-            "cm_metadata.json",
-        )
-        require_page(
-            fetch(args.host, port, "/"),
-            label="GET /",
-            expected=("Exported Profiles", "All analyzed", args.query_id),
-            forbidden=forbidden,
-        )
-        require_page(
-            fetch(args.host, port, "/batch/case/case-001"),
-            label="GET /batch/case/case-001",
-            expected=('id="case-overview"', args.query_id),
-            forbidden=forbidden,
-        )
-        require_page(
-            fetch(args.host, port, f"/query/details/{quote(args.query_id, safe='')}"),
-            label="GET /query/details/<query-id>",
-            expected=("Known Query ID details", args.query_id),
-            forbidden=forbidden,
-        )
-    finally:
-        stdout, stderr = stop_process(process)
-
-    if process.returncode not in {0, -15, -9, 143}:
-        detail = safe_output_snippet(stderr) or safe_output_snippet(stdout)
-        raise WebE2EFailure(f"installed web server exited unexpectedly: {detail}")
+    smoke_manual_profile_report_web(
+        web=web,
+        args=args,
+        work_dir=work_dir,
+        profile_text=profile_text,
+        env=env,
+    )
 
     print(
         json.dumps(
@@ -378,6 +625,8 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
                 "real_web_server": True,
                 "quickstart_corpus_rendered": True,
                 "details_rendered": True,
+                "manual_profile_known_query_rendered": True,
+                "python_report_action_rendered": True,
                 "static_smoke_passed": True,
                 "invalid_default_config_ignored": True,
                 "external_services_used": False,
