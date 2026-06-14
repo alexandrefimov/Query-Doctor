@@ -101,9 +101,10 @@ gate:
 
 Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
-scripts, the installed demo web UI, and the installed one-profile path with
-`scripts/installed_one_profile_smoke.py`. Docs CI should catch broken local
-Markdown links before merge.
+scripts, the installed demo web UI, and the installed user workflow matrix with
+`scripts/installed_user_paths_smoke.py`. The matrix includes the one-profile
+Quickstart path and additional offline/dry-run installed CLI paths; Docs CI
+should catch broken local Markdown links before merge.
 Dependency Review should stay enabled on pull requests as a security signal
 alongside Dependabot. CodeQL should scan production code before release tags;
 test fixtures may be excluded from code-scanning noise when they intentionally
@@ -246,7 +247,7 @@ python -m twine check dist/*
 python -m venv /tmp/query-doctor-release-wheel-venv
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install --upgrade pip
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
-python scripts/installed_one_profile_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
+python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 ```
 
 - Prefer a TestPyPI upload first for the first release or any packaging change.
@@ -269,7 +270,7 @@ python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-ur
   accepted by PyPI, bump the version for the next attempt.
 - After PyPI upload, install the exact released version from production PyPI in
   a clean virtual environment and smoke the public demo commands plus
-  `scripts/installed_one_profile_smoke.py` against that environment.
+  `scripts/installed_user_paths_smoke.py` against that environment.
 
 ## After Release
 
