@@ -24,6 +24,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Local direct-Impala CLI and web smoke wrappers now print safe aggregate
+  candidate-selection diagnostics from retained Recent summaries, including
+  normalized exclusion reason and SQL-verb counters, so "selected no cases"
+  failures are actionable without exposing query text, profiles, metadata,
+  endpoints, local paths, or subprocess output.
 - Added a local `scripts/query-doctor-web-direct-impala-smoke` wrapper that
   starts the local web UI, submits a bounded direct-Impala Finished-query scan,
   verifies aggregate metadata collection through the web job path, and checks a

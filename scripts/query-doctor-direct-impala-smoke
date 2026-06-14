@@ -9,11 +9,17 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from query_doctor.recent.selection_diagnostics import selection_diagnostic_lines
+
 DEFAULT_WINDOW_MINUTES = 240
 DEFAULT_INSPECT_LIMIT = 50
 DEFAULT_TRIAGE_LIMIT = 5
@@ -198,6 +204,24 @@ def run_quiet(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, text=True, capture_output=True, check=False)
 
 
+def load_batch_summary_if_current(out: Path, *, started_at: float) -> dict[str, Any] | None:
+    summary_path = out / "batch_summary.json"
+    try:
+        if summary_path.stat().st_mtime + 1 < started_at:
+            return None
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def print_selection_diagnostics(summary: dict[str, Any] | None) -> None:
+    if summary is None:
+        return
+    for line in selection_diagnostic_lines(summary, prefix="[direct-impala-smoke]"):
+        print(line, flush=True)
+
+
 def kerberos_cache_ready(cache_name: str) -> bool:
     if not cache_name.strip():
         return False
@@ -332,7 +356,10 @@ def main(argv: list[str] | None = None) -> int:
         print("[direct-impala-smoke] dry run:")
         print(shlex.join(command))
         return 0
-    return subprocess.call(command, cwd=ROOT_DIR, env=os.environ.copy())
+    started_at = time.time()
+    exit_code = subprocess.call(command, cwd=ROOT_DIR, env=os.environ.copy())
+    print_selection_diagnostics(load_batch_summary_if_current(args.out, started_at=started_at))
+    return exit_code
 
 
 if __name__ == "__main__":

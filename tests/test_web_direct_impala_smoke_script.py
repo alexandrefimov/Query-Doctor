@@ -179,7 +179,7 @@ class Handler(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(length).decode(), keep_blank_values=True)
         capture.write_text(json.dumps({key: values[0] for key, values in form.items()}))
         summary_dir.mkdir(parents=True, exist_ok=True)
-        summary = {
+        summary = json.loads(os.environ.get("FAKE_SUMMARY_JSON", "null")) or {
             "selected_count": 1,
             "cases": [
                 {
@@ -248,6 +248,7 @@ def test_web_direct_impala_smoke_runs_web_form_and_checks_summary(tmp_path):
     combined_output = result.stdout + result.stderr
     assert result.returncode == 0, combined_output
     assert "[web-direct-impala-smoke] web=ready" in result.stdout
+    assert "selection=selected=1" in result.stdout
     assert "metadata_collected=1" in result.stdout
     assert "metadata_refreshed=1" in result.stdout
     assert "[web-direct-impala-smoke] details=ok" in result.stdout
@@ -260,3 +261,73 @@ def test_web_direct_impala_smoke_runs_web_form_and_checks_summary(tmp_path):
     assert form["metadata_jobs"] == "1"
     assert form["parallelism"] == "2"
     assert form["query_type"] == "QUERY"
+
+
+def test_web_direct_impala_smoke_no_cases_prints_safe_selection_diagnostics(tmp_path):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "direct-impala",
+                    "label": "Direct Impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                }
+            ]
+        },
+    )
+    wrapper = tmp_path / "fake-web-wrapper"
+    write_fake_web_wrapper(wrapper)
+    capture = tmp_path / "form.json"
+    job_id = "abcdef1234567890abcdef1234567890"
+    port = free_local_port()
+    summary = {
+        "selected_count": 0,
+        "summaries_inspected": 4,
+        "candidate_exclusion_count": 4,
+        "query_type_filter": "QUERY",
+        "duration_filter": "none",
+        "candidate_reason_counts": {
+            "excluded: query type filter mismatch": 3,
+            "excluded: admin or metadata statement": 1,
+        },
+        "candidate_reason_sql_verb_counts": {
+            "excluded: query type filter mismatch": {"CREATE": 3},
+            "excluded: admin or metadata statement": {"SHOW": 1},
+        },
+        "cases": [],
+    }
+    try:
+        result = run_smoke(
+            [
+                "--config",
+                str(config),
+                "--web-wrapper",
+                str(wrapper),
+                "--port",
+                str(port),
+                "--timeout-sec",
+                "10",
+                "--poll-interval-sec",
+                "0.05",
+            ],
+            home=home,
+            env={
+                "FAKE_JOB_ID": job_id,
+                "FAKE_FORM_CAPTURE": str(capture),
+                "FAKE_SUMMARY_JSON": json.dumps(summary),
+            },
+        )
+    finally:
+        shutil.rmtree(Path("/tmp") / f"query-doctor-web-batch-{job_id}", ignore_errors=True)
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "selected no cases" in result.stderr
+    assert "selection=selected=0 inspected=4 excluded=4 query_type=query" in result.stdout
+    assert "excluded_query_type_filter_mismatch=3" in result.stdout
+    assert "excluded_query_type_filter_mismatch.create=3" in result.stdout
+    assert "impalad-1.example.com" not in combined_output
+    assert str(config) not in combined_output
