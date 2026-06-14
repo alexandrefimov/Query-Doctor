@@ -47,9 +47,12 @@ backfill fake metrics or events.
   owner-only selected-case source surface is the narrow raw-SQL browser
   exception and must follow `docs/safety-contract.md`.
 - For shared/non-local `owner_raw`, raw source access must be gated by
-  authenticated per-request viewer identity, such as `viewer_identity_header`
-  behind a trusted proxy that strips inbound copies. Never gate raw reveal on
-  the collection credential or keytab owner set.
+  authenticated per-request viewer identity from `viewer_identity_header`
+  behind a trusted auth front door that strips inbound copies and sets exactly
+  one normalized simple owner value. Do not add native OIDC, SAML, SPNEGO,
+  Kerberos, LDAP, password, MFA, session, group, RBAC, or token auth variants
+  inside Query Doctor for owner-raw access. Never gate raw reveal on the
+  collection credential or keytab owner set.
 - Keep the isolated owner-raw source surface behind its kill switch and
   raw-free reason-coded audit line; never audit raw SQL, query ids, case ids,
   users, paths, header values, or secrets.

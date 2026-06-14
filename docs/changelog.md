@@ -24,6 +24,12 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Owner-raw D3 deployment guidance now standardizes on one application-level
+  contract: a trusted auth front door authenticates the request, strips inbound
+  viewer headers, and sets exactly one normalized viewer header for Query
+  Doctor's owner check. OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP, MFA, sessions,
+  logout, tokens, groups, and RBAC remain front-door responsibilities rather
+  than native Query Doctor auth modes.
 - Recent source locators now carry typed raw-free `line_span` payloads and
   allowlisted `line_span_source` provenance alongside their legacy display
   coordinates, so owner-raw source highlighting can prefer structured line

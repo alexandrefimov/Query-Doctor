@@ -17,6 +17,7 @@ RAW_MARKERS = (
     "supersecret",
     "/tmp/owner-raw-private",
 )
+REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class MultiValueHeaders:
@@ -97,6 +98,24 @@ def handler_get(handler, path: str, headers):
 def assert_raw_markers_hidden(body: str) -> None:
     for marker in RAW_MARKERS:
         assert marker not in body
+
+
+def test_owner_raw_d3_doc_pins_single_front_door_contract():
+    text = (REPO_DIR / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
+    agents_text = (REPO_DIR / "AGENTS.md").read_text(encoding="utf-8")
+    normalized_text = " ".join(text.split())
+
+    assert "Query Doctor supports one D3 application contract" in text
+    assert "trusted auth front door -> exactly one normalized viewer header" in text
+    assert "OIDC/SSO" in text
+    assert "SPNEGO/Kerberos" in text
+    assert "AD/LDAP" in text
+    assert "not perform native OIDC" in normalized_text
+    assert "Kerberos, LDAP, password, MFA" in normalized_text
+    assert "Do not move SPNEGO negotiation into Query Doctor" in normalized_text
+    assert "Do not configure Query Doctor to bind to LDAP" in normalized_text
+    assert "from `viewer_identity_header`" in agents_text
+    assert "Do not add native OIDC, SAML, SPNEGO" in agents_text
 
 
 @pytest.mark.parametrize(

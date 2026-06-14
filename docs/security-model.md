@@ -47,6 +47,37 @@ Current external collection support is Impala-only:
 Future source providers must keep the same safety properties before they become
 supported product behavior.
 
+## Owner Raw Shared Access
+
+`source_visibility=owner_raw` may reveal the selected case's original read-only
+SQL only on the isolated owner-only source page, and only after the viewer is
+authorized for that case's `query.user`. Details, Recent tables, trusted
+reports, downloads, handoffs, audit logs, and LLM prompts stay raw-free.
+
+For shared/non-local D3 deployments, Query Doctor supports one application
+contract:
+
+```text
+trusted auth front door -> exactly one normalized viewer header -> Query Doctor owner check
+```
+
+The front door may use the site's approved OIDC/SSO, SAML, SPNEGO/Kerberos,
+LDAP-backed identity provider, or enterprise gateway. Query Doctor does not
+perform native login, password checks, MFA, session management, logout,
+token-refresh, SPNEGO negotiation, LDAP bind, group/RBAC expansion, or
+cross-owner delegation for owner-raw access. It accepts only the already
+authenticated, already normalized simple owner value in `viewer_identity_header`.
+
+The proxy or ingress must authenticate the request, strip inbound copies of
+that header, and set exactly one simple owner value. Missing, duplicate, UPN,
+email, distinguished-name, group/role-like, opaque-subject, display-name,
+comma-separated, service-principal, or host-principal values fail closed for raw
+source access. The pod keytab or collection credential remains collection
+identity only; it never grants raw reveal to a viewer.
+
+See [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) for the deployment
+checklist and reason-coded policy simulator.
+
 ## Public Demo And Sharing
 
 Public Query Doctor demos must use synthetic data only. They should let users

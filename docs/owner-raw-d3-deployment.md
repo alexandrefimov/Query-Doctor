@@ -23,6 +23,20 @@ D3 means Query Doctor is reachable over a non-local bind only behind a trusted
 auth front door. Local-first mode may intentionally map collectable owners to
 the local viewer. D3 must not do that.
 
+Query Doctor supports one D3 application contract:
+
+```text
+trusted auth front door -> exactly one normalized viewer header -> Query Doctor owner check
+```
+
+The front door may use the site's approved authentication mechanism, such as
+OIDC/SSO, SAML, SPNEGO/Kerberos, or an enterprise gateway. Query Doctor does
+not perform native OIDC, SAML, SPNEGO, Kerberos, LDAP, password, MFA, session,
+logout, token-refresh, or group/RBAC authentication for `owner_raw`. Those
+responsibilities stay at the trusted front door. Query Doctor accepts only the
+already authenticated, already normalized simple owner value in
+`viewer_identity_header`.
+
 ## Reference Shape
 
 Use this order:
@@ -40,6 +54,53 @@ Use this order:
 In a Kubernetes-style deployment, the pod keytab or service account remains C1
 only. It may allow collection across configured owner users, but it must not
 grant raw reveal to viewers.
+
+## Auth Front Door Recipes
+
+These are deployment recipes for producing the same header contract, not
+separate Query Doctor auth modes.
+
+### OIDC/SSO At Ingress
+
+Use this as the default D3 shape when a corporate identity provider, MFA,
+device policy, logout, and session lifecycle already exist outside Query Doctor:
+
+1. The ingress or auth proxy completes OIDC/SSO authentication and policy
+   checks.
+2. The ingress maps the authenticated subject to the query-owner namespace,
+   preferably an Active Directory `sAMAccountName` or the same simple account
+   name used by Impala `query.user`.
+3. The ingress strips inbound copies of `viewer_identity_header`.
+4. The ingress sets exactly one `viewer_identity_header` with that simple owner
+   value.
+5. Query Doctor treats the header as C2 only and still checks it against the
+   selected case `query.user`.
+
+Do not forward ID tokens, access tokens, refresh tokens, email addresses,
+opaque OIDC subjects, groups, roles, or display names as the viewer header.
+
+### SPNEGO/Kerberos At Ingress
+
+Use this when the target environment is already Kerberos/AD-heavy:
+
+1. The ingress or reverse proxy completes SPNEGO/Kerberos authentication.
+2. The ingress derives the human account primary from the authenticated
+   principal, rejecting service and host principals.
+3. The ingress strips inbound copies of `viewer_identity_header`.
+4. The ingress sets exactly one `viewer_identity_header` with the simple human
+   owner value, for example `analyst_one`, not
+   `analyst_one@EXAMPLE.COM` and not `impala/host@EXAMPLE.COM`.
+
+Do not move SPNEGO negotiation into Query Doctor. The web process should not
+receive Kerberos tickets, keytab material, or raw proxy auth state as browser
+visible or trusted-report data.
+
+### AD/LDAP
+
+Use AD/LDAP as an identity source behind the front door only. Do not configure
+Query Doctor to bind to LDAP, collect user passwords, or manage login sessions.
+If the site uses LDAP-backed authentication, the proxy or identity provider
+must authenticate the request and emit the same normalized simple owner header.
 
 ## Required Configuration
 
@@ -151,6 +212,8 @@ invalid viewer identity must fail closed.
 
 - No admin role bypasses owner raw access.
 - No group, role, or delegated-subject expansion is implied by this contract.
+- No native OIDC, SAML, SPNEGO, Kerberos, LDAP, password, MFA, session, logout,
+  or token lifecycle inside Query Doctor for owner-raw access.
 - No raw source appears in Details, Recent tables, trusted reports, report
   downloads, optimizer prompts, handoff exports, or audit logs.
 - No public demo should run with owner-raw collection or raw source reveal.
