@@ -26,6 +26,7 @@ WEB_RECENT_SCAN_DEFAULTS = {
     "parallelism": "50",
     "metadata_jobs": "5",
 }
+LARGE_RECENT_WINDOW_WARNING_MINUTES = 1440
 WEB_ADVANCED_FILTER_CHOICES = ("user", "pool", "query_type")
 WEB_ADVANCED_FILTER_DEFAULTS = ("user", "pool")
 RUNNING_SCAN_FRAMING_TEXT = (
@@ -118,7 +119,6 @@ def render_batch_run_panel(
         selected_settings = settings_for_cluster_key(settings, str(values.get("cluster_key") or ""))
     except WebError:
         selected_settings = settings
-    direct_impala_source = getattr(selected_settings, "query_profile_source", "") == "impala"
     scan_timezone = configured_recent_scan_timezone(selected_settings, local_config)
     default_scan_date, default_scan_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
     if not values.get("scan_date"):
@@ -145,13 +145,6 @@ def render_batch_run_panel(
     )
     metadata_note_html = (
         f'<div class="batch-note">{html.escape(metadata_note)}</div>' if metadata_note else ""
-    )
-    source_toggle_enabled = len(getattr(settings, "clusters", ())) > 1 and (
-        direct_impala_source
-        or any(
-            getattr(cluster, "query_profile_source", "") == "impala"
-            for cluster in getattr(settings, "clusters", ())
-        )
     )
     button_disabled = " disabled" if run_disabled or owner_missing else ""
     button_label = "Running" if run_disabled else "Owner required" if owner_missing else "Run scan"
@@ -205,33 +198,12 @@ def render_batch_run_panel(
         finished_scope_class=finished_scope_class,
         running_scope_class=running_scope_class,
         advanced_fields=f"{advanced_owner_field}{advanced_pool_field}{advanced_query_type_field}",
-        direct_impala_source=direct_impala_source,
     )
-    if source_toggle_enabled:
-        cm_window_class = finished_window_class + (
-            " manual-inputs-hidden" if direct_impala_source else ""
-        )
-        direct_window_class = finished_window_class + (
-            "" if direct_impala_source else " manual-inputs-hidden"
-        )
-        finished_window_fields = (
-            f'<div class="batch-target-field{cm_window_class}" data-scan-target-field="finished" data-scan-source-field="cm">{render_scan_date_select(value("scan_date"), scan_timezone=scan_timezone)}</div>'
-            f'<div class="batch-target-field{cm_window_class}" data-scan-target-field="finished" data-scan-source-field="cm">{render_scan_hour_select(value("scan_hour"), scan_date=value("scan_date"), scan_timezone=scan_timezone)}</div>'
-            f'<div class="batch-target-field{direct_window_class}" data-scan-target-field="finished" data-scan-source-field="impala">'
-            f"{render_batch_number_field('recent_window_minutes', 'Search depth (min)', value('recent_window_minutes'), help_text='Retained direct Impala query-list lookback. Profile collection remains bounded by analysis limits.')}"
-            "</div>"
-        )
-    elif direct_impala_source:
-        finished_window_fields = (
-            f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">'
-            f"{render_batch_number_field('recent_window_minutes', 'Search depth (min)', value('recent_window_minutes'), help_text='Retained direct Impala query-list lookback. Profile collection remains bounded by analysis limits.')}"
-            "</div>"
-        )
-    else:
-        finished_window_fields = (
-            f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_date_select(value("scan_date"), scan_timezone=scan_timezone)}</div>'
-            f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_hour_select(value("scan_hour"), scan_date=value("scan_date"), scan_timezone=scan_timezone)}</div>'
-        )
+    finished_window_fields = (
+        f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">'
+        f"{render_recent_window_field(value('recent_window_minutes'))}"
+        "</div>"
+    )
     owner_grid_class = " batch-form-grid--owner" if owner_required else ""
     panel_tag = "details" if collapsed else "section"
     panel_open = "" if collapsed else ""
@@ -309,21 +281,15 @@ def render_configured_advanced_settings(
     finished_scope_class: str,
     running_scope_class: str,
     advanced_fields: str,
-    direct_impala_source: bool = False,
 ) -> str:
     if not advanced_fields:
         return ""
-    finished_scope_text = (
-        "retained direct Impala summaries → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
-        if direct_impala_source
-        else "one selected hour → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
-    )
     return (
         '<details class="batch-advanced"><summary>Advanced settings</summary>'
         '<div class="batch-advanced-body">'
         f"{metadata_note_html}"
         f'<div class="scope-line{finished_scope_class}" aria-label="Finished query collection scope" data-scan-target-field="finished">'
-        f"<strong>Finished scope:</strong> {finished_scope_text}"
+        "<strong>Finished scope:</strong> selected Search depth → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
         "</div>"
         f'<div class="scope-line{running_scope_class}" aria-label="Running query collection scope" data-scan-target-field="running">'
         "<strong>Running scope:</strong> current running query summaries → analyzable profiles → ranked cases. Runtime evidence may be incomplete until a query finishes; no auto LLM."
@@ -666,12 +632,8 @@ def render_cluster_select(
     option_values = {value for value, _label in options}
     if selected_raw not in option_values:
         selected_raw = default_cluster_key(settings)
-    source_by_key = {
-        getattr(cluster, "key", ""): getattr(cluster, "query_profile_source", "cm")
-        for cluster in getattr(settings, "clusters", ())
-    }
     rendered_options = "".join(
-        f'<option value="{html.escape(value, quote=True)}" data-query-profile-source="{html.escape(source_by_key.get(value, "cm"), quote=True)}"{" selected" if value == selected_raw else ""}>'
+        f'<option value="{html.escape(value, quote=True)}"{" selected" if value == selected_raw else ""}>'
         f"{html.escape(label)}</option>"
         for value, label in options
     )
@@ -762,6 +724,31 @@ def render_batch_number_field(
         f'<div class="field">{render_label_with_info(name, label, help_text)}'
         f'<input class="input" id="{html.escape(name, quote=True)}" name="{html.escape(name, quote=True)}" '
         f'type="number" min="0" step="{html.escape(step, quote=True)}" value="{value}"{required_attr}>'
+        "</div>"
+    )
+
+
+def render_recent_window_field(value: str) -> str:
+    value_text = str(value or "")
+    warning_hidden_class = ""
+    try:
+        minutes = int(value_text)
+    except ValueError:
+        minutes = 0
+    if minutes <= LARGE_RECENT_WINDOW_WARNING_MINUTES:
+        warning_hidden_class = " manual-inputs-hidden"
+    warning_text = (
+        "Large Search depth values can increase load on Cloudera Manager, direct Impala UI endpoints, "
+        "and optional Prometheus collection. Narrow the scan with user, pool, query type, or duration filters when possible."
+    )
+    return (
+        '<div class="field" data-recent-window-field '
+        f'data-large-window-threshold="{LARGE_RECENT_WINDOW_WARNING_MINUTES}">'
+        f"{render_label_with_info('recent_window_minutes', 'Search depth (min)', 'Query summary lookback for the selected source. Profile and metadata collection remain bounded by analysis limits.')}"
+        f'<input class="input" id="recent_window_minutes" name="recent_window_minutes" '
+        f'type="number" min="1" step="1" value="{html.escape(value_text, quote=True)}" required data-recent-window-input>'
+        f'<div class="batch-note batch-note--large-window{warning_hidden_class}" '
+        f"data-large-window-warning>{html.escape(warning_text)}</div>"
         "</div>"
     )
 

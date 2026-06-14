@@ -39,11 +39,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   Doctor's owner check. OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP, MFA, sessions,
   logout, tokens, groups, and RBAC remain front-door responsibilities rather
   than native Query Doctor auth modes.
-- Web direct-Impala Finished-query scans now use the configured
-  `recent_window_minutes` retained-summary lookback instead of the Cloudera
-  Manager-style one-hour Scan date/hour bucket, so Kubernetes/direct daemon
-  sources can scan the retained query list without hardcoded local cluster
-  names.
+- Web Finished-query scans now use the configured `recent_window_minutes`
+  Search depth lookback for both Cloudera Manager and direct Impala sources
+  instead of the previous one-hour Scan date/hour bucket. Large browser-selected
+  windows show a load warning for Cloudera Manager, direct Impala UI endpoints,
+  and optional Prometheus collection.
 - Recent source locators now carry typed raw-free `line_span` payloads and
   allowlisted `line_span_source` provenance alongside their legacy display
   coordinates, so owner-raw source highlighting can prefer structured line

@@ -250,23 +250,11 @@ document.addEventListener('DOMContentLoaded', function () {
       input.value = selector.value;
     });
   }
-  function currentClusterSource(root) {
-    var selector = root && root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
-    if (!selector || !selector.options || selector.selectedIndex < 0) {
-      return '';
-    }
-    return selector.options[selector.selectedIndex].getAttribute('data-query-profile-source') || '';
-  }
   Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
     syncDiagnosisCluster(root);
     var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
     if (selector) {
-      selector.addEventListener('change', function () {
-        syncDiagnosisCluster(root);
-        Array.prototype.slice.call(root.querySelectorAll('[data-scan-target-form]')).forEach(function (form) {
-          applyScanTarget(form);
-        });
-      });
+      selector.addEventListener('change', function () { syncDiagnosisCluster(root); });
     }
   });
   function currentDiagnosisTarget(root) {
@@ -319,16 +307,13 @@ document.addEventListener('DOMContentLoaded', function () {
   function applyScanTarget(form) {
     var root = form.closest('[data-diagnosis-target-root]');
     var target = currentScanTarget(root || form);
-    var clusterSource = currentClusterSource(root || form);
     form.setAttribute('action', target === 'running' ? '/running/run' : '/batch/run');
     form.setAttribute('data-active-scan-target', target);
     Array.prototype.slice.call(form.querySelectorAll('input[name="scan_target"][data-scan-target-hidden]')).forEach(function (input) {
       input.value = target;
     });
     Array.prototype.slice.call(form.querySelectorAll('[data-scan-target-field]')).forEach(function (element) {
-      var sourceField = element.getAttribute('data-scan-source-field') || '';
-      var visible = element.getAttribute('data-scan-target-field') === target &&
-        (!sourceField || !clusterSource || sourceField === clusterSource);
+      var visible = element.getAttribute('data-scan-target-field') === target;
       element.classList.toggle('manual-inputs-hidden', !visible);
     });
     updateRecentResultsContext(target, currentDiagnosisTarget(root));
@@ -378,6 +363,23 @@ document.addEventListener('DOMContentLoaded', function () {
     if (dateSelect) {
       dateSelect.addEventListener('change', function () { updateScanHourOptions(scanForm); });
     }
+  });
+  function updateRecentWindowWarnings(root) {
+    Array.prototype.slice.call((root || document).querySelectorAll('[data-recent-window-field]')).forEach(function (field) {
+      var input = field.querySelector('[data-recent-window-input]');
+      var warning = field.querySelector('[data-large-window-warning]');
+      if (!input || !warning) {
+        return;
+      }
+      var threshold = parseInt(field.getAttribute('data-large-window-threshold') || '1440', 10);
+      var value = parseInt(input.value || '0', 10);
+      warning.classList.toggle('manual-inputs-hidden', !(value > threshold));
+    });
+  }
+  updateRecentWindowWarnings(document);
+  Array.prototype.slice.call(document.querySelectorAll('[data-recent-window-input]')).forEach(function (input) {
+    input.addEventListener('input', function () { updateRecentWindowWarnings(document); });
+    input.addEventListener('change', function () { updateRecentWindowWarnings(document); });
   });
   function detailJobProgressElements() {
     return Array.prototype.slice.call(document.querySelectorAll('[data-report-job-status-url], [data-optimizer-job-status-url]'));

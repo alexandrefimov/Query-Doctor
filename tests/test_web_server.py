@@ -3355,8 +3355,9 @@ def test_web_batch_route_renders_empty_state_without_configured_summary():
     assert captured["status"] == 200
     assert '<form id="batch-form"' in captured["body"]
     assert '<button class="run-button" type="submit">Run scan</button>' in captured["body"]
-    assert "Scan date" in captured["body"]
-    assert "Scan Hour" in captured["body"]
+    assert "Search depth" in captured["body"]
+    assert "Scan date" not in captured["body"]
+    assert "Scan Hour" not in captured["body"]
     assert "Advanced scan parameters" not in captured["body"]
     assert "Queries to scan" not in captured["body"]
 
@@ -7342,7 +7343,7 @@ def test_web_running_queries_page_places_configured_source_before_live_scan():
 
     assert '<label for="running_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="running_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" data-query-profile-source="cm" selected>Staging</option>' in body
+    assert '<option value="stage" selected>Staging</option>' in body
     assert body.index('<label for="running_cluster_key">Source cluster</label>') < body.index(
         "Live scan"
     )
@@ -7793,29 +7794,15 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
         '<input type="hidden" name="scan_target" value="finished" data-scan-target-hidden>' in body
     )
     assert '<select class="input" id="scan_target" name="scan_target">' not in body
-    assert '<label for="scan_date">Scan date</label>' in body
-    assert '<details class="info-popover"><summary aria-label="Scan date help">i</summary>' in body
-    assert (
-        "Calendar day to inspect. Query Doctor keeps this bounded to today and the previous two days."
-        in body
-    )
-    assert '<select class="input" id="scan_date" name="scan_date" data-scan-hour-options="' in body
-    hour_options_attr = body.split('data-scan-hour-options="', 1)[1].split('"', 1)[0]
-    hour_options_by_date = json.loads(html.unescape(hour_options_attr))
-    assert hour_options_by_date["2026-05-03"][-1] == ["15", "15:00 - 16:00"]
-    assert hour_options_by_date["2026-05-02"][-1] == ["23", "23:00 - 00:00"]
-    assert '<label for="scan_hour">Scan Hour (UTC)</label>' in body
-    assert (
-        '<details class="info-popover"><summary aria-label="Scan Hour (UTC) help">i</summary>'
-        in body
-    )
-    assert (
-        "One configured local-hour CM window to inspect. Times are shown in the configured scan timezone and sent to CM as UTC bounds."
-        in body
-    )
-    assert '<select class="input" id="scan_hour" name="scan_hour">' in body
-    assert '<option value="0">00:00 - 01:00</option>' in body
-    assert '<option value="23">23:00 - 00:00</option>' not in body
+    assert '<label for="scan_date">Scan date</label>' not in body
+    assert 'name="scan_date"' not in body
+    assert '<label for="scan_hour">Scan Hour' not in body
+    assert 'name="scan_hour"' not in body
+    assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
+    assert 'name="recent_window_minutes" type="number" min="1" step="1" value="60"' in body
+    assert "Query summary lookback for the selected source" in body
+    assert "Large Search depth values can increase load on Cloudera Manager" in body
+    assert 'data-large-window-threshold="1440"' in body
     assert "Basic scan" in body
     assert "Default triage" in body
     assert "Live snapshot" in body
@@ -7825,8 +7812,7 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
         not in body
     )
     assert "Secondary filters" not in body
-    assert 'name="recent_window_minutes" type="number"' not in body
-    assert 'name="recent_window_minutes"' not in body
+    assert 'name="recent_window_minutes" type="number"' in body
     assert '<details class="batch-advanced">' not in body
     assert "Advanced settings" not in body
     assert "Collection settings" not in body
@@ -7875,10 +7861,7 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert "CM_PASSWORD" not in body
     assert "CM_TOKEN" not in body
     assert "Metadata collection is not configured for this web session." not in body
-    assert (
-        "one selected hour → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
-        not in body
-    )
+    assert "selected Search depth → matching summaries" not in body
     assert "Live snapshot:" not in body
     assert "no date/hour window is used" not in body
     assert "Maximum recent matching CM summaries to inspect." not in body
@@ -7977,8 +7960,7 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert "resultSlot && !resultSlot.querySelector('#recent-results')" in script
     assert 'class="run-button run-button--full-width"' not in body
     assert body.index("What to analyze") < body.index("Basic scan")
-    assert body.index("Scan date") < body.index("Scan Hour")
-    assert body.index("Scan Hour") < body.index("Minimum duration")
+    assert body.index("Search depth") < body.index("Minimum duration")
     assert body.index("Minimum duration (sec)") < body.index(
         '<button class="run-button" type="submit">Run scan</button>'
     )
@@ -7988,7 +7970,7 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert body.index("Minimum duration") < body.index(
         '<button class="run-button" type="submit">Run scan</button>'
     )
-    assert body.index("Scan Hour") < body.index(
+    assert body.index("Search depth") < body.index(
         '<button class="run-button" type="submit">Run scan</button>'
     )
     assert "Include failed" not in body
@@ -8067,7 +8049,7 @@ def test_web_batch_scan_date_labels_include_year_and_today_hours_exclude_later_h
     assert hour_options_by_date["2026-05-02"][-1] == ("23", "23:00 - 00:00")
 
 
-def test_web_batch_form_uses_configured_recent_scan_timezone(tmp_path, monkeypatch):
+def test_web_batch_form_uses_configured_recent_window_default(tmp_path, monkeypatch):
     module = load_web_module()
     from query_doctor.web import batch_scan
     from query_doctor.web.ui import recent_scan_form
@@ -8081,7 +8063,10 @@ def test_web_batch_form_uses_configured_recent_scan_timezone(tmp_path, monkeypat
     monkeypatch.setattr(recent_scan_form, "datetime", FixedDateTime)
     monkeypatch.setattr(batch_scan, "datetime", FixedDateTime)
     config = tmp_path / "cm-config.json"
-    config.write_text(json.dumps({"recent_scan_timezone": "UTC"}), encoding="utf-8")
+    config.write_text(
+        json.dumps({"recent_scan_timezone": "UTC", "recent_window_minutes": 90}),
+        encoding="utf-8",
+    )
     settings = module.WebSettings(config=config)
 
     body = module.render_batch_page(settings)
@@ -8090,34 +8075,26 @@ def test_web_batch_form_uses_configured_recent_scan_timezone(tmp_path, monkeypat
         settings=settings,
     )
 
-    assert '<label for="scan_hour">Scan Hour (UTC)</label>' in body
-    hour_options_attr = body.split('data-scan-hour-options="', 1)[1].split('"', 1)[0]
-    hour_options_by_date = json.loads(html.unescape(hour_options_attr))
-    assert hour_options_by_date["2026-05-03"][-1] == ["15", "15:00 - 16:00"]
-    assert ["16", "16:00 - 17:00"] not in hour_options_by_date["2026-05-03"]
-    assert batch_config.from_time == "2026-05-03T15:00:00Z"
-    assert batch_config.to_time == "2026-05-03T16:00:00Z"
+    assert '<label for="scan_hour">Scan Hour' not in body
+    assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
+    assert batch_config.recent_window_minutes == 90
+    assert batch_config.from_time is None
+    assert batch_config.to_time is None
 
 
-def test_web_batch_form_rejects_future_hour_without_subprocess():
+def test_web_batch_form_rejects_invalid_search_depth_without_subprocess():
     module = load_web_module()
-    now = datetime.now(module.RECENT_SCAN_TIMEZONE)
-    if now.hour >= 23:
-        pytest.skip("No later same-day hour exists at the end of the local day.")
-    today = now.date().isoformat()
-    future_hour = str(now.hour + 1)
-
     status, body = module.start_batch_job(
-        {"scan_date": [today], "scan_hour": [future_hour], "metadata_top_limit": ["0"]},
+        {"recent_window_minutes": ["0"], "metadata_top_limit": ["0"]},
         module.WebSettings(config=Path(".query-doctor-cm.local.json")),
         module.WebJobStore(),
         runner=lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("future hour must not run subprocess")
+            AssertionError("invalid search depth must not run subprocess")
         ),
     )
 
     assert status == 400
-    assert "Scan hour must not be in the future." in body
+    assert "recent_window_minutes must be a positive integer." in body
 
 
 def test_web_batch_form_rejects_invalid_direct_impala_search_depth_without_subprocess(tmp_path):
@@ -8201,7 +8178,7 @@ def test_web_batch_form_uses_local_recent_config_defaults(tmp_path):
         {"metadata_top_limit": ["0"]}, settings=settings
     )
 
-    assert 'name="recent_window_minutes"' not in body
+    assert 'name="recent_window_minutes" type="number" min="1" step="1" value="60"' in body
     assert 'name="cm_jobs"' not in body
     assert 'name="parallelism"' not in body
     assert 'name="cm_inspect_limit"' not in body
@@ -8216,6 +8193,7 @@ def test_web_batch_form_uses_local_recent_config_defaults(tmp_path):
     assert 'name="include_failed"' not in body
     assert 'name="include_running"' not in body
     assert batch_config.min_duration_sec is None
+    assert batch_config.recent_window_minutes == 60
     assert batch_config.parallelism == 12
     assert batch_config.metadata_jobs == 3
     assert batch_config.user == "impala_user"
@@ -8354,10 +8332,11 @@ def test_web_batch_form_renders_configured_24_hour_search_depth_as_standard_opti
 
     body = module.render_batch_page(settings)
 
-    assert 'name="recent_window_minutes"' not in body
-    assert "Search depth" not in body
-    assert "Scan date" in body
-    assert "24 hours (configured)" not in body
+    assert 'name="recent_window_minutes" type="number" min="1" step="1" value="1440"' in body
+    assert "Search depth" in body
+    assert "Scan date" not in body
+    assert "Large Search depth values can increase load" in body
+    assert 'batch-note batch-note--large-window manual-inputs-hidden"' in body
 
 
 def test_web_batch_form_renders_nonstandard_configured_search_depth(tmp_path):
@@ -8368,9 +8347,10 @@ def test_web_batch_form_renders_nonstandard_configured_search_depth(tmp_path):
 
     body = module.render_batch_page(settings)
 
-    assert 'name="recent_window_minutes"' not in body
+    assert 'name="recent_window_minutes" type="number" min="1" step="1" value="1080"' in body
     assert "18 hours (configured)" not in body
-    assert "Scan date" in body
+    assert "Search depth" in body
+    assert "Scan date" not in body
 
 
 def test_web_batch_form_uses_search_depth_for_direct_impala_recent(tmp_path):
@@ -8394,8 +8374,10 @@ def test_web_batch_form_uses_search_depth_for_direct_impala_recent(tmp_path):
     cmd, _out_dir = module.build_batch_command("d" * 32, batch_config, settings)
 
     assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
-    assert 'name="recent_window_minutes" type="number" min="0" step="1" value="43200"' in body
-    assert "Retained direct Impala query-list lookback" in body
+    assert 'name="recent_window_minutes" type="number" min="1" step="1" value="43200"' in body
+    assert "Query summary lookback for the selected source" in body
+    assert "Large Search depth values can increase load on Cloudera Manager" in body
+    assert 'batch-note batch-note--large-window" data-large-window-warning' in body
     assert '<label for="scan_date">Scan date</label>' not in body
     assert '<label for="scan_hour">Scan Hour' not in body
     assert batch_config.recent_window_minutes == 43200
@@ -9537,12 +9519,9 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path,
     assert '<div class="batch-source-settings">' in body
     assert '<label for="diagnosis_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert (
-        '<option value="prod" data-query-profile-source="cm" selected>Production</option>' in body
-    )
-    assert '<option value="stage" data-query-profile-source="impala">Staging</option>' in body
-    assert 'data-scan-source-field="cm"' in body
-    assert 'data-scan-source-field="impala"' in body
+    assert '<option value="prod" selected>Production</option>' in body
+    assert '<option value="stage">Staging</option>' in body
+    assert "data-scan-source-field=" not in body
     assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
     assert body.index('<label for="diagnosis_cluster_key">Source cluster</label>') < body.index(
         "What to analyze"
@@ -10142,9 +10121,9 @@ def test_web_batch_default_post_uses_fast_mode_without_metadata_config(tmp_path)
     cmd, _kwargs = calls[0]
     assert cmd[cmd.index("--metadata-mode") + 1] == "off"
     assert cmd[cmd.index("--top-reports") + 1] == "0"
-    assert "--recent-window-minutes" not in cmd
-    assert cmd[cmd.index("--from-time") + 1].endswith("Z")
-    assert cmd[cmd.index("--to-time") + 1].endswith("Z")
+    assert cmd[cmd.index("--recent-window-minutes") + 1] == "60"
+    assert "--from-time" not in cmd
+    assert "--to-time" not in cmd
     assert cmd[cmd.index("--cm-jobs") + 1] == "4"
     assert cmd[cmd.index("--triage-profile-limit") + 1] == "200"
     assert cmd[cmd.index("--metadata-jobs") + 1] == "1"
@@ -10820,7 +10799,7 @@ def test_web_handler_preserves_selected_cluster_when_query_id_missing():
     assert status == 400
     assert "Query ID is required." in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" data-query-profile-source="cm" selected>Staging</option>' in body
+    assert '<option value="stage" selected>Staging</option>' in body
     assert '<input type="hidden" name="cluster_key" value="stage">' in body
     assert 'class="run-main-row known-query-row"' in body
     assert 'id="query_cluster_key"' not in body
@@ -10857,7 +10836,7 @@ def test_web_job_preserves_selected_cluster_during_query_id_analysis():
     body = module.render_query_page(settings, job=snapshot)
 
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="ambari" data-query-profile-source="cm" selected>Ambari</option>' in body
+    assert '<option value="ambari" selected>Ambari</option>' in body
     assert '<input type="hidden" name="cluster_key" value="ambari">' in body
     assert 'class="run-main-row known-query-row"' in body
     assert 'class="batch-progress-steps job-progress-steps"' in body
