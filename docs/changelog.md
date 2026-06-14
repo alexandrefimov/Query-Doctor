@@ -24,6 +24,12 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Added a dev-only owner-raw D3 front-door smoke harness that exercises the
+  normalized viewer-header contract with synthetic inputs, including stripped
+  spoofed inbound headers, Kerberos human-principal mapping, missing/mismatched
+  viewers, service-principal rejection, and duplicate-upstream-header
+  fail-closed behavior without contacting an IdP, proxy, LDAP, Kerberos, or web
+  server.
 - Owner-raw D3 deployment guidance now includes public-safe front-door review
   snippets for common header handling, OIDC/SSO claim mapping, and
   SPNEGO/Kerberos principal mapping, plus an explicit warning that direct

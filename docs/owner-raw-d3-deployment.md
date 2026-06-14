@@ -279,6 +279,29 @@ values, SQL, case ids, paths, or secrets. The simulator is an audit aid for the
 policy matrix; it is not an auth proxy, deployment check, or substitute for the
 runtime checks above.
 
+## Front Door Smoke Harness
+
+Use the dev-only `scripts/owner_raw_front_door_smoke.py` helper to exercise the
+D3 front-door contract with synthetic inputs:
+
+```bash
+python3 scripts/owner_raw_front_door_smoke.py
+```
+
+The smoke checks these raw-free scenarios:
+
+- a matching front-door identity strips spoofed inbound viewer headers and
+  forwards exactly one normalized upstream viewer header;
+- a Kerberos human principal maps to the same simple owner namespace;
+- missing, mismatched, service-principal, and duplicate-upstream-header cases
+  fail closed before raw source can be authorized.
+
+The output is raw-free JSON and does not echo synthetic viewer values, query
+users, header values, principals, SQL, case ids, paths, or secrets. The helper
+does not contact an IdP, proxy, Kerberos service, LDAP server, or Query Doctor
+web server. It is a local regression smoke for the application contract, not a
+replacement for testing the real front-door deployment and network isolation.
+
 ## Operator Response
 
 If the auth proxy, identity mapping, audit pipeline, or ownership mapping is in
