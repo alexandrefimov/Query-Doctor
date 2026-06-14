@@ -332,6 +332,12 @@ scripts/query-doctor-web-known-query-smoke \
 For a table-backed query where metadata collection is expected, add
 `--require-metadata`.
 
+Use `--require-metadata` only with a fresh retained table-backed `SELECT` whose
+profile exposes source tables. DDL, `SHOW` statements, CTE-only queries, and
+old query IDs can still validate discovery/profile/analyzer/report routing, but
+they do not prove the Known Query ID metadata path because there may be no
+collectable table reference or retained profile to inspect.
+
 Direct Impala Known Query ID collection must be able to fetch the retained
 profile through the configured `impala_profile_hosts` endpoint. A single
 load-balanced or ingress endpoint may not reach the daemon that coordinated a
