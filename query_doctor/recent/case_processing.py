@@ -14,16 +14,13 @@ from uuid import uuid4
 
 from query_doctor.cli.commands import command_prefix, command_spec
 from query_doctor.impala.metadata_workflow import (
-    DEFAULT_METADATA_MAX_TABLES,
     METADATA_SOURCE_TABLES_ENV,
-    build_metadata_plan,
-    read_default_database_from_facts,
-    read_referenced_tables_from_facts,
 )
 from query_doctor.recent.batch_config import elapsed_seconds, format_seconds
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_scoring import inspect_case_outputs, score_case
 from query_doctor.recent.batch_summary import batch_ranking_key
+from query_doctor.recent.metadata_collectable import update_collectable_metadata_table_count
 from query_doctor.recent.command_args import (
     append_cm_config_args,
     append_cm_connection_args,
@@ -670,20 +667,7 @@ def refresh_top_metadata(
 
 
 def metadata_case_has_collectable_references(config: BatchConfig, case: CaseResult) -> bool:
-    if case.actual_case_dir is None:
-        return False
-    facts_path = case.actual_case_dir / "analysis_facts.md"
-    if not facts_path.exists():
-        return False
-    metadata_max_tables = config.metadata_max_tables or DEFAULT_METADATA_MAX_TABLES
-    if metadata_max_tables <= 0:
-        return False
-    plan = build_metadata_plan(
-        [*case.metadata_source_tables, *read_referenced_tables_from_facts(facts_path)],
-        metadata_max_tables,
-        default_database=read_default_database_from_facts(facts_path),
-    )
-    return bool(plan.selected_tables)
+    return update_collectable_metadata_table_count(config, case) > 0
 
 
 def metadata_subprocess_env(env: dict[str, str], case: CaseResult) -> dict[str, str]:

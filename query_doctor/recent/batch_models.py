@@ -126,6 +126,7 @@ class CaseResult:
     metadata_status: str = "not_observed"
     table_stats_status: str = "not_checked"
     referenced_table_count: int = 0
+    collectable_metadata_table_count: int = 0
     collected_metadata_table_count: int = 0
     skipped_due_to_max_table_limit: int = 0
     too_large_count: int = 0
