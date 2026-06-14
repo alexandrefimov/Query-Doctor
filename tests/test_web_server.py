@@ -12225,6 +12225,27 @@ def test_subprocess_failure_message_adds_safe_exit_2_hint():
             "direct Impala discovery has no configured impalad host",
         ),
         (
+            "[Impala profile collector] ERROR: Single-query Impala profile collection failed: "
+            "Impala profile was not found on the configured impalad endpoints. "
+            "Query id aa:bb, host impalad-private.example.com, path /private/tmp/raw",
+            "direct Impala profile was not found on the configured impalad endpoints",
+        ),
+        (
+            "[Impala profile collector] ERROR: Single-query Impala profile collection failed: "
+            "Last error: profile endpoint unavailable for https://impalad-private.example.com",
+            "direct Impala profile endpoint is unavailable",
+        ),
+        (
+            "[Impala profile collector] ERROR: Single-query Impala profile collection failed: "
+            "Impala profile endpoint request failed safely.",
+            "direct Impala profile endpoint request failed",
+        ),
+        (
+            "[Impala profile collector] ERROR: Single-query Impala profile collection failed: "
+            "Impala profile endpoint response exceeded the configured byte limit.",
+            "direct Impala profile response exceeded the configured byte limit",
+        ),
+        (
             "[batch] ERROR: CM auth env is not set in this execution environment.",
             "Cloudera Manager credentials are not available",
         ),
@@ -12257,6 +12278,8 @@ def test_subprocess_failure_message_adds_safe_allowlisted_hints(stderr, expected
     assert "sensitive_table" not in message
     assert "private-prod" not in message
     assert "/private/tmp" not in message
+    assert "aa:bb" not in message
+    assert "impalad-private.example.com" not in message
 
 
 def test_web_reuses_existing_complete_case_without_collector(tmp_path):

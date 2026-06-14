@@ -74,6 +74,27 @@ SAFE_SUBPROCESS_FAILURE_HINTS: tuple[tuple[str, str], ...] = (
         "Select or fix a direct-Impala cluster with impala_profile_hosts.",
     ),
     (
+        "impala profile was not found on the configured impalad endpoints",
+        "Recognized safe failure reason: direct Impala profile was not found on the configured "
+        "impalad endpoints. The query may be outside daemon profile retention or the selected "
+        "cluster may not include the coordinator that served it.",
+    ),
+    (
+        "profile endpoint unavailable",
+        "Recognized safe failure reason: direct Impala profile endpoint is unavailable. "
+        "Check the configured direct-Impala endpoint or retry when the daemon profile page is available.",
+    ),
+    (
+        "impala profile endpoint request failed safely",
+        "Recognized safe failure reason: direct Impala profile endpoint request failed. "
+        "Check the configured direct-Impala endpoint or retry after the endpoint is reachable.",
+    ),
+    (
+        "impala profile endpoint response exceeded the configured byte limit",
+        "Recognized safe failure reason: direct Impala profile response exceeded the configured byte limit. "
+        "Raise max_profile_bytes for this local session or inspect a smaller retained profile.",
+    ),
+    (
         "cm auth env is not set in this execution environment",
         "Recognized safe failure reason: Cloudera Manager credentials are not available. "
         "Start the web server with CM credentials, or select a direct-Impala cluster.",
