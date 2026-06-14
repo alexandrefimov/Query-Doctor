@@ -13,6 +13,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
@@ -821,16 +822,29 @@ def filter_impala_summaries_for_window(
             if config.include_running:
                 filtered.append(summary)
             continue
-        timestamp = summary.end_time or summary.start_time
-        if not timestamp:
-            continue
-        try:
-            parsed = parse_cm_timestamp(timestamp)
-        except Exception:  # noqa: BLE001 - malformed daemon timestamps are ignored for bounded discovery.
+        parsed = impala_summary_window_timestamp(summary)
+        if parsed is None:
             continue
         if start <= parsed < end:
             filtered.append(summary)
     return filtered
+
+
+def impala_summary_window_timestamp(summary: cm_profiles.CMQuerySummary) -> datetime | None:
+    start_time = parse_optional_impala_summary_timestamp(summary.start_time)
+    end_time = parse_optional_impala_summary_timestamp(summary.end_time)
+    if start_time is not None and end_time is not None and end_time < start_time:
+        return start_time
+    return end_time or start_time
+
+
+def parse_optional_impala_summary_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return parse_cm_timestamp(value)
+    except Exception:  # noqa: BLE001 - malformed daemon timestamps are ignored for bounded discovery.
+        return None
 
 
 if __name__ == "__main__":

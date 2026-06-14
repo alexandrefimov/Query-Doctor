@@ -20,6 +20,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Direct Impala Recent discovery now ignores inconsistent daemon query-list
+  `end_time` values that precede `start_time`, using the sane start timestamp
+  for window filtering so fresh SELECT queries are not dropped when the daemon
+  snapshot carries a stale completion timestamp.
 - Web startup now refuses `source_visibility=owner_raw` on non-local binds
   unless authenticated viewer identity is configured. This blocks the unsafe
   shared local-first mode without silently downgrading owner raw visibility.

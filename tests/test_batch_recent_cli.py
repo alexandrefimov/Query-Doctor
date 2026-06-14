@@ -184,6 +184,56 @@ def test_batch_recent_direct_impala_include_running_survives_window_filter(monke
     ] == ["cccccccccccccccc:dddddddddddddddd"]
 
 
+def test_batch_recent_direct_impala_window_uses_start_when_end_precedes_start(
+    monkeypatch, tmp_path
+):
+    module = load_batch_module()
+    summaries = [
+        module.cm_profiles.CMQuerySummary(
+            query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+            start_time="2026-05-12T10:15:00Z",
+            end_time="1970-01-01T00:00:00Z",
+            status="finished",
+            query_type="QUERY",
+            statement="SELECT 1",
+        ),
+    ]
+
+    def fake_fetch_impala_query_summaries(**kwargs):
+        return type("Result", (), {"summaries": summaries, "warnings": []})()
+
+    monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
+    args = module.parse_args(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--from-time",
+            "2026-05-12T10:00:00Z",
+            "--to-time",
+            "2026-05-12T11:00:00Z",
+            "--cm-inspect-limit",
+            "5",
+            "--select-limit",
+            "2",
+            "--metadata-mode",
+            "off",
+            "--no-min-duration-filter",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+
+    discovery = module.discover_candidates(config, env={})
+
+    assert discovery.summaries_inspected == 1
+    assert [
+        candidate.summary.query_id for candidate in discovery.candidates if candidate.selected
+    ] == ["aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"]
+
+
 def test_batch_recent_direct_impala_only_running_filters_to_running_summaries(
     monkeypatch, tmp_path
 ):
