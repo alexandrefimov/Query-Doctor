@@ -288,9 +288,9 @@ def test_optimizer_metadata_collection_uses_only_allowlisted_show_statements(tmp
     )
 
     assert observed_sql == [
-        "SHOW CREATE TABLE example_sales.orders",
-        "SHOW TABLE STATS example_sales.orders",
-        "SHOW COLUMN STATS example_sales.orders",
+        "SHOW CREATE TABLE `example_sales`.`orders`",
+        "SHOW TABLE STATS `example_sales`.`orders`",
+        "SHOW COLUMN STATS `example_sales`.`orders`",
     ]
     assert result.metadata_status == "collected"
 
