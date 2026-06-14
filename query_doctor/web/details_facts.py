@@ -18,6 +18,7 @@ from query_doctor.web.trusted_artifacts import (
 
 
 MAX_METADATA_FACTS_BYTES = 512 * 1024
+MAX_IMPALA_CONTEXT_BYTES = 4 * 1024 * 1024
 TABLE_METADATA_SUMMARY_KEYS = {
     "context file": "context file",
     "context path": "context path",
@@ -88,14 +89,16 @@ QUERY_CONTEXT_SUMMARY_KEYS = {
 def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
     fallback_facts: dict[str, Any] | None = None
     for artifact_dir in batch_case_artifact_dirs(case_dir):
+        context_facts = load_batch_case_impala_context_facts(artifact_dir)
+        if context_facts and context_facts.get("tables"):
+            return context_facts
+        if context_facts and fallback_facts is None:
+            fallback_facts = context_facts
         facts = load_batch_case_analysis_metadata_facts(artifact_dir)
         if facts and facts.get("tables"):
             return facts
         if facts and fallback_facts is None:
             fallback_facts = facts
-        context_facts = load_batch_case_impala_context_facts(artifact_dir)
-        if context_facts:
-            return context_facts
     return fallback_facts
 
 
@@ -175,14 +178,16 @@ def load_batch_case_metadata_facts(
         return None
     fallback_facts: dict[str, Any] | None = None
     for artifact_dir in batch_case_artifact_dirs(case_dir):
+        context_facts = load_batch_case_impala_context_facts(artifact_dir)
+        if context_facts and context_facts.get("tables"):
+            return context_facts
+        if context_facts and fallback_facts is None:
+            fallback_facts = context_facts
         facts = load_batch_case_analysis_metadata_facts(artifact_dir)
         if facts and facts.get("tables"):
             return facts
         if facts and fallback_facts is None:
             fallback_facts = facts
-        context_facts = load_batch_case_impala_context_facts(artifact_dir)
-        if context_facts:
-            return context_facts
     return fallback_facts
 
 
@@ -364,7 +369,7 @@ def load_case_analysis_cluster_runtime_context_facts(case_dir: Path) -> dict[str
 
 
 def load_batch_case_impala_context_facts(case_dir: Path) -> dict[str, Any] | None:
-    artifact = load_case_impala_context_artifact(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    artifact = load_case_impala_context_artifact(case_dir, max_bytes=MAX_IMPALA_CONTEXT_BYTES)
     if artifact is None:
         return None
     context = table_metadata_facts.context_from_payload(
@@ -384,6 +389,9 @@ def convert_table_metadata_context_for_web(context: dict[str, Any]) -> dict[str,
     ]
     if not converted and not context:
         return None
+    statement_counts = context.get("statement_status_counts")
+    if not isinstance(statement_counts, dict):
+        statement_counts = metadata_statement_counts(converted)
     return {
         "summary": {
             "context file": context.get("context_file", "unknown"),
@@ -398,7 +406,7 @@ def convert_table_metadata_context_for_web(context: dict[str, Any]) -> dict[str,
             "metadata output limit bytes": context.get("metadata_output_limit_bytes", "unknown"),
         },
         "tables": converted,
-        "statement_counts": metadata_statement_counts(converted),
+        "statement_counts": statement_counts,
     }
 
 

@@ -78,6 +78,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 - Details metadata facts now show collectable metadata table counts alongside
   referenced and collected table counts, making the same distinction visible in
   selected Recent cases without exposing table names or raw metadata.
+- Details metadata loading now has a separate bounded read limit for generated
+  `impala_context.json` artifacts, so larger collected metadata contexts can
+  still render safe table-stat facts and statement status counts instead of
+  falling back to aggregate-only metadata.
 - Metadata collection now backtick-quotes validated database and table
   identifiers in generated `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
   `SHOW COLUMN STATS` statements so reserved-word table names do not trip the
