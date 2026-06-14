@@ -20,6 +20,7 @@ from query_doctor.web.presenters.recent_scan import (
 from query_doctor.web.presenters.recent_scan_models import RecentScanDiagnosticFactView
 from query_doctor.web.ui.html_helpers import escape_value
 from query_doctor.web.ui.i18n import text as ui_text
+from query_doctor.web.ui.source_locations import render_source_location_chips
 
 
 def render_action_candidate_findings(
@@ -221,9 +222,10 @@ def render_source_locators(locators: tuple[RecentScanSourceLocatorView, ...]) ->
 def render_source_locator(locator: RecentScanSourceLocatorView) -> str:
     coordinate = f" ({escape_value(locator.coordinate)})" if locator.coordinate else ""
     detail = f": {escape_value(locator.detail)}" if locator.detail else ""
+    chips = render_source_location_chips((locator,), limit=1)
     return (
         f'<li class="source-locator source-locator--{html.escape(locator.kind, quote=True)}">'
-        f"<span>{escape_value(locator.label)}{coordinate}{detail}</span>"
+        f"{chips}<span>{escape_value(locator.label)}{coordinate}{detail}</span>"
         "</li>"
     )
 

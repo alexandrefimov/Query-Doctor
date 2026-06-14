@@ -105,7 +105,7 @@ FORBIDDEN_DISPLAY_FRAGMENTS = (
     "/tmp/",
     "10.20.30.40",
     "case_dir",
-    ".internal.example.com",
+    "internal_example_host",
     "BEGIN PROFILE",
     "Query Timeline",
     "SHOW CREATE TABLE",
@@ -1403,10 +1403,10 @@ def test_recent_scan_case_detail_evidence_labels_are_raw_free():
                 "/Users/example/case_dir CM_TOKEN qwen3-coder ollama",
             ],
             "case_primary_bottleneck": {
-                "label": "SELECT * FROM example_guarded.table",
+                "label": "SELECT * FROM example_guarded_table",
                 "confidence": "high",
                 "reasons": [
-                    "operator_02 SELECT secret_col FROM example_guarded.table /tmp/raw qwen3-coder raw stderr"
+                    "operator_02 SELECT secret_col FROM example_guarded_table /tmp/raw qwen3-coder raw stderr"
                 ],
             },
         },
@@ -1430,7 +1430,7 @@ def test_recent_scan_case_detail_evidence_labels_are_raw_free():
 
     assert_no_forbidden_fragments(labels)
     assert "SELECT" not in repr(labels)
-    assert "example_guarded.table" not in repr(labels)
+    assert "example_guarded_table" not in repr(labels)
 
 
 def test_recent_scan_case_summary_helpers_keep_supported_values():
@@ -1490,20 +1490,20 @@ def test_recent_scan_case_summary_helpers_are_raw_free():
                 "impact": "high",
                 "confidence": "medium",
                 "suggested_review_areas": [
-                    "SELECT secret_col FROM example_guarded.table /tmp/raw qwen3-coder"
+                    "SELECT secret_col FROM example_guarded_table /tmp/raw qwen3-coder"
                 ],
             },
             "optimizer_rewrite_support": {
                 "status": "guidance_only",
                 "rewriteability_bucket": "not_rewriteable",
-                "label": "SELECT secret_col FROM example_guarded.table /tmp/raw qwen3-coder",
+                "label": "SELECT secret_col FROM example_guarded_table /tmp/raw qwen3-coder",
                 "reason": "raw stderr /Users/example/case_dir",
             },
             "case_primary_bottleneck": {
-                "label": "SELECT * FROM example_guarded.table",
+                "label": "SELECT * FROM example_guarded_table",
                 "confidence": "high",
                 "reasons": [
-                    "operator_02 SELECT secret_col FROM example_guarded.table /tmp/raw qwen3-coder raw stderr"
+                    "operator_02 SELECT secret_col FROM example_guarded_table /tmp/raw qwen3-coder raw stderr"
                 ],
             },
         },
@@ -1525,7 +1525,7 @@ def test_recent_scan_case_summary_helpers_are_raw_free():
     )
     assert_no_forbidden_fragments(labels)
     assert "SELECT" not in repr(labels)
-    assert "example_guarded.table" not in repr(labels)
+    assert "example_guarded_table" not in repr(labels)
 
 
 def test_recent_scan_case_verdict_falls_back_to_action_candidate_summary():
@@ -1870,7 +1870,7 @@ def test_recent_scan_admission_follow_up_points_to_profile_facts_safely():
                     "id": "profile_timing_admission_evidence",
                     "detail": "query timeline admission phase",
                 },
-                {"id": "unknown_locator", "detail": "SELECT secret_col FROM db.table"},
+                {"id": "unknown_locator", "detail": "SELECT secret_col FROM db_table"},
             ],
         },
     }
@@ -1894,7 +1894,7 @@ def test_recent_scan_admission_follow_up_points_to_profile_facts_safely():
     assert "Profile: timing admission facts: query timeline admission phase" in html
     assert "unknown_locator" not in html
     assert "secret_col" not in html
-    assert "db.table" not in html
+    assert "db_table" not in html
     assert_no_forbidden_fragments(action_view)
     assert_no_forbidden_fragments(html)
 
@@ -2002,7 +2002,7 @@ def test_recent_scan_direct_impala_source_limitations_use_safe_source_provenance
                 "kind": "engine",
                 "status": "unknown",
                 "limitations": [
-                    "raw detail SELECT secret_col FROM private.table token=secret-value"
+                    "raw detail SELECT secret_col FROM private_table token=secret-value"
                 ],
             },
             {"kind": "profile", "status": "partial"},
@@ -2038,7 +2038,7 @@ def test_recent_scan_direct_impala_source_limitations_use_safe_source_provenance
     assert "Optional Prometheus runtime metrics are incomplete or unavailable" in html
     assert "Bounded Impala metadata is partial" in html
     assert "secret_col" not in html
-    assert "private.table" not in html
+    assert "private_table" not in html
     assert "secret-value" not in html
     assert_no_forbidden_fragments(view)
     assert_no_forbidden_fragments(html)
@@ -2781,7 +2781,7 @@ def test_optimized_query_action_view_sanitizes_state_before_rendering():
                 "cte_body_validation_not_proven",
                 "/Users/example/case_dir qwen3-coder",
             ],
-            "error": "failed at /Users/example/case_dir with qwen3-coder near SELECT secret FROM db.table",
+            "error": "failed at /Users/example/case_dir with qwen3-coder near SELECT secret FROM db_table",
             "source_available": True,
         }
     )
@@ -2899,7 +2899,7 @@ def test_report_action_view_sanitizes_error_with_browser_error_policy():
     view = present_report_action(
         {
             "status": "failed",
-            "error": "failed at /Users/example/case_dir near SELECT secret FROM db.table",
+            "error": "failed at /Users/example/case_dir near SELECT secret FROM db_table",
         }
     )
 
@@ -4094,10 +4094,10 @@ def test_recent_scan_primary_bottleneck_output_is_sanitized():
                     "score": 31,
                     "score_severity": "high",
                     "case_primary_bottleneck": {
-                        "label": "SELECT * FROM example_guarded.table",
+                        "label": "SELECT * FROM example_guarded_table",
                         "confidence": "high",
                         "reasons": [
-                            "operator_02 SELECT secret_col FROM example_guarded.table /tmp/raw qwen3-coder raw stderr",
+                            "operator_02 SELECT secret_col FROM example_guarded_table /tmp/raw qwen3-coder raw stderr",
                         ],
                     },
                 }
@@ -4112,10 +4112,10 @@ def test_recent_scan_primary_bottleneck_output_is_sanitized():
             "score": 31,
             "score_severity": "high",
             "case_primary_bottleneck": {
-                "label": "SELECT * FROM example_guarded.table",
+                "label": "SELECT * FROM example_guarded_table",
                 "confidence": "high",
                 "reasons": [
-                    "operator_02 SELECT secret_col FROM example_guarded.table /tmp/raw qwen3-coder raw stderr",
+                    "operator_02 SELECT secret_col FROM example_guarded_table /tmp/raw qwen3-coder raw stderr",
                 ],
             },
         },
@@ -4127,7 +4127,7 @@ def test_recent_scan_primary_bottleneck_output_is_sanitized():
     for body in (html, detail_html):
         assert "SELECT" not in body
         assert "secret_col" not in body
-        assert "example_guarded.table" not in body
+        assert "example_guarded_table" not in body
         assert_no_forbidden_fragments(body)
 
 
@@ -4549,6 +4549,19 @@ def test_recent_scan_optimization_candidate_output_is_sanitized_and_sorted():
                             "/tmp/raw SELECT * FROM cte_1",
                         ],
                     },
+                    "source_locators": {
+                        "query_optimization": [
+                            {
+                                "id": "sql_final_select_filter",
+                                "coordinate": "line 24",
+                                "detail": "predicate near final SELECT",
+                            },
+                            {
+                                "id": "plan_cardinality_anomaly",
+                                "detail": "node 02 HASH JOIN",
+                            },
+                        ]
+                    },
                 },
             ]
         },
@@ -4582,6 +4595,8 @@ def test_recent_scan_optimization_candidate_output_is_sanitized_and_sorted():
     assert "cte_1" not in html
     assert "join row expansion or cardinality mismatch with join evidence" in html
     assert "cardinality mismatch [SQL hidden]" not in html
+    assert 'class="source-location-chip source-location-chip--sql"' in html
+    assert ">line 24</span>" in html
 
 
 def test_recent_scan_optimization_candidate_tie_breaks_by_optimizer_status():
@@ -4727,7 +4742,7 @@ def test_recent_scan_optimization_candidate_explains_human_review_guardrails():
                     "optimizer_rewrite_support": {
                         "status": "draft_disabled",
                         "label": "Recipe detected; draft disabled",
-                        "reason": "SELECT * FROM example_guarded.table /tmp/raw qwen3-coder",
+                        "reason": "SELECT * FROM example_guarded_table /tmp/raw qwen3-coder",
                         "risk_reasons": [
                             "cte_body_validation_not_proven",
                             "sql_payload_too_large_for_safe_rewrite",
@@ -4750,7 +4765,7 @@ def test_recent_scan_optimization_candidate_explains_human_review_guardrails():
         "Guardrails: CTE body validation not proven; SQL payload too large for safe rewrite" in html
     )
     assert "SELECT" not in html
-    assert "example_guarded.table" not in html
+    assert "example_guarded_table" not in html
     assert_no_forbidden_fragments(html)
 
 
@@ -4823,10 +4838,10 @@ def test_recent_scan_optimization_candidate_ignores_unknown_no_recipe_review_tra
             "optimizer_rewrite_support": {
                 "status": "guidance_only",
                 "label": "Guidance only",
-                "reason": "SELECT * FROM example_guarded.table /tmp/raw qwen3-coder",
+                "reason": "SELECT * FROM example_guarded_table /tmp/raw qwen3-coder",
                 "rewriteability_bucket": "not_rewriteable",
                 "rewriteability_label": "Not rewriteable",
-                "no_recipe_review_track": "SELECT secret_col FROM example_guarded.table",
+                "no_recipe_review_track": "SELECT secret_col FROM example_guarded_table",
             },
         },
     )
@@ -4839,7 +4854,7 @@ def test_recent_scan_optimization_candidate_ignores_unknown_no_recipe_review_tra
         "by the listed deterministic facts or by a trusted optimizer outcome."
     )
     assert "secret_col" not in repr(action_view)
-    assert "example_guarded.table" not in repr(action_view)
+    assert "example_guarded_table" not in repr(action_view)
     assert "qwen3-coder" not in repr(action_view)
     assert_no_forbidden_fragments(action_view)
 
@@ -4906,11 +4921,11 @@ def test_recent_scan_detail_shows_candidate_context_safely():
                     {
                         "id": "sql_final_select_filter",
                         "coordinate": "line 11",
-                        "detail": "SELECT secret_col FROM example_guarded.table /tmp/raw",
+                        "detail": "SELECT secret_col FROM example_guarded_table /tmp/raw",
                     },
                     {
                         "id": "plan_cardinality_anomaly",
-                        "coordinate": "SELECT secret_col FROM example_guarded.table",
+                        "coordinate": "SELECT secret_col FROM example_guarded_table",
                         "detail": "node 02 HASH JOIN",
                     },
                     {"id": "unknown_locator", "detail": "raw stdout /Users/example"},
@@ -4957,12 +4972,15 @@ def test_recent_scan_detail_shows_candidate_context_safely():
     assert "Use the marked memory-pressure operator as a secondary before/after anchor" in html
     assert "compare EXPLAIN before and after stats collection" in html
     assert "SQL: final SELECT filter (line 11)" in html
+    assert 'class="source-location-chip source-location-chip--sql"' in html
+    assert ">line 11</span>" in html
+    assert "source-location-chip--plan" not in html
     assert "Plan: estimate-mismatch operator: node 02 HASH JOIN" in html
     assert "Metadata: referenced table stats: 3 referenced tables" in html
     assert "Plan: memory-pressure operator: node 05 AGGREGATE" in html
     assert "unknown_locator" not in html
     assert "secret_col" not in html
-    assert "example_guarded.table" not in html
+    assert "example_guarded_table" not in html
     for fragment in FORBIDDEN_DISPLAY_FRAGMENTS:
         assert fragment not in html
 
@@ -5243,6 +5261,7 @@ def test_recent_scan_action_candidate_card_renders_owner_coordinate_guidance():
             "How to verify",
             "Compare EXPLAIN before and after the change",
             "Where to inspect",
+            "source-location-chip source-location-chip--sql",
             "SQL: final SELECT filter (line 18): predicate near final SELECT",
             "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)",
             "Why this deserves attention",

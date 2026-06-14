@@ -2193,6 +2193,34 @@ html[data-theme=dark] select.input {
   overflow-wrap:anywhere
 }
 
+.source-location-chips {
+  display:inline-flex;
+  flex-wrap:wrap;
+  gap:4px;
+  align-items:center
+}
+
+.source-location-chip {
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:2px 6px;
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  background:var(--surface);
+  color:var(--text);
+  font-family:var(--mono);
+  font-size:11px;
+  font-weight:700;
+  line-height:1
+}
+
+.source-location-chip--sql {
+  border-color:rgba(15,82,104,.26);
+  background:rgba(15,82,104,.08);
+  color:var(--accent-strong)
+}
+
 .action-candidate-card {
   display:grid;
   gap:12px;
@@ -2250,6 +2278,7 @@ html[data-theme=dark] select.input {
 
 .action-candidate-card .source-locator {
   display:inline-flex;
+  gap:6px;
   align-items:flex-start;
   max-width:100%;
   padding:6px 8px;
@@ -2750,6 +2779,15 @@ html[data-theme=dark] select.input {
   color:var(--muted);
   font-size:13px;
   overflow-wrap:anywhere
+}
+
+.batch-cell--summary .source-location-chips {
+  display:flex;
+  margin-top:6px
+}
+
+.batch-cell--summary .source-location-chip {
+  max-width:100%
 }
 
 .workload-action-card-list {

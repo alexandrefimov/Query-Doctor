@@ -2373,6 +2373,14 @@ def test_web_available_action_cards_explain_purpose():
     )
     assert_css_contains(
         styles,
+        ".source-location-chip{display:inline-flex;align-items:center;min-height:20px;",
+    )
+    assert_css_contains(
+        styles,
+        ".batch-cell--summary .source-location-chips{display:flex;margin-top:6px}",
+    )
+    assert_css_contains(
+        styles,
         ".action-supporting-fact-list{display:grid;"
         "grid-template-columns:repeat(auto-fit,minmax(220px,1fr));"
         "gap:8px;margin:0;padding:0;list-style:none}",
@@ -3750,6 +3758,8 @@ def test_web_batch_case_detail_renders_owner_coordinate_guidance(tmp_path):
     assert 'class="batch-head-actions"' in body
     assert "Recommended change" in action_plan_html
     assert "Where to inspect" in action_plan_html
+    assert 'class="source-location-chip source-location-chip--sql"' in action_plan_html
+    assert ">line 18</span>" in action_plan_html
     assert "SQL: final SELECT filter (line 18): predicate near final SELECT" in action_plan_html
     assert (
         "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)"

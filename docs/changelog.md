@@ -24,6 +24,9 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   `end_time` values that precede `start_time`, using the sane start timestamp
   for window filtering so fresh SELECT queries are not dropped when the daemon
   snapshot carries a stale completion timestamp.
+- Recent Details and rewrite-opportunity rows now render raw-free source
+  location chips from owner-gated source locators when line coordinates are
+  already present, without exposing SQL text or changing the safe-mode summary.
 - Web startup now refuses `source_visibility=owner_raw` on non-local binds
   unless authenticated viewer identity is configured. This blocks the unsafe
   shared local-first mode without silently downgrading owner raw visibility.
