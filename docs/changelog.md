@@ -20,6 +20,9 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Safe Recent summaries now carry raw-free SQL line coordinates and Details
+  renders a redacted source map for locator-backed findings without exposing
+  source SQL text.
 - Installed-wheel user-path smoke now includes a real local web-server E2E for
   the one-profile Quickstart corpus path. The smoke starts packaged
   `query-doctor-analyze`, starts packaged `query-doctor-web`, fetches Diagnose,

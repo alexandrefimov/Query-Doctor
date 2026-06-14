@@ -4973,6 +4973,8 @@ def test_recent_scan_detail_shows_candidate_context_safely():
     assert "compare EXPLAIN before and after stats collection" in html
     assert "SQL: final SELECT filter (line 11)" in html
     assert 'class="source-location-chip source-location-chip--sql"' in html
+    assert 'class="redacted-source-map"' in html
+    assert "source text hidden" in html
     assert ">line 11</span>" in html
     assert "source-location-chip--plan" not in html
     assert "Plan: estimate-mismatch operator: node 02 HASH JOIN" in html
@@ -5264,6 +5266,8 @@ def test_recent_scan_action_candidate_card_renders_owner_coordinate_guidance():
             "source-location-chip source-location-chip--sql",
             "SQL: final SELECT filter (line 18): predicate near final SELECT",
             "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)",
+            "redacted-source-map",
+            "source text hidden",
             "Why this deserves attention",
             "Deterministic analysis found",
             "join row expansion or cardinality mismatch with join evidence",

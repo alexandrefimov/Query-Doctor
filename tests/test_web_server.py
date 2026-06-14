@@ -2377,6 +2377,10 @@ def test_web_available_action_cards_explain_purpose():
     )
     assert_css_contains(
         styles,
+        ".redacted-source-map{display:grid;gap:4px;margin-top:8px;",
+    )
+    assert_css_contains(
+        styles,
         ".batch-cell--summary .source-location-chips{display:flex;margin-top:6px}",
     )
     assert_css_contains(
@@ -3760,6 +3764,8 @@ def test_web_batch_case_detail_renders_owner_coordinate_guidance(tmp_path):
     assert "Where to inspect" in action_plan_html
     assert 'class="source-location-chip source-location-chip--sql"' in action_plan_html
     assert ">line 18</span>" in action_plan_html
+    assert 'class="redacted-source-map"' in action_plan_html
+    assert "source text hidden" in action_plan_html
     assert "SQL: final SELECT filter (line 18): predicate near final SELECT" in action_plan_html
     assert (
         "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)"

@@ -5410,7 +5410,7 @@ def test_case_summary_includes_profile_admission_source_locators():
     ]
 
 
-def test_batch_summary_includes_source_coordinates_only_for_owner_raw(tmp_path):
+def test_batch_summary_includes_source_coordinates_for_safe_and_owner_raw(tmp_path):
     module = load_batch_module()
     from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
@@ -5545,7 +5545,8 @@ def test_batch_summary_includes_source_coordinates_only_for_owner_raw(tmp_path):
     owner_locators = owner_summary["cases"][0]["source_locators"]["query_optimization"]
     cm_owner_locators = cm_owner_summary["cases"][0]["source_locators"]["query_optimization"]
 
-    assert all("coordinate" not in locator for locator in safe_locators)
+    assert any(locator.get("coordinate") == "lines 1-4" for locator in safe_locators)
+    assert any(locator.get("coordinate") == "line 7" for locator in safe_locators)
     assert any(locator.get("coordinate") == "lines 1-4" for locator in owner_locators)
     assert any(locator.get("coordinate") == "line 7" for locator in owner_locators)
     assert any(locator.get("coordinate") == "lines 1-4" for locator in cm_owner_locators)

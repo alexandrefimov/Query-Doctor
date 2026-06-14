@@ -174,9 +174,7 @@ def build_summary(
     for case in cases:
         update_collectable_metadata_table_count(config, case)
     collectable_metadata_distribution = collectable_metadata_table_count_distribution(cases)
-    include_source_coordinates = config.source_visibility == "owner_raw" and bool(
-        config.collectable_owner_users
-    )
+    include_source_coordinates = True
     ranked_case_summaries, workload_groups = case_summaries_with_workload_groups(
         cases,
         include_source_coordinates=include_source_coordinates,
