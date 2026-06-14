@@ -20,7 +20,10 @@ from query_doctor.web.presenters.recent_scan import (
 from query_doctor.web.presenters.recent_scan_models import RecentScanDiagnosticFactView
 from query_doctor.web.ui.html_helpers import escape_value
 from query_doctor.web.ui.i18n import text as ui_text
-from query_doctor.web.ui.source_locations import render_source_location_chips
+from query_doctor.web.ui.source_locations import (
+    render_redacted_sql_source_map,
+    render_source_location_chips,
+)
 
 
 def render_action_candidate_findings(
@@ -212,9 +215,11 @@ def render_source_locators(locators: tuple[RecentScanSourceLocatorView, ...]) ->
     if not locators:
         return ""
     items = "".join(render_source_locator(locator) for locator in locators[:5])
+    source_map = render_redacted_sql_source_map(locators)
     return (
         '<div class="source-locator-block" aria-label="Safe review locations">'
         f'<ul class="source-locator-list">{items}</ul>'
+        f"{source_map}"
         "</div>"
     )
 

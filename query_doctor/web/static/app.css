@@ -2292,6 +2292,49 @@ html[data-theme=dark] select.input {
   overflow-wrap:anywhere
 }
 
+.redacted-source-map {
+  display:grid;
+  gap:4px;
+  margin-top:8px;
+  padding:8px;
+  border:1px dashed var(--border);
+  border-radius:6px;
+  background:var(--surface)
+}
+
+.redacted-source-map__title {
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase
+}
+
+.redacted-source-map__row {
+  display:grid;
+  grid-template-columns:max-content minmax(72px,1fr) minmax(0,2fr);
+  gap:8px;
+  align-items:center;
+  font-size:11px
+}
+
+.redacted-source-map__line {
+  color:var(--accent-strong);
+  font-family:var(--mono);
+  font-weight:700
+}
+
+.redacted-source-map__mask {
+  min-height:14px;
+  border-radius:3px;
+  background:repeating-linear-gradient(90deg,var(--border),var(--border) 8px,transparent 8px,transparent 12px);
+  color:transparent
+}
+
+.redacted-source-map__label {
+  color:var(--muted);
+  overflow-wrap:anywhere
+}
+
 .action-supporting-facts {
   display:grid;
   gap:8px;
