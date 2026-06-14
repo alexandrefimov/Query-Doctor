@@ -20,6 +20,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- `owner_raw` now has an isolated owner-only selected-case source surface for
+  authorized Recent/Running cases, with no-store responses, source allowlisting,
+  safe reason-code denials, local-path/secret masking, and no trusted-report,
+  handoff, download, or LLM path.
 - Safe Recent summaries now carry raw-free SQL line coordinates and Details
   renders a redacted source map for locator-backed findings without exposing
   source SQL text.

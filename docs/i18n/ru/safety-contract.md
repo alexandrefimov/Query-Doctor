@@ -1,6 +1,6 @@
 # Контракт безопасности Query Doctor
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-06-14
 
 Язык: [English](../../safety-contract.md) | Русский
 
@@ -180,12 +180,14 @@ production profile text.
 
 ## Browser display boundary
 
-- Browser-visible UI не должен показывать raw SQL, raw profiles, raw metadata,
-  stdout/stderr, local paths, `case_dir`, credentials, secret values, Kerberos
-  ticket contents, metadata connection details, model names или Ollama
-  internals. Model-family names, model-version strings, local runtime provider
-  names и internal runtime fingerprints должны оставаться hidden before
-  rendering.
+- Trusted browser/report surfaces не должны показывать raw SQL, raw profiles,
+  raw metadata, stdout/stderr, local paths, `case_dir`, credentials, secret
+  values, Kerberos ticket contents, metadata connection details, model names или
+  Ollama internals. Isolated owner-only selected-case source surface - узкое
+  browser-исключение для raw SQL и должна следовать правилам `owner_raw` ниже.
+  Raw profiles, raw metadata, stdout/stderr, local paths, credentials, secret
+  values, Kerberos material, model/runtime internals и raw artifact filenames
+  остаются запрещены и там.
 - Любой dynamic browser-visible text должен проходить shared browser display
   redaction policy перед rendering.
 - Web Recent и Running scans не должны автоматически запускать LLM reports или
@@ -200,6 +202,19 @@ production profile text.
   уже существует.
 - Partial drafts, raw source SQL, externally pasted SQL и optimizer validation
   failures должны оставаться скрытыми.
+- `source_visibility=owner_raw` - owner-gating mode, а не blanket display
+  bypass. Он может сужать Recent/Running scans до verified owner users,
+  показывать validated optimizer SQL draft только для explicit selected-case
+  optimizer action и разрешает отдельную isolated owner-only selected-case
+  source surface для original read-only SQL source, когда `query.user`
+  разрешен authenticated viewer identity. Эта source surface не является
+  trusted report, Details, Recent table, optimizer, handoff или download
+  surface; она должна быть source-allowlisted, fail-closed при ownership
+  mismatch, использовать `Cache-Control: no-store`, ничего не отправлять в LLM
+  и по-прежнему исключать raw profile dumps, raw metadata, local paths,
+  subprocess output, secrets, model names, runtime internals и raw artifact
+  filenames. Local-first owner raw visibility не должен стартовать на non-local
+  web bind; shared web access требует authenticated viewer identity.
 
 ## Future Cluster Doctor
 

@@ -1,6 +1,6 @@
 # Security Model
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-06-14
 
 Язык: [English](../../security-model.md) | Русский
 
@@ -26,10 +26,12 @@ by default.
 
 ## Что нельзя раскрывать
 
-Browser-visible UI и trusted reports не должны раскрывать raw SQL, raw
-profiles, raw metadata, raw provider JSON, local paths, subprocess output,
-credentials, Kerberos ticket contents, model names, runtime internals или raw
-artifact filenames.
+Trusted browser/report surfaces не должны раскрывать raw SQL, raw profiles,
+raw metadata, raw provider JSON, local paths, subprocess output, credentials,
+Kerberos ticket contents, model names, runtime internals или raw artifact
+filenames. Isolated owner-only selected-case source surface - узкое browser
+исключение для authorized raw SQL source и должна следовать canonical
+safety-contract.
 
 ## Reporting
 

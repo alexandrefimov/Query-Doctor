@@ -28,6 +28,7 @@ from query_doctor.web.details_facts import (
 )
 from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebSettings
+from query_doctor.web.owner_raw_source import owner_raw_source_href_for_case
 from query_doctor.web.optimizer_validation import (
     optimizer_manual_guidance,
     optimizer_manual_rewrite_allowed,
@@ -80,6 +81,7 @@ class BatchCaseDetailRenderContext:
     workflow_title: str
     list_href: str
     detail_base_path: str
+    owner_raw_source_href: str
     active_nav: str
 
 
@@ -182,6 +184,13 @@ def build_batch_case_detail_render_context(
     artifacts = load_batch_case_trusted_detail_artifacts(
         settings, case_id, case, job_store, job=job
     )
+    owner_raw_source_href = owner_raw_source_href_for_case(
+        settings,
+        case_id,
+        case,
+        artifacts.artifact_dir,
+        detail_base_path=detail_base_path,
+    )
     report_state = (
         dict(report_state_override) if report_state_override is not None else artifacts.report_state
     )
@@ -228,5 +237,6 @@ def build_batch_case_detail_render_context(
         workflow_title=workflow_title,
         list_href=list_href,
         detail_base_path=detail_base_path,
+        owner_raw_source_href=owner_raw_source_href,
         active_nav=active_nav,
     )

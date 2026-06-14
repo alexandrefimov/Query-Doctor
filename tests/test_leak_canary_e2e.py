@@ -16,6 +16,7 @@ from query_doctor.web.command_builders import PYTHON_REPORT_NAME, REPORT_VARIANT
 from query_doctor.web.job_workers import run_specific_query_report_job
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
 from query_doctor.web.models import WebSettings
+from query_doctor.web.owner_raw_source import OwnerRawSourceView
 from query_doctor.web.query_analysis import run_query_id_analysis
 from query_doctor.web.routes import route_get_request
 from query_doctor.web.specific_query_pages import (
@@ -23,6 +24,7 @@ from query_doctor.web.specific_query_pages import (
     render_specific_query_report_for_request,
 )
 from query_doctor.web.trusted_artifacts import write_batch_case_report_validation_marker
+from query_doctor.web.ui.owner_raw_source import render_owner_raw_source_page
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -331,6 +333,37 @@ def test_owner_raw_ephemeral_policy_allows_source_but_not_secrets():
                     )
                 ]
             )
+
+
+def test_owner_raw_source_page_uses_ephemeral_policy_and_masks_secrets(tmp_path):
+    owner_raw_body = render_owner_raw_source_page(
+        WebSettings(config=tmp_path / "cm-config.json"),
+        OwnerRawSourceView(
+            case_id="case-001",
+            query_id=QUERY_ID,
+            query_user=CANARY_MARKERS["user"],
+            source_sql=(
+                "SELECT id "
+                f"FROM {CANARY_MARKERS['sql_db']}.{CANARY_MARKERS['sql_table']} "
+                "WHERE password = '<redacted>'"
+            ),
+            source_scope="read_only_statement",
+            reason_code="viewer_matches_query_user",
+            highlights=(),
+            back_href="/batch/case/case-001",
+        ),
+    )
+
+    assert CANARY_MARKERS["password"] not in owner_raw_body
+    assert_text_sinks_clean(
+        [
+            TextSink(
+                "owner-raw source response",
+                owner_raw_body,
+                OWNER_RAW_EPHEMERAL_RESPONSE_POLICY,
+            )
+        ]
+    )
 
 
 def test_owner_raw_source_markers_stay_forbidden_in_public_sinks():

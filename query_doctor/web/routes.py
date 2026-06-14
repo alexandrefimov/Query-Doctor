@@ -33,6 +33,14 @@ from query_doctor.web.case_files import expected_case_dir_for_query
 from query_doctor.web.form_helpers import first_form_value, form_flag_enabled
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
 from query_doctor.web.models import WebError, WebJobSnapshot, WebSettings
+from query_doctor.web.owner_raw_source import (
+    OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND,
+    OwnerRawSourceDecision,
+    build_owner_raw_source_view,
+    owner_raw_source_detail_href,
+    owner_raw_source_path_match,
+    unquote_case_id,
+)
 from query_doctor.web.query_analysis import run_query_id_analysis, validate_query_id
 from query_doctor.web.request_handlers import handle_optimizer_request, start_analyze_job
 from query_doctor.web.specific_query_actions import (
@@ -54,12 +62,17 @@ from query_doctor.web.preview_surfaces import (
 from query_doctor.web.trusted_artifacts import (
     load_batch_case_trusted_report_artifact,
     load_specific_query_trusted_report_artifact,
+    resolve_batch_case_report_dir,
     trusted_report_download_filename,
 )
 from query_doctor.web.workload_pages import render_workload_detail_for_request
 from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
 from query_doctor.web.ui.optimizer import render_optimizer_page
 from query_doctor.web.ui.outcomes import render_action_outcomes_page
+from query_doctor.web.ui.owner_raw_source import (
+    render_owner_raw_source_page,
+    render_owner_raw_source_unavailable_page,
+)
 from query_doctor.web.ui.pages import (
     render_batch_case_not_found_page,
     render_batch_case_report_page,
@@ -158,6 +171,9 @@ def route_get_request(
     static_response = route_static_asset_get(parsed.path)
     if static_response is not None:
         return static_response
+    owner_raw_source = route_owner_raw_source_get(parsed.path, settings, store)
+    if owner_raw_source is not None:
+        return owner_raw_source
     batch_detail = route_batch_detail_get(parsed.path, settings, store)
     if batch_detail is not None:
         return batch_detail
@@ -224,6 +240,66 @@ def route_static_asset_get(path: str) -> WebRouteResponse | None:
     filename, content_type = asset
     body = files("query_doctor.web.static").joinpath(filename).read_text(encoding="utf-8")
     return WebRouteResponse(status=200, body=body, content_type=content_type)
+
+
+def route_owner_raw_source_get(
+    path: str,
+    settings: WebSettings,
+    store: WebJobStore,
+) -> WebRouteResponse | None:
+    match = owner_raw_source_path_match(path)
+    if not match:
+        return None
+    source = match.group("source")
+    case_id = unquote_case_id(match.group("case_id"))
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+        detail_kwargs = running_detail_kwargs()
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
+        detail_kwargs = {}
+    detail_base_path = detail_kwargs.get("detail_base_path", "/batch/case")
+    active_nav = detail_kwargs.get("active_nav", "batch")
+    back_href = owner_raw_source_detail_href(case_id, detail_base_path=detail_base_path)
+    if case is None:
+        decision = OwnerRawSourceDecision(False, OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND)
+        return WebRouteResponse.html(
+            404,
+            render_owner_raw_source_unavailable_page(
+                effective_settings,
+                case_id=case_id,
+                back_href=back_href,
+                decision=decision,
+                active_nav=active_nav,
+            ),
+        )
+    case_dir = resolve_batch_case_report_dir(effective_settings, case)
+    view_or_decision = build_owner_raw_source_view(
+        effective_settings,
+        case_id,
+        case,
+        case_dir,
+        back_href=back_href,
+    )
+    if isinstance(view_or_decision, OwnerRawSourceDecision):
+        return WebRouteResponse.html(
+            403,
+            render_owner_raw_source_unavailable_page(
+                effective_settings,
+                case_id=case_id,
+                back_href=back_href,
+                decision=view_or_decision,
+                active_nav=active_nav,
+            ),
+        )
+    return WebRouteResponse.html(
+        200,
+        render_owner_raw_source_page(
+            effective_settings,
+            view_or_decision,
+            active_nav=active_nav,
+        ),
+    )
 
 
 def post_route_is_allowed(path: str) -> bool:

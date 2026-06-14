@@ -49,5 +49,6 @@ def render_batch_case_detail_for_request(
         workflow_title=render_context.workflow_title,
         list_href=render_context.list_href,
         detail_base_path=render_context.detail_base_path,
+        owner_raw_source_href=render_context.owner_raw_source_href,
         active_nav=render_context.active_nav,
     )

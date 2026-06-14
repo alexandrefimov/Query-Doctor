@@ -352,20 +352,22 @@ TLS/reverse-proxy trust и resource limits. Shared public demos должны
 - Python/analyzer-owned facts - единственное trusted diagnostic evidence.
 - Raw LLM output недоверенный, пока не пройдет normalization, sanitization и
   validation.
-- Browser-visible UI и trusted reports не должны раскрывать raw SQL, raw
-  profiles, raw metadata, local paths, secrets, subprocess output,
-  model/runtime internals или raw artifact filenames.
+- Trusted browser/report surfaces не должны раскрывать raw SQL, raw profiles,
+  raw metadata, local paths, secrets, subprocess output, model/runtime internals
+  или raw artifact filenames. Isolated owner-only selected-case source surface -
+  узкое browser-исключение для raw SQL.
 - External collection должен быть explicit, bounded, read-only, redacted и safe
   by default.
 - Local config `privacy_mode` по умолчанию `true`; отключение может ослабить
-  local artifact identifier/host masking, но browser-visible UI и trusted
-  reports все равно не показывают raw SQL, profiles или metadata.
+  local artifact identifier/host masking, но trusted browser/report surfaces все
+  равно не показывают raw SQL, profiles или metadata.
 - Local config `no_llm=true` оставляет report и optimizer actions на
   deterministic Python-owned output.
-- Validated optimizer SQL drafts - единственное SQL-исключение в browser:
-  Details показывает их только для explicit selected-case optimizer actions при
-  `source_visibility=owner_raw`; default `safe` mode показывает trusted
-  recommendations/no-rewrite guidance вместо SQL draft.
+- SQL browser exceptions остаются selected-case и owner-gated: Details может
+  показать validated optimizer SQL draft для explicit optimizer action при
+  `source_visibility=owner_raw`, а isolated owner-only source view может
+  показать read-only original SQL для authorized query owner. Default `safe`
+  mode показывает trusted recommendations/no-rewrite guidance вместо SQL draft.
 - Query Optimizer принимает только один safe read-only statement и никогда не
   выполняет pasted SQL.
 

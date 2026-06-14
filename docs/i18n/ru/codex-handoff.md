@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last reviewed: 2026-06-05
+Last reviewed: 2026-06-14
 
 Язык: [English](../../codex-handoff.md) | Русский
 
@@ -82,8 +82,10 @@ details, local output paths и планы следующей сессии дол
 
 - Python/analyzer отвечает за facts.
 - LLM отвечает только за wording.
-- Browser-visible UI и trusted reports не должны показывать raw
+- Trusted browser/report surfaces не должны показывать raw
   SQL/profile/metadata/paths/secrets/subprocess output/model internals.
+  Isolated owner-only selected-case source surface - узкое browser-исключение,
+  регулируемое canonical safety-contract.
 - `engine_fact_boundary_v1` является raw-free contract seam, а не product
   engine registry или support claim.
 - Known Query ID analysis может готовить deterministic Python report внутри

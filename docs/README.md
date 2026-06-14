@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-06-14
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -13,9 +13,11 @@ the English source, the English document wins.
 
 - Python/analyzer owns facts; LLM owns wording only.
 - Query Doctor never executes user SQL or optimizer draft SQL.
-- Browser-visible UI and trusted reports must not expose raw SQL, raw profiles,
-  raw metadata, local paths, `case_dir`, subprocess output, secrets, model
-  names, runtime internals, or raw artifact filenames.
+- Trusted browser/report surfaces must not expose raw SQL, raw profiles, raw
+  metadata, local paths, `case_dir`, subprocess output, secrets, model names,
+  runtime internals, or raw artifact filenames. The isolated owner-only
+  selected-case source surface is the narrow raw-SQL exception defined in
+  [safety-contract.md](safety-contract.md).
 - Trusted SQL drafts require a Python-owned recipe, deterministic execution,
   and strict validation.
 - Metadata collection must stay read-only, allowlisted, bounded, explicit, and

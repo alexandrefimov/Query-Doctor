@@ -3,6 +3,10 @@ from pathlib import Path
 from query_doctor.engines.capabilities import engine_capabilities
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebSettings
+from query_doctor.web.owner_raw_source import (
+    OWNER_RAW_SOURCE_SURFACES,
+    owner_raw_source_surface_for_get_path,
+)
 from query_doctor.web.preview_surfaces import (
     PREVIEW_WEB_GET_SURFACES,
     PREVIEW_WEB_POST_PATHS,
@@ -88,6 +92,22 @@ def test_owner_raw_source_surface_taxonomy_is_isolated_and_stricter_than_product
     assert policy.handoff_export_allowed is False
     assert policy.llm_input_allowed is False
     assert policy_allows_raw_source_display(policy) is True
+
+
+def test_owner_raw_source_routes_are_isolated_get_only_surfaces():
+    expected_routes = {
+        "/batch/case/<case_id>/source",
+        "/running/case/<case_id>/source",
+    }
+
+    assert {surface.route_template for surface in OWNER_RAW_SOURCE_SURFACES} == expected_routes
+    for surface in OWNER_RAW_SOURCE_SURFACES:
+        route = surface.route_template.replace("<case_id>", "case-001")
+        assert owner_raw_source_surface_for_get_path(route) is surface
+        assert post_route_is_allowed(route) is False
+        assert surface.surface_class == SURFACE_CLASS_OWNER_RAW_SOURCE_WEB
+        assert surface.product_surface_allowed is False
+        assert surface.forbidden_product_surfaces == TRUSTED_PRODUCT_SURFACES
 
 
 def test_raw_source_display_policy_requires_owner_raw_class_and_all_guards():

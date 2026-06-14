@@ -18,6 +18,7 @@ from command_test_support import command_args, command_uses_role
 from web_server_test_support import REPO_DIR, load_web_module, write_complete_collected_case
 from query_doctor.optimizer.defaults import BUILTIN_OPTIMIZER_MODEL
 from query_doctor.web.manual_profile_inbox import manual_profile_file_for_query
+from query_doctor.web.routes import route_get_request
 from query_doctor.web.ui import layout
 
 
@@ -117,6 +118,76 @@ WITH src AS (
 )
 SELECT category, n_transactions, spends FROM purchases;
 """.strip()
+
+
+def owner_raw_source_sql() -> str:
+    return """
+SELECT id, password = 'supersecret' AS masked_value
+FROM qdleak_db_20260611.qdleak_table_20260611
+WHERE scratch_path = '/tmp/owner-raw-private'
+""".strip()
+
+
+def write_owner_raw_source_summary(
+    tmp_path: Path,
+    *,
+    user: str = "analyst",
+    source_sql=None,
+) -> Path:
+    case_dir = tmp_path / "case-001"
+    write_complete_collected_case(case_dir)
+    (case_dir / "analysis_facts.md").write_text(
+        "# Query Doctor deterministic analysis facts\n", encoding="utf-8"
+    )
+    (case_dir / "original_query.sql").write_text(
+        source_sql or owner_raw_source_sql(),
+        encoding="utf-8",
+    )
+    summary = tmp_path / "batch_summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "selected_count": 1,
+                "cases": [
+                    {
+                        "case_index": 1,
+                        "case_dir": "case-001",
+                        "query_id": "aaaabbbbccccdddd:1111222233334444",
+                        "user": user,
+                        "score": 80,
+                        "duration_sec": 120,
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                        "metadata_status": "skipped",
+                        "table_stats_status": "not_checked",
+                        "score_reasons": ["cardinality anomaly detected"],
+                        "source_locators": {
+                            "query_optimization": [
+                                {
+                                    "id": "sql_final_select_filter",
+                                    "coordinate": "line 3",
+                                    "detail": "predicate near final SELECT",
+                                }
+                            ]
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return summary
+
+
+def owner_raw_web_settings(module, tmp_path: Path, summary: Path, *, viewer: str = "analyst"):
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    return module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        viewer_identity=local_first_viewer_identity((viewer,)),
+    )
 
 
 def test_web_parse_args_defaults_to_localhost():
@@ -2381,6 +2452,10 @@ def test_web_available_action_cards_explain_purpose():
     )
     assert_css_contains(
         styles,
+        ".owner-raw-source-code{display:grid;overflow:auto;",
+    )
+    assert_css_contains(
+        styles,
         ".batch-cell--summary .source-location-chips{display:flex;margin-top:6px}",
     )
     assert_css_contains(
@@ -3785,6 +3860,122 @@ def test_web_batch_case_detail_renders_owner_coordinate_guidance(tmp_path):
     assert "owner-coordinate:id" not in action_plan_html
     assert "/tmp/query-doctor-secret-case" not in body
     assert "case_dir" not in body
+
+
+def test_web_owner_raw_source_route_renders_owner_sql_with_secret_masking(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = owner_raw_web_settings(module, tmp_path, summary)
+    store = module.WebJobStore()
+
+    response = route_get_request("/batch/case/case-001/source", settings, store)
+
+    assert response is not None
+    assert response.status == 200
+    assert "Owner-only raw source" in response.body
+    assert "SELECT id" in response.body
+    assert "qdleak_db_20260611.qdleak_table_20260611" in response.body
+    assert "supersecret" not in response.body
+    assert "password = &#x27;&lt;redacted&gt;&#x27;" in response.body
+    assert "/tmp/owner-raw-private" not in response.body
+    assert "local path hidden" in response.body
+    assert "owner-raw-source-line--highlight" in response.body
+    assert "final SELECT filter" in response.body
+    assert 'data-reason-code="viewer_matches_query_user"' in response.body
+
+
+def test_web_owner_raw_source_route_denies_safe_mode_and_mismatched_viewer(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    store = module.WebJobStore()
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    safe_settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="safe",
+        viewer_identity=local_first_viewer_identity(("analyst",)),
+    )
+    mismatch_settings = owner_raw_web_settings(module, tmp_path, summary, viewer="other_user")
+
+    safe_response = route_get_request("/batch/case/case-001/source", safe_settings, store)
+    mismatch_response = route_get_request("/batch/case/case-001/source", mismatch_settings, store)
+
+    assert safe_response is not None
+    assert safe_response.status == 403
+    assert 'data-reason-code="source_visibility_not_owner_raw"' in safe_response.body
+    assert mismatch_response is not None
+    assert mismatch_response.status == 403
+    assert 'data-reason-code="viewer_not_authorized_for_query_user"' in mismatch_response.body
+    for body in (safe_response.body, mismatch_response.body):
+        assert "qdleak_db_20260611" not in body
+        assert "supersecret" not in body
+        assert "/tmp/owner-raw-private" not in body
+
+
+def test_web_owner_raw_source_route_requires_read_only_source_scope(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(
+        tmp_path,
+        source_sql=(
+            "INSERT INTO qdleak_db_20260611.target_table "
+            "SELECT id FROM qdleak_db_20260611.qdleak_table_20260611"
+        ),
+    )
+    settings = owner_raw_web_settings(module, tmp_path, summary)
+
+    response = route_get_request("/batch/case/case-001/source", settings, module.WebJobStore())
+
+    assert response is not None
+    assert response.status == 403
+    assert 'data-reason-code="unsupported_source_scope"' in response.body
+    assert "qdleak_table_20260611" not in response.body
+
+
+def test_web_owner_raw_source_route_is_no_store_without_download_header(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = owner_raw_web_settings(module, tmp_path, summary)
+    handler = module.make_handler(settings, job_store=module.WebJobStore())
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {"headers": []}
+    output = io.BytesIO()
+
+    request.path = "/batch/case/case-001/source"
+    request.headers = {"Host": "127.0.0.1"}
+    request.wfile = output
+    request.send_response = lambda status: captured.__setitem__("status", status)
+    request.send_header = lambda name, value: captured["headers"].append((name, value))
+    request.end_headers = lambda: None
+
+    request.do_GET()
+
+    headers = dict(captured["headers"])
+    assert captured["status"] == 200
+    assert headers["Cache-Control"] == "no-store"
+    assert "Content-Disposition" not in headers
+    assert b"qdleak_db_20260611.qdleak_table_20260611" in output.getvalue()
+
+
+def test_web_case_details_links_owner_raw_source_only_when_allowed(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    store = module.WebJobStore()
+    allowed_settings = owner_raw_web_settings(module, tmp_path, summary)
+    blocked_settings = owner_raw_web_settings(module, tmp_path, summary, viewer="other_user")
+
+    allowed_response = route_get_request("/batch/case/case-001", allowed_settings, store)
+    blocked_response = route_get_request("/batch/case/case-001", blocked_settings, store)
+
+    assert allowed_response is not None
+    assert allowed_response.status == 200
+    assert 'href="/batch/case/case-001/source"' in allowed_response.body
+    assert "Owner raw source" in allowed_response.body
+    assert "qdleak_db_20260611" not in allowed_response.body
+    assert blocked_response is not None
+    assert blocked_response.status == 200
+    assert 'href="/batch/case/case-001/source"' not in blocked_response.body
+    assert "qdleak_db_20260611" not in blocked_response.body
 
 
 def test_web_batch_case_detail_rank_fields_match_result_groups():

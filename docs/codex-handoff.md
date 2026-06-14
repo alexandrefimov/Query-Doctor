@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last updated: 2026-06-05
+Last updated: 2026-06-14
 
 This is the public-safe agent baseline for Query Doctor. It records durable
 product, safety, and engineering context only. Transient continuation notes,
@@ -34,9 +34,11 @@ local exclude-only note files, not in committed documentation.
 
 - Never execute user SQL or optimizer draft SQL.
 - Never echo pasted Query Optimizer SQL back into the browser after submit.
-- Browser-visible UI and trusted reports must not expose raw SQL, raw profile
-  text, raw metadata, local paths, `case_dir`, command output, secrets, model
-  names, runtime internals, or raw artifact filenames.
+- Trusted browser/report surfaces must not expose raw SQL, raw profile text,
+  raw metadata, local paths, `case_dir`, command output, secrets, model names,
+  runtime internals, or raw artifact filenames. The isolated owner-only
+  selected-case source surface is the narrow raw-SQL browser exception and must
+  follow `docs/safety-contract.md`.
 - Never state root causes without direct support in deterministic analysis
   facts.
 - Treat raw LLM output as untrusted until deterministic validation accepts it.
