@@ -1,0 +1,26 @@
+{
+  "schema_version": "query_doctor_impala_web_ui_exports_fixture_manifest_v1",
+  "profiles": [
+    {
+      "description": "Embedded Query ID header with classic ExecSummary operators",
+      "expected_operator_count": 2,
+      "filename": "embedded-query-id-profile.txt",
+      "query_id": "1111111111111111:2222222222222222",
+      "query_id_source": "profile_text"
+    },
+    {
+      "description": "Impala Web UI filename fallback with no readable Query ID header",
+      "expected_operator_count": 2,
+      "filename": "profile_3333333333333333_4444444444444444",
+      "query_id": "3333333333333333:4444444444444444",
+      "query_id_source": "impala_web_profile_filename"
+    },
+    {
+      "description": "Accepted profile export with no parseable operators",
+      "expected_operator_count": 0,
+      "filename": "profile_5555555555555555_6666666666666666",
+      "query_id": "5555555555555555:6666666666666666",
+      "query_id_source": "impala_web_profile_filename"
+    }
+  ]
+}

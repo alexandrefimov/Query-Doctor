@@ -1,0 +1,22 @@
+Query Runtime Profile
+User: synthetic_filename_user
+Request Pool: synthetic_filename_pool
+Start Time: 2026-06-14 11:00:00.000000000
+End Time: 2026-06-14 11:07:00.000000000
+Coordinator: synthetic-impalad.example.invalid:22000
+
+Sql Statement:
+SELECT 1
+
+ExecSummary:
+Operator              #Hosts   Avg Time   Max Time    #Rows  Est. #Rows  Peak Mem  Est. Peak Mem  Detail
+01:SCAN HDFS               1       2s000ms  3s000ms   2.00M      20.00K  128.00 MB      64.00 MB  table=synthetic_filename_table
+02:AGGREGATE               1       3s000ms  5s000ms   2.00M      20.00K  192.00 MB      64.00 MB  FINALIZE
+
+Query Timeline:
+   Query submitted: 0ns
+   Query finished: 7m
+
+TotalTime: 7m
+TotalBytesRead: 6.00 GiB
+TotalBytesSent: 256.00 MiB

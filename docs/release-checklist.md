@@ -103,7 +103,8 @@ Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
 scripts, the installed demo web UI, and the installed user workflow matrix with
 `scripts/installed_user_paths_smoke.py`. The matrix includes the one-profile
-Quickstart path and additional offline/dry-run installed CLI paths; Docs CI
+Quickstart path, a sanitized Impala Web UI export corpus with filename-derived
+Query ID fallback, and additional offline/dry-run installed CLI paths; Docs CI
 should catch broken local Markdown links before merge.
 Dependency Review should stay enabled on pull requests as a security signal
 alongside Dependabot. CodeQL should scan production code before release tags;
@@ -249,6 +250,7 @@ python -m venv /tmp/query-doctor-release-wheel-venv
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
 /tmp/query-doctor-release-wheel-venv/bin/query-doctor-self-test
 python scripts/installed_web_e2e_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
+python scripts/installed_impala_web_ui_exports_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 ```
 
