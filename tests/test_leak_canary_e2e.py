@@ -46,12 +46,39 @@ CANARY_MARKERS = {
     "sql_table": "qdleak_table_20260611",
     "local_path": "qdleak_local_path_20260611",
 }
+PERSISTED_SINK_TIERS = frozenset({"local", "public"})
+OWNER_RAW_EPHEMERAL_TIER = "owner_raw_ephemeral"
+RAW_SOURCE_MARKER_IDS = frozenset({"sql_db", "sql_table"})
+SECRET_MARKER_IDS = frozenset(
+    {
+        "url_password",
+        "auth_header",
+        "cookie",
+        "password",
+        "api_key",
+    }
+)
+OWNER_RAW_ALLOWED_MARKER_IDS = frozenset(
+    {
+        "user",
+        "pool",
+        "host",
+        "sql_db",
+        "sql_table",
+    }
+)
 
 
 @dataclass(frozen=True)
 class SinkPolicy:
     tier: str
     allowed_marker_ids: frozenset[str] = frozenset()
+
+
+OWNER_RAW_EPHEMERAL_RESPONSE_POLICY = SinkPolicy(
+    OWNER_RAW_EPHEMERAL_TIER,
+    allowed_marker_ids=OWNER_RAW_ALLOWED_MARKER_IDS,
+)
 
 
 CASE_SINK_POLICIES = {
@@ -254,6 +281,77 @@ def test_leak_canary_negative_control_catches_disabled_host_redaction(tmp_path):
         )
 
 
+def test_leak_canary_persisted_sink_policy_rejects_raw_source_allowlist():
+    with pytest.raises(AssertionError, match="persisted sink policy"):
+        assert_text_sinks_clean(
+            [
+                TextSink(
+                    "bad persisted sink",
+                    "",
+                    SinkPolicy("local", allowed_marker_ids=RAW_SOURCE_MARKER_IDS),
+                )
+            ]
+        )
+
+
+def test_owner_raw_ephemeral_policy_allows_source_but_not_secrets():
+    owner_raw_body = "\n".join(
+        [
+            f"Owner: {CANARY_MARKERS['user']}",
+            f"Pool: {CANARY_MARKERS['pool']}",
+            f"Coordinator: {CANARY_MARKERS['host']}",
+            (
+                "SELECT id "
+                f"FROM {CANARY_MARKERS['sql_db']}.{CANARY_MARKERS['sql_table']} "
+                "WHERE ds = '2026-06-11'"
+            ),
+        ]
+    )
+
+    assert_text_sinks_clean(
+        [
+            TextSink(
+                "future owner-raw ephemeral response",
+                owner_raw_body,
+                OWNER_RAW_EPHEMERAL_RESPONSE_POLICY,
+            )
+        ]
+    )
+
+    disallowed_marker_ids = set(CANARY_MARKERS) - OWNER_RAW_ALLOWED_MARKER_IDS
+    assert SECRET_MARKER_IDS <= disallowed_marker_ids
+    for marker_id in sorted(disallowed_marker_ids):
+        with pytest.raises(AssertionError, match=marker_id):
+            assert_text_sinks_clean(
+                [
+                    TextSink(
+                        f"future owner-raw ephemeral response with {marker_id}",
+                        f"{owner_raw_body}\n{CANARY_MARKERS[marker_id]}\n",
+                        OWNER_RAW_EPHEMERAL_RESPONSE_POLICY,
+                    )
+                ]
+            )
+
+
+def test_owner_raw_source_markers_stay_forbidden_in_public_sinks():
+    owner_raw_body = (
+        "SELECT id "
+        f"FROM {CANARY_MARKERS['sql_db']}.{CANARY_MARKERS['sql_table']} "
+        "WHERE ds = '2026-06-11'"
+    )
+
+    with pytest.raises(AssertionError, match="sql_db"):
+        assert_text_sinks_clean(
+            [
+                TextSink(
+                    "browser Details HTML",
+                    owner_raw_body,
+                    SinkPolicy("public"),
+                )
+            ]
+        )
+
+
 def write_raw_canary_profile(tmp_path: Path) -> Path:
     marker = CANARY_MARKERS
     base_profile = BASE_PROFILE.read_text(encoding="utf-8")
@@ -410,6 +508,7 @@ def assert_generated_case_sinks_clean(
 
     for relative_path, path in observed.items():
         policy = CASE_SINK_POLICIES[relative_path]
+        assert_persisted_policy_has_no_raw_allowlist(relative_path, policy)
         text = path.read_text(encoding="utf-8", errors="replace")
         assert_no_forbidden_markers(
             relative_path,
@@ -420,11 +519,22 @@ def assert_generated_case_sinks_clean(
 
 def assert_text_sinks_clean(sinks: list[TextSink]) -> None:
     for sink in sinks:
+        assert_persisted_policy_has_no_raw_allowlist(sink.label, sink.policy)
         assert_no_forbidden_markers(
             sink.label,
             sink.text,
             allowed_marker_ids=sink.policy.allowed_marker_ids,
         )
+
+
+def assert_persisted_policy_has_no_raw_allowlist(label: str, policy: SinkPolicy) -> None:
+    if policy.tier not in PERSISTED_SINK_TIERS:
+        return
+    forbidden_allowed = policy.allowed_marker_ids & (RAW_SOURCE_MARKER_IDS | SECRET_MARKER_IDS)
+    assert not forbidden_allowed, (
+        f"persisted sink policy for {label} allows raw/secret marker(s): "
+        + ", ".join(sorted(forbidden_allowed))
+    )
 
 
 def assert_no_forbidden_markers(
