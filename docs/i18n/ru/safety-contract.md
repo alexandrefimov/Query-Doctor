@@ -215,6 +215,14 @@ production profile text.
   subprocess output, secrets, model names, runtime internals и raw artifact
   filenames. Local-first owner raw visibility не должен стартовать на non-local
   web bind; shared web access требует authenticated viewer identity.
+- Shared/D3 web deployments могут передавать authenticated viewer identity
+  через `viewer_identity_header` только когда Query Doctor стоит за trusted
+  auth proxy или ingress, который аутентифицирует request и удаляет входящие
+  копии этого header перед тем, как выставить его сам. Missing, invalid или
+  service/host-principal header values считаются unauthenticated и должны
+  fail-closed для raw source access. Header задает только C2 viewer identity;
+  он не должен расширять C1 collection credentials или owner-user collection
+  scope.
 
 ## Future Cluster Doctor
 

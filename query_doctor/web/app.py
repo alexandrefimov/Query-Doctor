@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import subprocess
 import sys
 import uuid
@@ -20,6 +21,7 @@ from query_doctor.web.routes import (
 )
 from query_doctor.web.subprocesses import Runner
 from query_doctor.web.ui.pages import render_page
+from query_doctor.web.viewer_identity import authenticated_viewer_identity_from_header_value
 
 
 MAX_WEB_POST_BODY_BYTES = 320 * 1024
@@ -256,6 +258,15 @@ def request_url_allowed_for_local_web(
     return request_host_allowed(host, settings)
 
 
+def settings_for_request_headers(settings: WebSettings, headers: object) -> WebSettings:
+    header_name = settings.viewer_identity_header
+    if not header_name:
+        return settings
+    header_value = headers.get(header_name) if hasattr(headers, "get") else None
+    viewer_identity = authenticated_viewer_identity_from_header_value(header_value)
+    return replace(settings, viewer_identity=viewer_identity)
+
+
 def _safe_header_value_for_log(value: str | None, *, max_chars: int = 180) -> str:
     if value is None:
         return "<missing>"
@@ -280,7 +291,8 @@ def make_handler(
             if not self.request_host_is_allowed():
                 self.write_rejected_host_response()
                 return
-            response = route_get_request(self.path, settings, store)
+            request_settings = self.settings_for_request()
+            response = route_get_request(self.path, request_settings, store)
             if response is not None:
                 self.write_route_response(response)
                 return
@@ -301,12 +313,16 @@ def make_handler(
                 form = read_bounded_post_form(self.rfile, self.headers.get("Content-Length"))
             except WebError as exc:
                 status = 413 if "bounded web input limit" in str(exc) else 400
-                self.write_html(status, render_page(settings, active_nav="batch", error=exc))
+                self.write_html(
+                    status,
+                    render_page(self.settings_for_request(), active_nav="batch", error=exc),
+                )
                 return
+            request_settings = self.settings_for_request()
             response = route_post_request(
                 self.path,
                 form,
-                settings,
+                request_settings,
                 store,
                 analysis_func=analysis_func,
                 runner=runner,
@@ -421,6 +437,10 @@ def make_handler(
                 file=sys.stderr,
             )
             self.write_html(403, render_page(settings, active_nav="batch", error=error))
+
+        def settings_for_request(self) -> WebSettings:
+            headers = getattr(self, "headers", {})
+            return settings_for_request_headers(settings, headers)
 
         def request_id(self) -> str:
             current = getattr(self, "_query_doctor_request_id", None)

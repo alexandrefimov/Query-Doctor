@@ -46,6 +46,10 @@ backfill fake metrics or events.
   model names, runtime internals, or raw artifact filenames. The isolated
   owner-only selected-case source surface is the narrow raw-SQL browser
   exception and must follow `docs/safety-contract.md`.
+- For shared/non-local `owner_raw`, raw source access must be gated by
+  authenticated per-request viewer identity, such as `viewer_identity_header`
+  behind a trusted proxy that strips inbound copies. Never gate raw reveal on
+  the collection credential or keytab owner set.
 - Never state root causes without direct support in deterministic analysis
   facts.
 - Treat raw LLM output as untrusted until deterministic validation accepts it.

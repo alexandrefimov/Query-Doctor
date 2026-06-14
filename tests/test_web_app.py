@@ -16,10 +16,15 @@ from query_doctor.web.app import (
     read_bounded_post_form,
     request_host_allowed,
     request_origin_allowed,
+    settings_for_request_headers,
 )
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.routes import WebRouteResponse, route_get_request
 from query_doctor.web.jobs import WebJobStore
+from query_doctor.web.viewer_identity import (
+    VIEWER_IDENTITY_AUTHENTICATED,
+    VIEWER_IDENTITY_UNAUTHENTICATED,
+)
 
 
 class UnreadableBody(io.BytesIO):
@@ -130,6 +135,47 @@ def test_request_host_allows_external_host_for_explicit_nonlocal_bind():
     settings = WebSettings(config=Path(".query-doctor-cm.local.json"), allow_nonlocal_web_bind=True)
 
     assert request_host_allowed("external.example:8765", settings) is True
+
+
+def test_settings_for_request_headers_uses_configured_viewer_identity_header():
+    settings = WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        viewer_identity_header="X-QD-Viewer",
+    )
+
+    resolved = settings_for_request_headers(settings, {"X-QD-Viewer": "analyst_one"})
+
+    assert resolved is not settings
+    assert resolved.viewer_identity.mode == VIEWER_IDENTITY_AUTHENTICATED
+    assert resolved.viewer_identity.viewer_user == "analyst_one"
+    assert resolved.viewer_identity.viewer_raw_subjects == ("analyst_one",)
+
+
+def test_settings_for_request_headers_fails_closed_without_valid_viewer_header():
+    settings = WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        viewer_identity_header="X-QD-Viewer",
+    )
+
+    missing = settings_for_request_headers(settings, {})
+    service = settings_for_request_headers(
+        settings,
+        {"X-QD-Viewer": "impala/host.example.com@EXAMPLE.COM"},
+    )
+
+    assert missing.viewer_identity.mode == VIEWER_IDENTITY_UNAUTHENTICATED
+    assert missing.viewer_identity.viewer_raw_subjects == ()
+    assert service.viewer_identity.mode == VIEWER_IDENTITY_UNAUTHENTICATED
+    assert service.viewer_identity.viewer_raw_subjects == ()
+
+
+def test_settings_for_request_headers_ignores_unconfigured_spoof_header():
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    resolved = settings_for_request_headers(settings, {"X-QD-Viewer": "analyst_one"})
+
+    assert resolved is settings
+    assert resolved.viewer_identity.mode == VIEWER_IDENTITY_UNAUTHENTICATED
 
 
 @pytest.mark.parametrize(

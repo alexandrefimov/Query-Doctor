@@ -86,6 +86,10 @@ details, local output paths и планы следующей сессии дол
   SQL/profile/metadata/paths/secrets/subprocess output/model internals.
   Isolated owner-only selected-case source surface - узкое browser-исключение,
   регулируемое canonical safety-contract.
+- Shared/non-local `owner_raw` должен gate-ить raw source access через
+  authenticated per-request viewer identity, например `viewer_identity_header`
+  за trusted proxy. Collection credential/keytab owner set не должен
+  авторизовать raw reveal.
 - `engine_fact_boundary_v1` является raw-free contract seam, а не product
   engine registry или support claim.
 - Known Query ID analysis может готовить deterministic Python report внутри

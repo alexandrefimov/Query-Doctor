@@ -39,6 +39,10 @@ local exclude-only note files, not in committed documentation.
   runtime internals, or raw artifact filenames. The isolated owner-only
   selected-case source surface is the narrow raw-SQL browser exception and must
   follow `docs/safety-contract.md`.
+- Shared or non-local `owner_raw` must gate raw source access on authenticated
+  per-request viewer identity, such as `viewer_identity_header` behind a trusted
+  proxy that strips inbound copies. Do not gate raw reveal on the collection
+  credential or keytab owner set.
 - Never state root causes without direct support in deterministic analysis
   facts.
 - Treat raw LLM output as untrusted until deterministic validation accepts it.

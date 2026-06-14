@@ -345,7 +345,10 @@ credentials. Use localhost or a tightly controlled local bind for the web UI.
 Do not deploy ordinary local mode as a shared service without a separate design
 for authentication, authorization, tenant/job isolation, audit logging,
 TLS/reverse-proxy trust, and resource limits. Shared public demos should use
-the read-only `query-doctor-web --public-demo` mode.
+the read-only `query-doctor-web --public-demo` mode. Shared `owner_raw` source
+access requires authenticated per-request viewer identity; today that means an
+explicit `viewer_identity_header` supplied only by a trusted auth proxy or
+ingress that strips inbound copies of the same header.
 
 ## Safety Model
 
@@ -365,7 +368,9 @@ the read-only `query-doctor-web --public-demo` mode.
 - SQL browser exceptions are selected-case and owner-gated: Details can show a
   validated optimizer SQL draft for an explicit optimizer action when
   `source_visibility=owner_raw`, and the isolated owner-only source view can
-  show read-only original SQL for an authorized query owner. The default `safe`
+  show read-only original SQL for an authorized query owner. On localhost, raw
+  viewer subjects come from local collectable owner users; on shared binds they
+  must come from authenticated per-request viewer identity. The default `safe`
   mode shows trusted recommendations/no-rewrite guidance instead.
 - Query Optimizer accepts only a single safe read-only statement and never
   executes pasted SQL.

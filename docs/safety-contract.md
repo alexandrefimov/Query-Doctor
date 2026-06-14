@@ -222,6 +222,13 @@ contents, or real production profile text.
   names, runtime internals, and raw artifact filenames. Local-first owner raw
   visibility must not start on a non-local web bind; shared web access requires
   authenticated viewer identity before owner raw visibility can be enabled.
+- Shared/D3 web deployments may provide the authenticated viewer identity
+  through `viewer_identity_header` only when Query Doctor is behind a trusted
+  auth proxy or ingress that authenticates the request and strips inbound
+  copies of that header before setting it. Missing, invalid, or service/host
+  principal header values are unauthenticated and must fail closed for raw
+  source access. The header is C2 viewer identity only; it must not widen C1
+  collection credentials or owner-user collection scope.
 - Keytab-derived Username dropdowns may display simple account names only.
   Keytab paths, full Kerberos principals, keytab contents, ticket contents, and
   `klist` subprocess output must not be rendered in browser-visible UI or

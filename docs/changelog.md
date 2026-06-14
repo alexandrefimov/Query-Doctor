@@ -20,6 +20,12 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- `query-doctor-web` can now derive per-request authenticated viewer identity
+  from an explicitly configured `viewer_identity_header`, intended for D3-style
+  deployments behind a trusted auth proxy or ingress that strips inbound copies
+  of that header. Non-local `owner_raw` startup now accepts this configured
+  auth front door, while missing, invalid, or service/host-principal viewer
+  header values fail closed for raw source access.
 - `owner_raw` now has an isolated owner-only selected-case source surface for
   authorized Recent/Running cases, with no-store responses, source allowlisting,
   safe reason-code denials, local-path/secret masking, and no trusted-report,

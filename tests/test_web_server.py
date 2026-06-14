@@ -199,11 +199,20 @@ def test_web_parse_args_defaults_to_localhost():
     assert args.host is None
     assert args.port is None
     assert args.allow_nonlocal_web_bind is False
+    assert args.viewer_identity_header is None
     assert args.optimizer_model is None
     assert args.batch_summary is None
     assert args.public_demo is False
     assert args.metadata_coordinator is None
     assert args.metadata_protocol is None
+
+
+def test_web_parse_args_accepts_viewer_identity_header():
+    module = load_web_module()
+
+    args = module.parse_args(["--viewer-identity-header", "X-QD-Viewer"])
+
+    assert args.viewer_identity_header == "X-QD-Viewer"
 
 
 SERVER_REEXPORTS = [
@@ -1639,6 +1648,23 @@ def test_web_allows_owner_raw_nonlocal_bind_with_authenticated_viewer(tmp_path):
     module.validate_owner_raw_nonlocal_bind(settings)
 
 
+def test_web_allows_owner_raw_nonlocal_bind_with_viewer_identity_header(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        host="0.0.0.0",
+        allow_nonlocal_web_bind=True,
+        source_visibility="owner_raw",
+        source_owner_user="analyst_one",
+        viewer_identity_header="X-QD-Viewer",
+        viewer_identity=local_first_viewer_identity(("analyst_one",)),
+    )
+
+    module.validate_owner_raw_nonlocal_bind(settings)
+
+
 def test_web_cli_main_rejects_owner_raw_nonlocal_bind_without_auth(monkeypatch, tmp_path, capsys):
     from query_doctor.cli import web as web_cli
 
@@ -1669,6 +1695,53 @@ def test_web_cli_main_rejects_owner_raw_nonlocal_bind_without_auth(monkeypatch, 
     captured = capsys.readouterr()
     assert result == 2
     assert "source_visibility=owner_raw" in captured.err
+
+
+def test_web_cli_main_allows_owner_raw_nonlocal_bind_with_viewer_identity_header(
+    monkeypatch, tmp_path, capsys
+):
+    from query_doctor.cli import web as web_cli
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "example_cluster",
+                "service": "impala",
+                "username": "example_cm_user",
+                "source_visibility": "owner_raw",
+                "source_owner_user": "analyst_one",
+                "viewer_identity_header": "X-QD-Viewer",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CM_PASSWORD", "dummy")
+    captured_settings = {}
+
+    class DummyServer:
+        def __init__(self, address, handler):
+            captured_settings["address"] = address
+            captured_settings["handler"] = handler
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            captured_settings["closed"] = True
+
+    monkeypatch.setattr(web_cli, "ThreadingHTTPServer", DummyServer)
+
+    result = web_cli.main(
+        ["--config", str(config), "--host", "0.0.0.0", "--allow-nonlocal-web-bind"]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "source_visibility=owner_raw" not in captured.err
+    assert captured_settings["address"] == ("0.0.0.0", 8765)
+    assert captured_settings["closed"] is True
 
 
 @pytest.mark.parametrize(
@@ -3911,6 +3984,84 @@ def test_web_owner_raw_source_route_denies_safe_mode_and_mismatched_viewer(tmp_p
         assert "qdleak_db_20260611" not in body
         assert "supersecret" not in body
         assert "/tmp/owner-raw-private" not in body
+
+
+def test_web_owner_raw_source_route_uses_request_viewer_identity_header(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        viewer_identity_header="X-QD-Viewer",
+    )
+    handler = module.make_handler(settings, job_store=module.WebJobStore())
+
+    def run_request(headers):
+        request = handler.__new__(handler)
+        captured: dict[str, object] = {"headers": []}
+        output = io.BytesIO()
+        request.path = "/batch/case/case-001/source"
+        request.headers = headers
+        request.wfile = output
+        request.send_response = lambda status: captured.__setitem__("status", status)
+        request.send_header = lambda name, value: captured["headers"].append((name, value))
+        request.end_headers = lambda: None
+        request.do_GET()
+        return captured, output.getvalue().decode("utf-8")
+
+    allowed, allowed_body = run_request({"Host": "127.0.0.1", "X-QD-Viewer": "analyst"})
+    missing, missing_body = run_request({"Host": "127.0.0.1"})
+    service, service_body = run_request(
+        {
+            "Host": "127.0.0.1",
+            "X-QD-Viewer": "impala/host.example.com@EXAMPLE.COM",
+        }
+    )
+
+    assert allowed["status"] == 200
+    assert "qdleak_db_20260611.qdleak_table_20260611" in allowed_body
+    assert missing["status"] == 403
+    assert 'data-reason-code="viewer_not_authorized_for_query_user"' in missing_body
+    assert "qdleak_db_20260611" not in missing_body
+    assert service["status"] == 403
+    assert 'data-reason-code="viewer_not_authorized_for_query_user"' in service_body
+    assert "qdleak_db_20260611" not in service_body
+
+
+def test_web_case_details_uses_request_viewer_identity_header_for_owner_raw_link(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        viewer_identity_header="X-QD-Viewer",
+    )
+    handler = module.make_handler(settings, job_store=module.WebJobStore())
+
+    def run_request(headers):
+        request = handler.__new__(handler)
+        captured: dict[str, object] = {"headers": []}
+        output = io.BytesIO()
+        request.path = "/batch/case/case-001"
+        request.headers = headers
+        request.wfile = output
+        request.send_response = lambda status: captured.__setitem__("status", status)
+        request.send_header = lambda name, value: captured["headers"].append((name, value))
+        request.end_headers = lambda: None
+        request.do_GET()
+        return captured, output.getvalue().decode("utf-8")
+
+    allowed, allowed_body = run_request({"Host": "127.0.0.1", "X-QD-Viewer": "analyst"})
+    missing, missing_body = run_request({"Host": "127.0.0.1"})
+
+    assert allowed["status"] == 200
+    assert 'href="/batch/case/case-001/source"' in allowed_body
+    assert "qdleak_db_20260611" not in allowed_body
+    assert missing["status"] == 200
+    assert 'href="/batch/case/case-001/source"' not in missing_body
+    assert "qdleak_db_20260611" not in missing_body
 
 
 def test_web_owner_raw_source_route_requires_read_only_source_scope(tmp_path):
@@ -8451,6 +8602,41 @@ def test_web_settings_loads_keytab_username_options(tmp_path, monkeypatch):
     assert settings.source_owner_user == "analyst_one"
     assert settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
     assert settings.viewer_identity.viewer_raw_subjects == ("analyst_one", "sa")
+
+
+def test_web_settings_loads_viewer_identity_header_from_config(tmp_path):
+    module = load_web_module()
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(json.dumps({"viewer_identity_header": "X-QD-Viewer"}), encoding="utf-8")
+
+    settings = module.build_web_settings(module.parse_args(["--config", str(config)]), cwd=tmp_path)
+
+    assert settings.viewer_identity_header == "X-QD-Viewer"
+
+
+def test_web_settings_cli_viewer_identity_header_overrides_config(tmp_path):
+    module = load_web_module()
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(json.dumps({"viewer_identity_header": "X-Config-Viewer"}), encoding="utf-8")
+
+    settings = module.build_web_settings(
+        module.parse_args(["--config", str(config), "--viewer-identity-header", "X-CLI-Viewer"]),
+        cwd=tmp_path,
+    )
+
+    assert settings.viewer_identity_header == "X-CLI-Viewer"
+
+
+def test_web_settings_rejects_invalid_viewer_identity_header(tmp_path):
+    module = load_web_module()
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(json.dumps({"viewer_identity_header": "Bad Header"}), encoding="utf-8")
+
+    with pytest.raises(module.WebError, match="HTTP header token"):
+        module.build_web_settings(module.parse_args(["--config", str(config)]), cwd=tmp_path)
 
 
 def test_web_keytab_username_options_fall_back_to_ktutil(tmp_path, monkeypatch):
