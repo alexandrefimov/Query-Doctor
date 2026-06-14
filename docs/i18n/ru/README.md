@@ -45,7 +45,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
 - [Owner Raw D3 Deployment Contract](../../owner-raw-d3-deployment.md):
   канонический английский deployment contract для shared/non-local
   `owner_raw`: trusted auth front door выставляет ровно один нормализованный
-  viewer header, а Query Doctor делает только owner check.
+  viewer header, а Query Doctor делает только owner check. Там же закреплены
+  pre-proxy readiness checklist и live front-door validation gate.
 - [Архитектура](architecture.md): границы collector, analyzer, report,
   optimizer и UI.
 - [Локальный UI demo](DEMO.md): запуск localhost UI, demo storyline и

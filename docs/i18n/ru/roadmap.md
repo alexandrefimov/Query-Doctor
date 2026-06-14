@@ -1,6 +1,6 @@
 # Roadmap
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-14
 
 Язык: [English](../../roadmap.md) | Русский
 
@@ -30,6 +30,10 @@ Last reviewed: 2026-06-03
 - Validated reports и read-only optimizer workflows.
 - `no_llm=true` - поддержанный safety/privacy режим: selected-case report и
   optimizer actions остаются Python-owned и не требуют model route.
+- Shared/non-local `owner_raw` имеет узкий D3 contract для одного isolated
+  source surface: trusted auth front door выставляет ровно один normalized
+  viewer header, а Query Doctor делает owner check. Это не general shared
+  deployment support.
 
 ## Глобальные цели по Impala
 
@@ -98,11 +102,18 @@ Impala diagnostic-quality вектор без нового engine/provider suppo
   outcomes, primary-bottleneck, runtime evidence, mixed/unknown limitations и
   direct Impala source-compatibility scenarios; оставшийся maintainer-owned
   backlog - держать его синхронизированным с public-quality validation (#89).
+- Следующий D3 шаг - live validation gate на реальном proxy/ingress: TLS/auth,
+  direct-network blocking, header stripping/replacement, identity-to-owner
+  mapping и raw-free audit evidence. До появления proxy уже можно держать
+  application-side contract, synthetic front-door smoke, policy simulator,
+  fail-closed checks, kill switch и runbook зелеными.
 
 ## Отложенные seams
 
 Future engines, broader providers, prepared event/log sources, shared
 deployment and Cluster Doctor remain roadmap seams until designed, tested and
-documented as supported behavior.
+documented as supported behavior. Owner-raw D3 остается narrow if-you-must
+exception для одного source surface и требует live front-door validation перед
+реальным shared/non-local raw source reveal.
 
 Полный roadmap: [английская версия](../../roadmap.md).

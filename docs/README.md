@@ -42,7 +42,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
 - [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md): shared/non-local
-  `owner_raw` deployment contract for trusted ingress viewer identity.
+  `owner_raw` deployment contract, pre-proxy readiness checklist, and live
+  front-door validation gate for trusted ingress viewer identity.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
   truth for current engine support status, fixture/research boundaries, and
   second-engine promotion gates.
@@ -131,7 +132,7 @@ Status legend:
 | [codex-handoff.md](codex-handoff.md) | active | Public-safe agent baseline and safety-sensitive context. |
 | [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
-| [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) | active | Shared/non-local `owner_raw` deployment contract for trusted ingress viewer identity, kill switch, and audit checks. |
+| [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) | active | Shared/non-local `owner_raw` deployment contract, pre-proxy readiness checklist, live front-door validation gate, kill switch, and audit checks. |
 | [engine-redaction-note-v1.md](engine-redaction-note-v1.md) | active | Shared raw-free evidence-package redaction note schema for package-style engine intake. |
 | [engines/README.md](engines/README.md) | reference | Index for detailed Trino and Spark preview/research docs and command catalogs. |
 | [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |

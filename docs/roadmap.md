@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-06-11
+Last updated: 2026-06-14
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -293,14 +293,18 @@ Planning summary:
   visualization, comparison workflows, or a richer optimizer editor. Such work
   must first define raw-free JSON/view-model contracts, preserve no-echo rules
   for pasted SQL, add browser-safety tests, and justify the dependency.
-- Supported deployment is single-user local-first: the process runs under the
-  user's own Cloudera Manager, Kerberos, Impala, Prometheus, and LLM context as
-  configured, and stores artifacts locally. Shared network deployment is not
-  supported by the current architecture.
-- Non-local or shared deployment must remain an explicit "if you must" path
-  until there is a real design partner. It needs corporate TLS/auth, trusted
-  reverse-proxy boundaries, per-user job/artifact ownership, audit, persistence,
-  and operational support before it becomes a product surface.
+- Supported default deployment is single-user local-first: the process runs
+  under the user's own Cloudera Manager, Kerberos, Impala, Prometheus, and LLM
+  context as configured, and stores artifacts locally.
+- Shared network deployment is not a general supported product surface in the
+  current architecture. The narrow shared/non-local `owner_raw` D3 contract is
+  an explicit "if you must" exception for one raw source surface only: a trusted
+  auth front door sets exactly one normalized viewer header and Query Doctor
+  still performs the owner check.
+- Non-local or shared deployment beyond that narrow owner-raw source exception
+  must wait until there is a real design partner. It needs corporate TLS/auth,
+  trusted reverse-proxy boundaries, per-user job/artifact ownership, audit,
+  persistence, and operational support before it becomes a product surface.
 - Improve team usage through local-first patterns before building
   multi-tenancy: pinned versions, shared report repositories, CI-driven
   `query-doctor-batch-recent` runs, jumpboxes or remote devboxes, and shared
@@ -561,38 +565,45 @@ item first only when the touched area has a direct P0 safety or contract risk.
    exchange/data-movement, and storage-aware scan gates are implemented; the
    next proof points are longer current-upstream Kubernetes Impala batches,
    real-case calibration, and old-source compatibility, not stronger wording.
-2. Continue the desktop Web UI audit with the standalone Query Optimizer page:
+2. Run the live owner-raw D3 front-door validation gate once a real proxy or
+   ingress exists. The application-side contract, synthetic front-door smoke,
+   policy simulator, fail-closed startup/source checks, kill switch, audit
+   wording, and public-safe runbook are in place; the remaining proof is real
+   TLS/auth, direct-network blocking, header stripping/replacement,
+   identity-to-owner mapping, and raw-free audit evidence in the target
+   deployment.
+3. Continue the desktop Web UI audit with the standalone Query Optimizer page:
    tighten the first screen around the SQL input, Analyze action, and
    scope/safety disclosure without weakening the no-echo or read-only trust
    boundary.
-3. Keep the IMPALA-14953 upstream tracker current and turn stable upstream
+4. Keep the IMPALA-14953 upstream tracker current and turn stable upstream
    profile JSON/parser/redactor signals into a narrow compatibility plan before
    coding an adapter.
-4. Define the first engine fact-contract slice and a fixture-only second-engine
+5. Define the first engine fact-contract slice and a fixture-only second-engine
    discovery spike, starting from
    [trino-discovery-spike.md](trino-discovery-spike.md), that can validate the
    contract without changing current Impala support or public claims.
-5. Finish the Diagnose results-table simplification pass: reduce the default
+6. Finish the Diagnose results-table simplification pass: reduce the default
    Recent results table to "which queries are bad and worth opening", move
    technical status/context such as stats, metadata, table key, score reasons,
    and group explanations behind Details or explicit disclosures, and then run
    a short repeat UI audit against the local web page.
-6. When selected-case report or optimizer UI/help is touched, move visible
+7. When selected-case report or optimizer UI/help is touched, move visible
    action wording toward neutral `Report` and `Query optimizer` labels while
    keeping backend status explicit (`Python-owned`, `LLM-backed`, or
    `no_llm=true`). Do not hide trust-relevant backend state and do not promote
    LLM output as evidence.
-7. Finish the remaining provider-neutral runtime contract tail: report-validator
+8. Finish the remaining provider-neutral runtime contract tail: report-validator
    heading tests when aliases or headings change, plus compatibility-safe
    UI/presenter naming cleanup.
-8. Keep source-provenance wording compatibility-safe across Details, trusted
+9. Keep source-provenance wording compatibility-safe across Details, trusted
    reports, and future UI/presenter naming cleanup, including explicit direct
    Impala coverage for profile, optional Prometheus metrics, unavailable events,
    and metadata status.
-9. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
+10. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
    repeated/frequent-short/regressed groups, admin digest, action queue,
    workload detail pages, and action outcome rollups.
-10. Use `scripts/audit_optimizer_funnel.py`,
+11. Use `scripts/audit_optimizer_funnel.py`,
    `scripts/audit_optimizer_plain_shapes.py`, and
    `scripts/audit_optimizer_representative_shapes.py` on the latest broad
    Recent smoke to choose the next optimizer slice from repeated workload
@@ -600,9 +611,9 @@ item first only when the touched area has a direct P0 safety or contract risk.
    where analyzer facts and validation can prove a safe Python-owned transform;
    otherwise improve family-specific review guidance rather than producing a
    trusted SQL draft.
-11. Continue replacing report-side stats/query-shape extraction with structured
+12. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
-12. Add safe query-type grouping only after deterministic classifier facts can
+13. Add safe query-type grouping only after deterministic classifier facts can
    explain unknown or unsupported shapes without reading raw SQL.
 
 ## Dependency And Readiness Rules
@@ -639,7 +650,10 @@ when a tempting implementation would skip a contract boundary.
   engine profile-fact contract already exists from implemented behavior.
 - Shared deployment work must wait for an explicit shared-deploy product
   decision, a real design partner, and a design for authentication, ownership,
-  audit, persistence, and operational support.
+  audit, persistence, and operational support. The narrow owner-raw D3
+  front-door contract is not a general shared-deploy support claim and must not
+  be broadened until its live validation gate passes in a real target
+  deployment.
 - Keep P0 narrow. An item belongs in P0 only when it protects browser/report
   safety, validation/trust contracts, no-echo/raw-free behavior, or a schema
   boundary that unlocks several later changes. Product-quality improvements
@@ -1260,6 +1274,9 @@ These are not current support. Revisit them only when the listed signal is met.
   "if you must" path, but it should state the required external controls:
   corporate TLS, trusted reverse proxy, authentication, single-tenant or
   team-scoped instances, safe credential ownership, and operational support.
+  The owner-raw D3 contract is the current narrow version of that guide for one
+  isolated source surface; real use still requires a live front-door validation
+  gate before enabling shared/non-local raw source reveal.
 - Do not sell or separate safety, validation, browser redaction, or diagnostic
   quality into an enterprise-only tier. Commercial-only boundaries may cover
   shared-deploy operations and support, not the safety contract.

@@ -37,6 +37,26 @@ responsibilities stay at the trusted front door. Query Doctor accepts only the
 already authenticated, already normalized simple owner value in
 `viewer_identity_header`.
 
+## Readiness State
+
+The application-side D3 contract can be checked before a real ingress or
+reverse proxy exists. The implemented Query Doctor boundary now covers:
+
+- normalized viewer-header parsing and duplicate-header fail-closed behavior;
+- non-local `owner_raw` startup refusal without authenticated viewer identity
+  configuration;
+- isolated source-page authorization by C2 viewer identity and selected-case
+  `query.user`, never by C1 collection credential or keytab owner set;
+- the `owner_raw_source_enabled` kill switch;
+- raw-free reason-coded audit lines and denied-page remediation;
+- dev-only synthetic front-door smoke and policy simulation;
+- focused validation in [test-matrix.md](test-matrix.md).
+
+These checks do not prove a real D3 deployment. A deployment is not ready for
+shared/non-local raw source access until the live front door proves TLS/auth,
+network isolation, inbound header stripping, identity-to-owner mapping, and
+audit handling in the target environment.
+
 ## Reference Shape
 
 Use this order:
@@ -260,6 +280,37 @@ Before enabling non-local `owner_raw`, verify:
   echo viewer values, query users, header values, query ids, local paths, SQL,
   secrets, or raw artifact filenames.
 
+## Pre-Proxy Readiness Checklist
+
+Complete this before a real auth proxy or ingress is available:
+
+- Choose one external front-door mechanism: OIDC/SSO, SAML, SPNEGO/Kerberos, or
+  an enterprise gateway. Do not add a second Query Doctor auth mode for the
+  same deployment.
+- Choose one owner namespace for the viewer header. Prefer the exact simple
+  account namespace used by Impala `query.user`, such as an Active Directory
+  `sAMAccountName` or Kerberos human primary.
+- Choose one header name, for example `X-Query-Doctor-Viewer`, and configure
+  Query Doctor with `viewer_identity_header`.
+- Keep the upstream Query Doctor web process off direct client networks in the
+  target design. The only intended browser path should be through the trusted
+  front door.
+- Keep `owner_raw_source_enabled=false` while the front door, identity mapping,
+  and network isolation are still unproven.
+- Prepare raw-free test personas: one matching owner viewer, one different
+  human viewer, one unauthenticated request, and one spoofed-header request.
+  Use placeholders in committed docs and keep real users, hosts, URLs, query
+  ids, case ids, tokens, and SQL out of git.
+- Run the local synthetic front-door smoke and policy simulator described
+  below. These checks should be green before any live proxy work starts.
+- Run the owner-raw D3 row in [test-matrix.md](test-matrix.md) after changing
+  this contract, the policy helper, viewer identity parsing, web routes, or
+  denied-page/audit wording.
+
+At the end of pre-proxy readiness, the only remaining unknowns should be the
+external controls: real TLS/auth, direct-network blocking, real identity claim
+or principal mapping, real header stripping, and real audit transport.
+
 ## Policy Simulator
 
 Use the dev-only `scripts/owner_raw_policy_simulator.py` helper to audit the
@@ -304,6 +355,41 @@ users, header values, principals, SQL, case ids, paths, or secrets. The helper
 does not contact an IdP, proxy, Kerberos service, LDAP server, or Query Doctor
 web server. It is a local regression smoke for the application contract, not a
 replacement for testing the real front-door deployment and network isolation.
+
+## Live Front Door Validation Gate
+
+Run this gate only after the target proxy or ingress exists. Passing the local
+synthetic smoke is a prerequisite, not a substitute.
+
+Required live checks:
+
+- Direct client access to the upstream Query Doctor web process is blocked.
+- Unauthenticated requests are denied by the front door before they reach Query
+  Doctor.
+- A request with a client-supplied viewer header is stripped or replaced by the
+  front door after authentication.
+- The front door forwards exactly one normalized simple owner value, not an
+  email, UPN, distinguished name, opaque subject, group, role, display name,
+  service principal, host principal, token, cookie, ticket, or assertion.
+- A matching authenticated viewer can open only the isolated source page for
+  that viewer's own selected case.
+- A different authenticated human viewer is denied the same selected case.
+- Missing, invalid, and duplicate upstream viewer header cases fail closed. If
+  the deployed proxy cannot create a duplicate upstream header in normal
+  operation, verify that it cannot forward duplicates and keep Query Doctor's
+  duplicate-header deny test in the application suite.
+- `owner_raw_source_enabled=false` hides the source link and blocks the source
+  page without changing collection owner filters.
+- Owner-raw source access audit lines contain only safe reason-coded fields and
+  do not contain SQL, query ids, case ids, users, paths, header values, secrets,
+  tokens, cookies, tickets, assertions, model names, runtime internals, or raw
+  artifact filenames.
+
+Retain only raw-free validation evidence: pass/fail checklist rows, command
+names, HTTP status classes, reason codes, and boolean/count summaries. Do not
+commit real hostnames, identity-provider URLs, realm names, usernames, query
+ids, case ids, local paths, screenshots with source SQL, proxy logs containing
+headers, or auth material.
 
 ## Operator Response
 

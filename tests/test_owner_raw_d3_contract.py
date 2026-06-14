@@ -152,6 +152,23 @@ def test_owner_raw_d3_validation_matrix_pins_broader_checks():
     assert "python3 scripts/check_staged_public_safety.py --changed" in text
 
 
+def test_owner_raw_d3_docs_pin_pre_proxy_and_live_gate_boundary():
+    deployment = (REPO_DIR / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
+    roadmap = (REPO_DIR / "docs" / "roadmap.md").read_text(encoding="utf-8")
+    ru_roadmap = (REPO_DIR / "docs" / "i18n" / "ru" / "roadmap.md").read_text(encoding="utf-8")
+    normalized = " ".join("\n".join([deployment, roadmap, ru_roadmap]).split())
+
+    assert "## Readiness State" in deployment
+    assert "## Pre-Proxy Readiness Checklist" in deployment
+    assert "## Live Front Door Validation Gate" in deployment
+    assert "A deployment is not ready for shared/non-local raw source access" in normalized
+    assert "real TLS/auth, direct-network blocking, real identity claim" in normalized
+    assert "Retain only raw-free validation evidence" in normalized
+    assert "live owner-raw D3 front-door validation gate" in roadmap
+    assert "not a general shared-deploy support claim" in normalized
+    assert "Следующий D3 шаг - live validation gate" in ru_roadmap
+
+
 def test_owner_raw_d3_russian_companions_pin_selective_i18n_and_contract():
     ru_index = (REPO_DIR / "docs" / "i18n" / "ru" / "README.md").read_text(encoding="utf-8")
     ru_config = (REPO_DIR / "docs" / "i18n" / "ru" / "configuration.md").read_text(encoding="utf-8")

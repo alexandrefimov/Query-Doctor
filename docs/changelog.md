@@ -24,6 +24,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Owner-raw D3 deployment guidance now separates application-side pre-proxy
+  readiness from the required live front-door validation gate, and the roadmap
+  tracks the remaining real-proxy proof point without promoting general shared
+  deployment support.
 - The test matrix now has an explicit owner-raw D3 validation path covering the
   front-door smoke harness, policy simulator, viewer-identity normalization,
   owner-raw source policy, web route checks, UI/error wording, and public-safety
