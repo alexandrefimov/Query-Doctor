@@ -4011,6 +4011,8 @@ def test_web_owner_raw_source_route_renders_owner_sql_with_secret_masking(tmp_pa
 
 def test_web_owner_raw_source_route_highlights_typed_line_span_without_coordinate(tmp_path):
     module = load_web_module()
+    from query_doctor.web.owner_raw_source import owner_raw_source_highlights
+
     summary = write_owner_raw_source_summary(
         tmp_path,
         source_locators={
@@ -4019,6 +4021,7 @@ def test_web_owner_raw_source_route_highlights_typed_line_span_without_coordinat
                     "id": "sql_final_select_filter",
                     "coordinate": "SELECT secret_col FROM example_guarded_table",
                     "line_span": {"start_line": 3, "end_line": 3},
+                    "line_span_source": "line_range_from_sql_parser",
                     "detail": "predicate near final SELECT",
                 }
             ]
@@ -4028,12 +4031,15 @@ def test_web_owner_raw_source_route_highlights_typed_line_span_without_coordinat
     store = module.WebJobStore()
 
     response = route_get_request("/batch/case/case-001/source", settings, store)
+    case = json.loads(summary.read_text(encoding="utf-8"))["cases"][0]
+    highlights = owner_raw_source_highlights(case)
 
     assert response is not None
     assert response.status == 200
     assert "owner-raw-source-line--highlight" in response.body
     assert "final SELECT filter" in response.body
     assert "secret_col" not in response.body
+    assert highlights[0].line_span_source == "line_range_from_sql_parser"
 
 
 def test_web_owner_raw_source_route_denies_safe_mode_and_mismatched_viewer(tmp_path):

@@ -28,10 +28,12 @@ def assert_line_locator(
     assert {
         "coordinate": coordinate,
         "line_span": {"start_line": start_line, "end_line": end_line},
+        "line_span_source": "line_range_from_sql_parser",
     } in [
         {
             "coordinate": locator.get("coordinate"),
             "line_span": locator.get("line_span"),
+            "line_span_source": locator.get("line_span_source"),
         }
         for locator in locators
     ]
@@ -5304,6 +5306,10 @@ def test_case_summary_includes_query_optimization_candidate(tmp_path):
     assert all(
         "line_span" not in locator for locator in summary["source_locators"]["query_optimization"]
     )
+    assert all(
+        "line_span_source" not in locator
+        for locator in summary["source_locators"]["query_optimization"]
+    )
 
     coordinate_summary = module.case_to_summary(case, include_source_coordinates=True)
     coordinate_locators = coordinate_summary["source_locators"]["query_optimization"]
@@ -5311,12 +5317,14 @@ def test_case_summary_includes_query_optimization_candidate(tmp_path):
         "id": "sql_cte_block",
         "coordinate": "lines 1-8",
         "line_span": {"start_line": 1, "end_line": 8},
+        "line_span_source": "line_range_from_sql_parser",
         "detail": "2 CTEs",
     } in coordinate_locators
     assert {
         "id": "sql_final_select_filter",
         "coordinate": "line 11",
         "line_span": {"start_line": 11, "end_line": 11},
+        "line_span_source": "line_range_from_sql_parser",
         "detail": "predicate near final SELECT",
     } in coordinate_locators
 

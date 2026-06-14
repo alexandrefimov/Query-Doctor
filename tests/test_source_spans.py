@@ -1,9 +1,12 @@
 import pytest
 
 from query_doctor.source_spans import (
+    SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE,
+    SOURCE_LINE_SPAN_SOURCE_SQL_PARSER,
     SourceLineSpan,
     format_source_line_span,
     parse_source_coordinate,
+    safe_source_line_span_source,
     source_line_span_from_payload,
     source_line_span_payload,
 )
@@ -44,3 +47,18 @@ def test_source_line_span_payload_parser_rejects_unsafe_values():
     assert source_line_span_from_payload({"start_line": 7, "end_line": "9"}) is None
     assert source_line_span_from_payload({"start_line": 10, "end_line": 9}) is None
     assert source_line_span_from_payload("lines 7-9") is None
+
+
+def test_source_line_span_source_is_allowlisted_and_safe():
+    assert (
+        safe_source_line_span_source(SOURCE_LINE_SPAN_SOURCE_SQL_PARSER)
+        == SOURCE_LINE_SPAN_SOURCE_SQL_PARSER
+    )
+    assert (
+        safe_source_line_span_source(
+            "SELECT secret_col FROM table",
+            fallback=SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE,
+        )
+        == SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE
+    )
+    assert safe_source_line_span_source("SELECT secret_col FROM table") == ""

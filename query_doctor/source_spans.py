@@ -8,6 +8,18 @@ from typing import Any
 
 
 MAX_SOURCE_LINE_NUMBER = 999_999
+SOURCE_LINE_SPAN_SOURCE_SQL_PARSER = "line_range_from_sql_parser"
+SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE = "line_range_from_legacy_coordinate"
+SOURCE_LINE_SPAN_SOURCE_ANALYSIS_JSON_OPERATOR = "operator_id_from_analysis_json"
+SOURCE_LINE_SPAN_SOURCE_TYPED_IR = "token_span_from_typed_ir"
+SOURCE_LINE_SPAN_SOURCES = frozenset(
+    {
+        SOURCE_LINE_SPAN_SOURCE_SQL_PARSER,
+        SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE,
+        SOURCE_LINE_SPAN_SOURCE_ANALYSIS_JSON_OPERATOR,
+        SOURCE_LINE_SPAN_SOURCE_TYPED_IR,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -55,6 +67,13 @@ def source_line_span_from_payload(value: Any) -> SourceLineSpan | None:
         return SourceLineSpan(start_line=start_line, end_line=end_line)
     except ValueError:
         return None
+
+
+def safe_source_line_span_source(value: object, *, fallback: str = "") -> str:
+    text = str(value or "").strip().lower()
+    if text in SOURCE_LINE_SPAN_SOURCES:
+        return text
+    return fallback if fallback in SOURCE_LINE_SPAN_SOURCES else ""
 
 
 def parse_source_coordinate(value: object) -> SourceLineSpan | None:

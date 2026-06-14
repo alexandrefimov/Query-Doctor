@@ -7,8 +7,12 @@ import re
 from typing import Any
 
 from query_doctor.source_spans import (
+    SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE,
+    SOURCE_LINE_SPAN_SOURCE_SQL_PARSER,
+    SourceLineSpan,
     format_source_line_span,
     parse_source_coordinate,
+    safe_source_line_span_source,
     source_line_span_from_payload,
 )
 from query_doctor.web.action_outcomes import (
@@ -1633,7 +1637,14 @@ def source_locator_group_views(value: Any) -> tuple[RecentScanSourceLocatorView,
             continue
         kind, label = label_info
         coordinate = safe_source_locator_coordinate(item.get("coordinate"))
-        line_span = safe_source_locator_line_span(item.get("line_span"), coordinate=coordinate)
+        payload_line_span = source_line_span_from_payload(item.get("line_span"))
+        coordinate_line_span = parse_source_coordinate(coordinate)
+        line_span = payload_line_span or coordinate_line_span
+        line_span_source = safe_source_locator_line_span_source(
+            item.get("line_span_source"),
+            line_span=line_span,
+            from_payload=payload_line_span is not None,
+        )
         if line_span:
             coordinate = format_source_line_span(line_span)
         detail = safe_source_locator_detail(item.get("detail"))
@@ -1648,6 +1659,7 @@ def source_locator_group_views(value: Any) -> tuple[RecentScanSourceLocatorView,
                 coordinate=coordinate,
                 detail=detail,
                 line_span=(line_span.start_line, line_span.end_line) if line_span else None,
+                line_span_source=line_span_source,
             )
         )
         if len(views) >= 5:
@@ -1666,8 +1678,20 @@ def safe_source_locator_coordinate(value: Any) -> str:
     return format_source_line_span(span) if span else ""
 
 
-def safe_source_locator_line_span(value: Any, *, coordinate: str = ""):
-    return source_line_span_from_payload(value) or parse_source_coordinate(coordinate)
+def safe_source_locator_line_span_source(
+    value: Any,
+    *,
+    line_span: SourceLineSpan | None,
+    from_payload: bool,
+) -> str:
+    if line_span is None:
+        return ""
+    fallback = (
+        SOURCE_LINE_SPAN_SOURCE_SQL_PARSER
+        if from_payload
+        else SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE
+    )
+    return safe_source_line_span_source(value, fallback=fallback)
 
 
 def prioritized_query_counter_signals(value: Any) -> list[str]:
