@@ -190,6 +190,20 @@ def owner_raw_web_settings(module, tmp_path: Path, summary: Path, *, viewer: str
     )
 
 
+class MultiValueHeaders:
+    def __init__(self, values):
+        self.values = values
+
+    def get(self, name):
+        values = self.values.get(name)
+        if not values:
+            return None
+        return values[0]
+
+    def get_all(self, name):
+        return self.values.get(name)
+
+
 def test_web_parse_args_defaults_to_localhost():
     module = load_web_module()
 
@@ -4039,19 +4053,6 @@ def test_web_owner_raw_source_route_uses_request_viewer_identity_header(tmp_path
 
 
 def test_web_owner_raw_source_route_fails_closed_for_duplicate_viewer_header(tmp_path):
-    class MultiValueHeaders:
-        def __init__(self, values):
-            self.values = values
-
-        def get(self, name):
-            values = self.values.get(name)
-            if not values:
-                return None
-            return values[0]
-
-        def get_all(self, name):
-            return self.values.get(name)
-
     module = load_web_module()
     summary = write_owner_raw_source_summary(tmp_path)
     settings = module.WebSettings(
@@ -4082,6 +4083,42 @@ def test_web_owner_raw_source_route_fails_closed_for_duplicate_viewer_header(tmp
     body = output.getvalue().decode("utf-8")
     assert captured["status"] == 403
     assert 'data-reason-code="viewer_not_authorized_for_query_user"' in body
+    assert "qdleak_db_20260611" not in body
+    assert "supersecret" not in body
+
+
+def test_web_case_details_hides_owner_raw_source_link_for_duplicate_viewer_header(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        batch_summary=summary,
+        source_visibility="owner_raw",
+        viewer_identity_header="X-QD-Viewer",
+    )
+    handler = module.make_handler(settings, job_store=module.WebJobStore())
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {"headers": []}
+    output = io.BytesIO()
+
+    request.path = "/batch/case/case-001"
+    request.headers = MultiValueHeaders(
+        {
+            "Host": ["127.0.0.1"],
+            "X-QD-Viewer": ["analyst", "other_user"],
+        }
+    )
+    request.wfile = output
+    request.send_response = lambda status: captured.__setitem__("status", status)
+    request.send_header = lambda name, value: captured["headers"].append((name, value))
+    request.end_headers = lambda: None
+
+    request.do_GET()
+
+    body = output.getvalue().decode("utf-8")
+    assert captured["status"] == 200
+    assert 'href="/batch/case/case-001/source"' not in body
+    assert "Owner raw source" not in body
     assert "qdleak_db_20260611" not in body
     assert "supersecret" not in body
 
