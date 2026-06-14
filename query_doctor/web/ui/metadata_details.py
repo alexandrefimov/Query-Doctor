@@ -103,7 +103,12 @@ def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:
     metadata_status = str(case.get("metadata_status") or "").lower()
     if metadata_status in {"collected", "failed", "partial"}:
         return True
-    for key in ("referenced_table_count", "collected_metadata_table_count", "too_large_count"):
+    for key in (
+        "referenced_table_count",
+        "collectable_metadata_table_count",
+        "collected_metadata_table_count",
+        "too_large_count",
+    ):
         if numeric_value(case.get(key)) > 0:
             return True
     return bool(metadata_score_reasons(case))
