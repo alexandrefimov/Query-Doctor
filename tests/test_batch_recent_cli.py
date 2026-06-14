@@ -6151,6 +6151,7 @@ def test_top_metadata_refresh_does_not_spend_limit_on_placeholder_only_tables(
         case.metadata_status = "skipped"
         case.actual_case_dir = tmp_path / f"case-{case.index:03d}" / "actual"
         write_case(case.actual_case_dir, facts_with_tables(*tables))
+        module.inspect_case_outputs(case)
 
     refreshed = []
 
@@ -6170,6 +6171,23 @@ def test_top_metadata_refresh_does_not_spend_limit_on_placeholder_only_tables(
     assert refreshed == ["collectable-high", "collectable-next"]
     assert placeholder.metadata_refreshed is False
     assert placeholder.metadata_status == "not_requested"
+
+    summary = module.build_summary(
+        config,
+        module.DiscoveryResult([], [], "none", None),
+        cases,
+        [],
+        discovery_seconds=0.0,
+        total_seconds=0.0,
+    )
+    rows = {row["query_id"]: row for row in summary["cases"]}
+
+    assert rows["placeholder-only"]["referenced_table_count"] == 1
+    assert rows["placeholder-only"]["collectable_metadata_table_count"] == 0
+    assert rows["placeholder-only"]["metadata_status"] == "not_requested"
+    assert rows["collectable-high"]["collectable_metadata_table_count"] == 1
+    assert rows["collectable-next"]["collectable_metadata_table_count"] == 1
+    assert summary["collectable_metadata_table_count_distribution"] == {"0": 1, "1": 2}
 
 
 def test_top_metadata_refresh_uses_discovery_statement_refs_before_redaction(tmp_path, monkeypatch):

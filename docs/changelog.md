@@ -37,6 +37,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   as `too_large`, Kerberos host-FQDN failures, authorization, parse,
   object-resolution, connection, and timeout issues without exposing raw
   metadata output or subprocess text.
+- Recent batch summaries now distinguish raw-free referenced-table counts from
+  collectable metadata table counts, so redacted placeholder references explain
+  why a case can be `metadata=not_requested` without indicating a metadata
+  transport or authorization failure.
 - Metadata collection now backtick-quotes validated database and table
   identifiers in generated `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
   `SHOW COLUMN STATS` statements so reserved-word table names do not trip the

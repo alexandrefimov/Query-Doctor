@@ -14,6 +14,7 @@ from query_doctor.recent.batch_config import (
     duration_filter_label,
 )
 from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryResult
+from query_doctor.recent.metadata_collectable import update_collectable_metadata_table_count
 from query_doctor.recent.query_optimization_score import optimizer_adjacent_actionability
 from query_doctor.recent.query_optimization_score import optimizer_no_draft_actionability
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
@@ -170,6 +171,9 @@ def build_summary(
     scoring_distribution = scoring_evidence_source_distribution(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
+    for case in cases:
+        update_collectable_metadata_table_count(config, case)
+    collectable_metadata_distribution = collectable_metadata_table_count_distribution(cases)
     include_source_coordinates = config.source_visibility == "owner_raw" and bool(
         config.source_owner_user
     )
@@ -236,6 +240,7 @@ def build_summary(
         "scoring_evidence_source_distribution": scoring_distribution,
         "optimizer_rewriteability_distribution": rewriteability_distribution,
         "optimizer_funnel": optimizer_funnel_summary,
+        "collectable_metadata_table_count_distribution": collectable_metadata_distribution,
         "top_reports": config.top_reports,
         "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
@@ -282,6 +287,11 @@ def candidate_reason_sql_verb_counts(
         reason: dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
         for reason, counts in sorted(grouped.items())
     }
+
+
+def collectable_metadata_table_count_distribution(cases: list[CaseResult]) -> dict[str, int]:
+    counts = Counter(str(case.collectable_metadata_table_count) for case in cases)
+    return dict(sorted(counts.items(), key=lambda item: (int(item[0]), item[0])))
 
 
 def rank_cases_for_query_optimization(cases: list[CaseResult]) -> list[CaseResult]:
@@ -906,6 +916,7 @@ def _case_to_summary_base(
         "metadata_status": case.metadata_status,
         "table_stats_status": case.table_stats_status,
         "referenced_table_count": case.referenced_table_count,
+        "collectable_metadata_table_count": case.collectable_metadata_table_count,
         "collected_metadata_table_count": case.collected_metadata_table_count,
         "skipped_due_to_max_table_limit": case.skipped_due_to_max_table_limit,
         "too_large_count": case.too_large_count,
@@ -1489,7 +1500,10 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
             f"card={case['cardinality_anomaly_count']}, "
             f"mem={case['memory_anomaly_count']}, "
             f"skew={case['backend_data_skew']}, "
-            f"tail={case['host_tail_candidate_count']}"
+            f"tail={case['host_tail_candidate_count']}, "
+            f"refs={case['referenced_table_count']}, "
+            f"metadata_collectable={case['collectable_metadata_table_count']}, "
+            f"metadata_collected={case['collected_metadata_table_count']}"
         )
         lines.append(
             (
