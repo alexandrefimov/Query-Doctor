@@ -42,6 +42,10 @@ scripts, synthetic demo generation, one-profile analysis, local web rendering,
 Impala Web UI filename fallback, deterministic report generation, and corpus
 smoke path. It uses synthetic local data only and does not contact Cloudera
 Manager, impalad, Spark, Trino, Prometheus, Ollama, or external LLM services.
+Package and release CI also run a README Quickstart smoke against a clean wheel
+install: `query-doctor-self-test`, `query-doctor-analyze --profile-text
+./exported-impala-profile.txt --out cases/cm-corpus`, and
+`query-doctor-web --corpus-dir cases/cm-corpus`.
 
 The profile-analysis path needs one exported Impala text profile and no
 Cloudera Manager, Kerberos, local config, browser upload, Prometheus, or LLM. A
@@ -234,6 +238,22 @@ Relative `corpus_dir` values in config resolve from the config file; the
 `--corpus-dir` CLI flag resolves relative paths from the current directory.
 When neither is set, the web UI stores generated Query ID cases under
 `./cases/cm-corpus` from the directory where you started `query-doctor-web`.
+
+### Troubleshooting One Exported Profile
+
+- `Profile text does not include a Query ID`: keep the original Impala Web UI
+  download name when it has the strict
+  `profile_<query-id-high>_<query-id-low>` shape, or pass
+  `--query-id <query-id>`. Query Doctor also accepts a `Query ID:` header inside
+  the text export. If multiple Query ID sources are present, they must match.
+- `Parsed operators: 0`: the case is still staged and can open in the UI, but
+  that text export did not include a parseable `ExecSummary`/operator table.
+  Use the preserved Impala text profile export when available; JSON, Thrift,
+  and profile-v2 payloads are outside this manual profile path.
+- `query-doctor-web --corpus-dir cases/cm-corpus` asks for Cloudera Manager
+  settings: confirm that `query-doctor-analyze` wrote a complete case under the
+  same corpus directory you pass to web, and run web from the same workspace or
+  use an absolute `--corpus-dir`.
 
 ### Door 2: Run The Synthetic Demo
 

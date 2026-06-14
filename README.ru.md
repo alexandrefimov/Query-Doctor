@@ -38,6 +38,10 @@ console scripts, synthetic demo generation, анализ одного профи
 report generation и corpus smoke. Команда использует только synthetic local
 data и не обращается к Cloudera Manager, impalad, Spark, Trino, Prometheus,
 Ollama или external LLM services.
+Package и release CI также запускают README Quickstart smoke против clean wheel
+install: `query-doctor-self-test`, `query-doctor-analyze --profile-text
+./exported-impala-profile.txt --out cases/cm-corpus` и
+`query-doctor-web --corpus-dir cases/cm-corpus`.
 
 Для пути анализа профиля нужен один экспортированный Impala text profile; не
 нужны Cloudera Manager, Kerberos, local config, browser upload, Prometheus или
@@ -240,6 +244,23 @@ Relative `corpus_dir` в config разрешается от файла config; C
 `--corpus-dir` разрешает relative path от current directory. Если оба способа
 не заданы, web UI хранит generated Query ID cases в `./cases/cm-corpus` от
 директории, где запущен `query-doctor-web`.
+
+### Troubleshooting для одного экспортированного профиля
+
+- `Profile text does not include a Query ID`: сохраните исходное имя скачанного
+  из Impala Web UI файла, если оно имеет строгую форму
+  `profile_<query-id-high>_<query-id-low>`, или передайте
+  `--query-id <query-id>`. Query Doctor также принимает `Query ID:` header
+  внутри text export. Если есть несколько источников Query ID, они должны
+  совпасть.
+- `Parsed operators: 0`: case все равно staged и может открыться в UI, но этот
+  text export не содержит parseable `ExecSummary`/operator table. По возможности
+  используйте сохраненный Impala text profile export; JSON, Thrift и profile-v2
+  payloads остаются вне manual profile path.
+- `query-doctor-web --corpus-dir cases/cm-corpus` просит Cloudera Manager
+  settings: проверьте, что `query-doctor-analyze` записал complete case в тот
+  же corpus directory, который передан web, и запускайте web из того же
+  workspace или используйте absolute `--corpus-dir`.
 
 ### Дверь 2: synthetic demo
 
