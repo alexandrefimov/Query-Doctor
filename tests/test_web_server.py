@@ -204,6 +204,33 @@ class MultiValueHeaders:
         return self.values.get(name)
 
 
+def make_handler_get_request(handler, path: str, headers):
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {"headers": []}
+    output = io.BytesIO()
+    request.path = path
+    request.headers = headers
+    request.wfile = output
+    request.send_response = lambda status: captured.__setitem__("status", status)
+    request.send_header = lambda name, value: captured["headers"].append((name, value))
+    request.end_headers = lambda: None
+    request.do_GET()
+    return captured, output.getvalue().decode("utf-8")
+
+
+def owner_raw_running_web_settings(module, tmp_path: Path, summary: Path, **overrides):
+    values = {
+        "config": tmp_path / "cm-config.json",
+        "source_visibility": "owner_raw",
+        "viewer_identity_header": "X-QD-Viewer",
+    }
+    values.update(overrides)
+    settings = module.WebSettings(**values)
+    store = module.WebJobStore()
+    store.set_latest_running_summary(summary)
+    return settings, store
+
+
 def test_web_parse_args_defaults_to_localhost():
     module = load_web_module()
 
@@ -4121,6 +4148,129 @@ def test_web_case_details_hides_owner_raw_source_link_for_duplicate_viewer_heade
     assert "Owner raw source" not in body
     assert "qdleak_db_20260611" not in body
     assert "supersecret" not in body
+
+
+def test_web_running_owner_raw_source_route_uses_request_viewer_identity_header(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings, store = owner_raw_running_web_settings(module, tmp_path, summary)
+    handler = module.make_handler(settings, job_store=store)
+
+    allowed, allowed_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001/source",
+        {"Host": "127.0.0.1", "X-QD-Viewer": "analyst"},
+    )
+    missing, missing_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001/source",
+        {"Host": "127.0.0.1"},
+    )
+    mismatch, mismatch_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001/source",
+        {"Host": "127.0.0.1", "X-QD-Viewer": "other_user"},
+    )
+    duplicate, duplicate_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001/source",
+        MultiValueHeaders(
+            {
+                "Host": ["127.0.0.1"],
+                "X-QD-Viewer": ["analyst", "other_user"],
+            }
+        ),
+    )
+
+    assert allowed["status"] == 200
+    assert "qdleak_db_20260611.qdleak_table_20260611" in allowed_body
+    assert missing["status"] == 403
+    assert mismatch["status"] == 403
+    assert duplicate["status"] == 403
+    for body in (missing_body, mismatch_body, duplicate_body):
+        assert 'data-reason-code="viewer_not_authorized_for_query_user"' in body
+        assert "qdleak_db_20260611" not in body
+        assert "supersecret" not in body
+
+
+def test_web_running_case_details_gates_owner_raw_source_link_by_request_viewer(
+    tmp_path,
+):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    settings, store = owner_raw_running_web_settings(module, tmp_path, summary)
+    handler = module.make_handler(settings, job_store=store)
+
+    allowed, allowed_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001",
+        {"Host": "127.0.0.1", "X-QD-Viewer": "analyst"},
+    )
+    missing, missing_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001",
+        {"Host": "127.0.0.1"},
+    )
+    duplicate, duplicate_body = make_handler_get_request(
+        handler,
+        "/running/case/case-001",
+        MultiValueHeaders(
+            {
+                "Host": ["127.0.0.1"],
+                "X-QD-Viewer": ["analyst", "other_user"],
+            }
+        ),
+    )
+
+    assert allowed["status"] == 200
+    assert 'href="/running/case/case-001/source"' in allowed_body
+    assert "Running Queries details" in allowed_body
+    assert "qdleak_db_20260611" not in allowed_body
+    assert missing["status"] == 200
+    assert duplicate["status"] == 200
+    for body in (missing_body, duplicate_body):
+        assert 'href="/running/case/case-001/source"' not in body
+        assert "Owner raw source" not in body
+        assert "qdleak_db_20260611" not in body
+        assert "supersecret" not in body
+
+
+def test_web_running_owner_raw_source_kill_switch_blocks_route_and_link(tmp_path):
+    module = load_web_module()
+    summary = write_owner_raw_source_summary(tmp_path)
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings, store = owner_raw_running_web_settings(
+        module,
+        tmp_path,
+        summary,
+        owner_raw_source_enabled=False,
+        viewer_identity_header=None,
+        viewer_identity=local_first_viewer_identity(("analyst",)),
+    )
+
+    source_response = route_get_request(
+        "/running/case/case-001/source",
+        settings,
+        store,
+    )
+    details_response = route_get_request("/running/case/case-001", settings, store)
+
+    assert source_response is not None
+    assert source_response.status == 403
+    assert 'data-reason-code="owner_raw_source_disabled"' in source_response.body
+    assert "qdleak_db_20260611" not in source_response.body
+    assert "supersecret" not in source_response.body
+    assert source_response.audit_event is not None
+    audit_fields = dict(source_response.audit_event.fields)
+    assert audit_fields["route_source"] == "running"
+    assert audit_fields["reason"] == "owner_raw_source_disabled"
+    assert audit_fields["source_switch"] == "disabled"
+    assert details_response is not None
+    assert details_response.status == 200
+    assert 'href="/running/case/case-001/source"' not in details_response.body
+    assert "Owner raw source" not in details_response.body
+    assert "qdleak_db_20260611" not in details_response.body
 
 
 def test_web_owner_raw_source_route_can_be_disabled_by_kill_switch(tmp_path):
