@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""Generate a local table-backed SELECT for Known Query metadata smokes."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+DEFAULT_LIMIT = 100_000
+DEFAULT_OUT = Path(os.environ.get("TMPDIR") or "/tmp") / "query-doctor-table-backed-smoke.sql"
+IDENTIFIER_RE = re.compile(r"\A`?([A-Za-z_][A-Za-z0-9_$]*)`?\Z")
+PLACEHOLDER_RE = re.compile(r"<[^>]+>")
+BAD_IDENTIFIER_PARTS = {
+    "db",
+    "database",
+    "schema",
+    "table",
+    "table_name",
+    "tbl",
+    "name",
+    "unknown",
+    "redacted",
+    "hidden",
+}
+BAD_IDENTIFIER_MARKERS = ("<", ">", "[", "]", "redacted", "hidden", "unknown")
+
+
+class SmokeQueryError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class TableCandidate:
+    table: str
+    mtime_ns: int
+    ordinal: int
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build a read-only table-backed SELECT from existing local Query Doctor "
+            "analysis.json metadata context. The script writes SQL to a local file "
+            "and does not print table names."
+        )
+    )
+    parser.add_argument(
+        "--search-root",
+        action="append",
+        type=Path,
+        help=(
+            "Local ignored directory to scan for analysis.json files. May be repeated. "
+            "Default: $TMPDIR or /tmp."
+        ),
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="Local file to write the generated SQL. Default: $TMPDIR/query-doctor-table-backed-smoke.sql.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=positive_int,
+        default=DEFAULT_LIMIT,
+        help=f"LIMIT inside the generated sample CTE. Default: {DEFAULT_LIMIT}.",
+    )
+    return parser.parse_args(argv)
+
+
+def default_search_roots() -> list[Path]:
+    return [Path(os.environ.get("TMPDIR") or "/tmp")]
+
+
+def analysis_paths(search_roots: list[Path]) -> list[Path]:
+    paths: list[Path] = []
+    for root in search_roots:
+        if root.is_file() and root.name == "analysis.json":
+            paths.append(root)
+            continue
+        if not root.is_dir():
+            continue
+        paths.extend(root.rglob("analysis.json"))
+    return sorted(paths)
+
+
+def read_json(path: Path) -> Any | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def normalize_table_identifier(raw_table: object) -> str | None:
+    table = str(raw_table or "").strip().strip("[](){}")
+    if not table:
+        return None
+    if PLACEHOLDER_RE.search(table):
+        return None
+    lowered = table.lower()
+    if any(marker in lowered for marker in BAD_IDENTIFIER_MARKERS):
+        return None
+    if any(marker in table for marker in (";", "--", "/*", "*/", "/", "\\", "@", "?", "#")):
+        return None
+
+    normalized = table.replace("`.", ".").replace(".`", ".")
+    parts = [part.strip().strip("`") for part in normalized.split(".")]
+    if len(parts) != 2:
+        return None
+    lowered_parts = [part.lower() for part in parts]
+    if any(part in BAD_IDENTIFIER_PARTS for part in lowered_parts):
+        return None
+    if not all(IDENTIFIER_RE.fullmatch(part) for part in parts):
+        return None
+    return ".".join(parts)
+
+
+def tables_from_analysis(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    tables: list[str] = []
+    context = payload.get("table_metadata_context")
+    if isinstance(context, dict):
+        context_tables = context.get("tables")
+        if isinstance(context_tables, list):
+            for item in context_tables:
+                if isinstance(item, dict):
+                    table = normalize_table_identifier(item.get("table"))
+                    if table is not None:
+                        tables.append(table)
+                else:
+                    table = normalize_table_identifier(item)
+                    if table is not None:
+                        tables.append(table)
+    references = payload.get("referenced_tables")
+    if isinstance(references, list):
+        for item in references:
+            table = normalize_table_identifier(item)
+            if table is not None:
+                tables.append(table)
+    return tables
+
+
+def collect_candidates(paths: list[Path]) -> list[TableCandidate]:
+    candidates: list[TableCandidate] = []
+    ordinal = 0
+    seen: set[str] = set()
+    for path in paths:
+        payload = read_json(path)
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        for table in tables_from_analysis(payload):
+            if table in seen:
+                continue
+            seen.add(table)
+            candidates.append(TableCandidate(table=table, mtime_ns=mtime_ns, ordinal=ordinal))
+            ordinal += 1
+    return candidates
+
+
+def select_candidate(candidates: list[TableCandidate]) -> TableCandidate:
+    if not candidates:
+        raise SmokeQueryError(
+            "No non-placeholder table-backed metadata reference was found. "
+            "Run a direct Recent metadata smoke first, then retry."
+        )
+    return max(candidates, key=lambda item: (item.mtime_ns, -item.ordinal))
+
+
+def quote_identifier(value: str) -> str:
+    return "`" + value.replace("`", "``") + "`"
+
+
+def quote_table(table: str) -> str:
+    return ".".join(quote_identifier(part) for part in table.split("."))
+
+
+def build_query(table: str, *, limit: int) -> str:
+    return (
+        "WITH sample_rows AS (\n"
+        "  SELECT *\n"
+        f"  FROM {quote_table(table)}\n"
+        f"  LIMIT {limit}\n"
+        ")\n"
+        "SELECT\n"
+        "  COUNT(*) AS rows_seen,\n"
+        "  SUM(CAST(rand() * 1000000 AS BIGINT)) AS runtime_guard\n"
+        "FROM sample_rows;\n"
+    )
+
+
+def write_query(path: Path, sql: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(sql, encoding="utf-8")
+    except OSError as exc:
+        raise SmokeQueryError("Could not write the generated SQL file.") from exc
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    search_roots = args.search_root or default_search_roots()
+    paths = analysis_paths(search_roots)
+    candidates = collect_candidates(paths)
+    try:
+        candidate = select_candidate(candidates)
+        write_query(args.out, build_query(candidate.table, limit=args.limit))
+    except SmokeQueryError as exc:
+        print(f"[table-backed-smoke-query] {exc}", file=sys.stderr)
+        return 2
+
+    print("[table-backed-smoke-query] generated=ok")
+    print(f"[table-backed-smoke-query] analysis_files_scanned={len(paths)}")
+    print(f"[table-backed-smoke-query] candidate_tables={len(candidates)}")
+    print(f"[table-backed-smoke-query] limit={args.limit}")
+    print("[table-backed-smoke-query] output=written")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
