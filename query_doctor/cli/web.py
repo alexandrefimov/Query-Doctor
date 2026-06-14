@@ -12,6 +12,7 @@ from query_doctor.web.config import (
     LOCAL_BIND_HOSTS,
     build_web_settings,
     validate_bind_host,
+    validate_owner_raw_nonlocal_bind,
     validate_public_demo_settings,
     validate_web_startup_config,
 )
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         if corpus_summary_runtime is not None:
             settings = corpus_summary_runtime.settings
         validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
+        validate_owner_raw_nonlocal_bind(settings)
         validate_public_demo_settings(settings)
         startup_warnings = validate_web_startup_config(
             settings.config,

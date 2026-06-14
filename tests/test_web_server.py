@@ -149,6 +149,7 @@ SERVER_REEXPORTS = [
         (
             "build_web_settings",
             "validate_bind_host",
+            "validate_owner_raw_nonlocal_bind",
             "validate_public_demo_settings",
             "metadata_configured",
         ),
@@ -1491,6 +1492,112 @@ def test_web_rejects_nonlocal_bind_without_explicit_flag():
         module.validate_bind_host("0.0.0.0", allow_nonlocal_web_bind=False)
 
     module.validate_bind_host("0.0.0.0", allow_nonlocal_web_bind=True)
+
+
+def test_web_allows_safe_nonlocal_bind_with_explicit_flag(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        host="0.0.0.0",
+        allow_nonlocal_web_bind=True,
+        source_visibility="safe",
+        viewer_identity=local_first_viewer_identity(("analyst_one",)),
+    )
+
+    module.validate_owner_raw_nonlocal_bind(settings)
+
+
+def test_web_rejects_owner_raw_nonlocal_bind_without_authenticated_viewer(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        host="0.0.0.0",
+        allow_nonlocal_web_bind=True,
+        source_visibility="owner_raw",
+        source_owner_user="analyst_one",
+        viewer_identity=local_first_viewer_identity(("analyst_one",)),
+    )
+
+    with pytest.raises(module.WebError, match="source_visibility=owner_raw"):
+        module.validate_owner_raw_nonlocal_bind(settings)
+
+
+def test_web_rejects_owner_raw_cluster_nonlocal_bind_without_authenticated_viewer(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.models import WebClusterConfig
+    from query_doctor.web.viewer_identity import local_first_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        host="0.0.0.0",
+        allow_nonlocal_web_bind=True,
+        source_visibility="safe",
+        clusters=(
+            WebClusterConfig(key="prod", label="Production", source_visibility="safe"),
+            WebClusterConfig(
+                key="stage",
+                label="Staging",
+                source_visibility="owner_raw",
+                source_owner_user="stage_user",
+            ),
+        ),
+        viewer_identity=local_first_viewer_identity(("stage_user",)),
+    )
+
+    with pytest.raises(module.WebError, match="source_visibility=owner_raw"):
+        module.validate_owner_raw_nonlocal_bind(settings)
+
+
+def test_web_allows_owner_raw_nonlocal_bind_with_authenticated_viewer(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.viewer_identity import authenticated_viewer_identity
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        host="0.0.0.0",
+        allow_nonlocal_web_bind=True,
+        source_visibility="owner_raw",
+        source_owner_user="analyst_one",
+        viewer_identity=authenticated_viewer_identity("analyst_one"),
+    )
+
+    module.validate_owner_raw_nonlocal_bind(settings)
+
+
+def test_web_cli_main_rejects_owner_raw_nonlocal_bind_without_auth(monkeypatch, tmp_path, capsys):
+    from query_doctor.cli import web as web_cli
+
+    config = tmp_path / "cm-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "example_cluster",
+                "service": "impala",
+                "username": "example_cm_user",
+                "source_visibility": "owner_raw",
+                "source_owner_user": "analyst_one",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_server(*_args, **_kwargs):
+        raise AssertionError("server should not start for owner_raw non-local bind")
+
+    monkeypatch.setattr(web_cli, "ThreadingHTTPServer", fail_server)
+
+    result = web_cli.main(
+        ["--config", str(config), "--host", "0.0.0.0", "--allow-nonlocal-web-bind"]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "source_visibility=owner_raw" in captured.err
 
 
 @pytest.mark.parametrize(

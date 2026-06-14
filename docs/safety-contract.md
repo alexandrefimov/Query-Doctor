@@ -209,12 +209,14 @@ contents, or real production profile text.
   bypass. In the current implementation it narrows Cloudera Manager or direct
   Impala Recent and Running scans to a verified owner user and is the only web
   policy that can display a validated optimizer SQL draft. It does not permit
-  raw browser or trusted-report display. Any future owner source view that
-  proposes raw SQL source views or plan excerpts requires a separate
-  safety-contract revision, and must remain explicit, selected-case only,
-  source-allowlisted, fail-closed on ownership mismatch, and must still exclude
-  raw profile dumps, raw metadata, local paths, subprocess output, secrets,
-  model names, runtime internals, and raw artifact filenames.
+  raw browser or trusted-report display. Local-first owner raw visibility must
+  not start on a non-local web bind; shared web access requires authenticated
+  viewer identity before owner raw visibility can be enabled. Any future owner
+  source view that proposes raw SQL source views or plan excerpts requires a
+  separate safety-contract revision, and must remain explicit, selected-case
+  only, source-allowlisted, fail-closed on ownership mismatch, and must still
+  exclude raw profile dumps, raw metadata, local paths, subprocess output,
+  secrets, model names, runtime internals, and raw artifact filenames.
 - Keytab-derived Username dropdowns may display simple account names only.
   Keytab paths, full Kerberos principals, keytab contents, ticket contents, and
   `klist` subprocess output must not be rendered in browser-visible UI or
