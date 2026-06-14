@@ -75,6 +75,12 @@ def render_batch_run_panel(
             config_values=local_config,
             fallback="",
         ),
+        "recent_window_minutes": form_or_config_value(
+            form_values,
+            "recent_window_minutes",
+            config_values=local_config,
+            fallback="60",
+        ),
         "min_duration_sec": form_or_config_value(
             form_values,
             "min_duration_sec",
@@ -112,6 +118,7 @@ def render_batch_run_panel(
         selected_settings = settings_for_cluster_key(settings, str(values.get("cluster_key") or ""))
     except WebError:
         selected_settings = settings
+    direct_impala_source = getattr(selected_settings, "query_profile_source", "") == "impala"
     scan_timezone = configured_recent_scan_timezone(selected_settings, local_config)
     default_scan_date, default_scan_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
     if not values.get("scan_date"):
@@ -138,6 +145,13 @@ def render_batch_run_panel(
     )
     metadata_note_html = (
         f'<div class="batch-note">{html.escape(metadata_note)}</div>' if metadata_note else ""
+    )
+    source_toggle_enabled = len(getattr(settings, "clusters", ())) > 1 and (
+        direct_impala_source
+        or any(
+            getattr(cluster, "query_profile_source", "") == "impala"
+            for cluster in getattr(settings, "clusters", ())
+        )
     )
     button_disabled = " disabled" if run_disabled or owner_missing else ""
     button_label = "Running" if run_disabled else "Owner required" if owner_missing else "Run scan"
@@ -191,7 +205,33 @@ def render_batch_run_panel(
         finished_scope_class=finished_scope_class,
         running_scope_class=running_scope_class,
         advanced_fields=f"{advanced_owner_field}{advanced_pool_field}{advanced_query_type_field}",
+        direct_impala_source=direct_impala_source,
     )
+    if source_toggle_enabled:
+        cm_window_class = finished_window_class + (
+            " manual-inputs-hidden" if direct_impala_source else ""
+        )
+        direct_window_class = finished_window_class + (
+            "" if direct_impala_source else " manual-inputs-hidden"
+        )
+        finished_window_fields = (
+            f'<div class="batch-target-field{cm_window_class}" data-scan-target-field="finished" data-scan-source-field="cm">{render_scan_date_select(value("scan_date"), scan_timezone=scan_timezone)}</div>'
+            f'<div class="batch-target-field{cm_window_class}" data-scan-target-field="finished" data-scan-source-field="cm">{render_scan_hour_select(value("scan_hour"), scan_date=value("scan_date"), scan_timezone=scan_timezone)}</div>'
+            f'<div class="batch-target-field{direct_window_class}" data-scan-target-field="finished" data-scan-source-field="impala">'
+            f"{render_batch_number_field('recent_window_minutes', 'Search depth (min)', value('recent_window_minutes'), help_text='Retained direct Impala query-list lookback. Profile collection remains bounded by analysis limits.')}"
+            "</div>"
+        )
+    elif direct_impala_source:
+        finished_window_fields = (
+            f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">'
+            f"{render_batch_number_field('recent_window_minutes', 'Search depth (min)', value('recent_window_minutes'), help_text='Retained direct Impala query-list lookback. Profile collection remains bounded by analysis limits.')}"
+            "</div>"
+        )
+    else:
+        finished_window_fields = (
+            f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_date_select(value("scan_date"), scan_timezone=scan_timezone)}</div>'
+            f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_hour_select(value("scan_hour"), scan_date=value("scan_date"), scan_timezone=scan_timezone)}</div>'
+        )
     owner_grid_class = " batch-form-grid--owner" if owner_required else ""
     panel_tag = "details" if collapsed else "section"
     panel_open = "" if collapsed else ""
@@ -218,8 +258,7 @@ def render_batch_run_panel(
         '<div class="batch-form-sections">'
         '<fieldset class="batch-form-section batch-form-section--primary"><legend>Basic scan</legend>'
         f'<div class="batch-form-grid batch-form-grid--simple{owner_grid_class}" aria-label="Basic scan window">'
-        f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_date_select(value("scan_date"), scan_timezone=scan_timezone)}</div>'
-        f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_hour_select(value("scan_hour"), scan_date=value("scan_date"), scan_timezone=scan_timezone)}</div>'
+        f"{finished_window_fields}"
         f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_batch_number_field("min_duration_sec", "Minimum duration (sec)", min_duration_value, step="0.001", required=False, help_text="Leave empty to include long queries and repeated short workload patterns. Set a value to narrow the scan to longer-running queries only.")}</div>'
         f"{primary_owner_field}"
         '<div class="batch-run-action">'
@@ -270,15 +309,21 @@ def render_configured_advanced_settings(
     finished_scope_class: str,
     running_scope_class: str,
     advanced_fields: str,
+    direct_impala_source: bool = False,
 ) -> str:
     if not advanced_fields:
         return ""
+    finished_scope_text = (
+        "retained direct Impala summaries → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
+        if direct_impala_source
+        else "one selected hour → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
+    )
     return (
         '<details class="batch-advanced"><summary>Advanced settings</summary>'
         '<div class="batch-advanced-body">'
         f"{metadata_note_html}"
         f'<div class="scope-line{finished_scope_class}" aria-label="Finished query collection scope" data-scan-target-field="finished">'
-        "<strong>Finished scope:</strong> one selected hour → matching summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM"
+        f"<strong>Finished scope:</strong> {finished_scope_text}"
         "</div>"
         f'<div class="scope-line{running_scope_class}" aria-label="Running query collection scope" data-scan-target-field="running">'
         "<strong>Running scope:</strong> current running query summaries → analyzable profiles → ranked cases. Runtime evidence may be incomplete until a query finishes; no auto LLM."
@@ -621,8 +666,12 @@ def render_cluster_select(
     option_values = {value for value, _label in options}
     if selected_raw not in option_values:
         selected_raw = default_cluster_key(settings)
+    source_by_key = {
+        getattr(cluster, "key", ""): getattr(cluster, "query_profile_source", "cm")
+        for cluster in getattr(settings, "clusters", ())
+    }
     rendered_options = "".join(
-        f'<option value="{html.escape(value, quote=True)}"{" selected" if value == selected_raw else ""}>'
+        f'<option value="{html.escape(value, quote=True)}" data-query-profile-source="{html.escape(source_by_key.get(value, "cm"), quote=True)}"{" selected" if value == selected_raw else ""}>'
         f"{html.escape(label)}</option>"
         for value, label in options
     )

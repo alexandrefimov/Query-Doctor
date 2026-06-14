@@ -250,11 +250,23 @@ document.addEventListener('DOMContentLoaded', function () {
       input.value = selector.value;
     });
   }
+  function currentClusterSource(root) {
+    var selector = root && root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector || !selector.options || selector.selectedIndex < 0) {
+      return '';
+    }
+    return selector.options[selector.selectedIndex].getAttribute('data-query-profile-source') || '';
+  }
   Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
     syncDiagnosisCluster(root);
     var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
     if (selector) {
-      selector.addEventListener('change', function () { syncDiagnosisCluster(root); });
+      selector.addEventListener('change', function () {
+        syncDiagnosisCluster(root);
+        Array.prototype.slice.call(root.querySelectorAll('[data-scan-target-form]')).forEach(function (form) {
+          applyScanTarget(form);
+        });
+      });
     }
   });
   function currentDiagnosisTarget(root) {
@@ -307,13 +319,16 @@ document.addEventListener('DOMContentLoaded', function () {
   function applyScanTarget(form) {
     var root = form.closest('[data-diagnosis-target-root]');
     var target = currentScanTarget(root || form);
+    var clusterSource = currentClusterSource(root || form);
     form.setAttribute('action', target === 'running' ? '/running/run' : '/batch/run');
     form.setAttribute('data-active-scan-target', target);
     Array.prototype.slice.call(form.querySelectorAll('input[name="scan_target"][data-scan-target-hidden]')).forEach(function (input) {
       input.value = target;
     });
     Array.prototype.slice.call(form.querySelectorAll('[data-scan-target-field]')).forEach(function (element) {
-      var visible = element.getAttribute('data-scan-target-field') === target;
+      var sourceField = element.getAttribute('data-scan-source-field') || '';
+      var visible = element.getAttribute('data-scan-target-field') === target &&
+        (!sourceField || !clusterSource || sourceField === clusterSource);
       element.classList.toggle('manual-inputs-hidden', !visible);
     });
     updateRecentResultsContext(target, currentDiagnosisTarget(root));

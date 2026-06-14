@@ -7342,7 +7342,7 @@ def test_web_running_queries_page_places_configured_source_before_live_scan():
 
     assert '<label for="running_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="running_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" selected>Staging</option>' in body
+    assert '<option value="stage" data-query-profile-source="cm" selected>Staging</option>' in body
     assert body.index('<label for="running_cluster_key">Source cluster</label>') < body.index(
         "Live scan"
     )
@@ -8120,6 +8120,36 @@ def test_web_batch_form_rejects_future_hour_without_subprocess():
     assert "Scan hour must not be in the future." in body
 
 
+def test_web_batch_form_rejects_invalid_direct_impala_search_depth_without_subprocess(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "direct-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "query_profile_source": "impala",
+                "impala_profile_hosts": ["impalad-1.example.com"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.build_web_settings(module.parse_args(["--config", str(config)]), cwd=tmp_path)
+
+    status, body = module.start_batch_job(
+        {
+            "recent_window_minutes": ["0"],
+            "metadata_top_limit": ["0"],
+        },
+        settings,
+        module.WebJobStore(),
+        runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid search depth must not run subprocess")
+        ),
+    )
+
+    assert status == 400
+    assert "recent_window_minutes must be a positive integer." in body
+
+
 def test_web_batch_form_rejects_unsafe_query_type_without_subprocess(tmp_path):
     module = load_web_module()
 
@@ -8341,6 +8371,39 @@ def test_web_batch_form_renders_nonstandard_configured_search_depth(tmp_path):
     assert 'name="recent_window_minutes"' not in body
     assert "18 hours (configured)" not in body
     assert "Scan date" in body
+
+
+def test_web_batch_form_uses_search_depth_for_direct_impala_recent(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "direct-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "recent_window_minutes": 43200,
+                "query_profile_source": "impala",
+                "impala_profile_hosts": ["impalad-1.example.com"],
+                "metadata_coordinator": "impala-coordinator.example.com:21000",
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.build_web_settings(module.parse_args(["--config", str(config)]), cwd=tmp_path)
+
+    body = module.render_batch_page(settings)
+    batch_config = module.parse_batch_run_config({"metadata_top_limit": ["0"]}, settings=settings)
+    cmd, _out_dir = module.build_batch_command("d" * 32, batch_config, settings)
+
+    assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
+    assert 'name="recent_window_minutes" type="number" min="0" step="1" value="43200"' in body
+    assert "Retained direct Impala query-list lookback" in body
+    assert '<label for="scan_date">Scan date</label>' not in body
+    assert '<label for="scan_hour">Scan Hour' not in body
+    assert batch_config.recent_window_minutes == 43200
+    assert batch_config.from_time is None
+    assert batch_config.to_time is None
+    assert cmd[cmd.index("--recent-window-minutes") + 1] == "43200"
+    assert "--from-time" not in cmd
+    assert "--to-time" not in cmd
 
 
 def test_web_batch_form_does_not_use_metadata_max_tables_as_metadata_top_default(tmp_path):
@@ -9474,8 +9537,13 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path,
     assert '<div class="batch-source-settings">' in body
     assert '<label for="diagnosis_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="prod" selected>Production</option>' in body
-    assert '<option value="stage">Staging</option>' in body
+    assert (
+        '<option value="prod" data-query-profile-source="cm" selected>Production</option>' in body
+    )
+    assert '<option value="stage" data-query-profile-source="impala">Staging</option>' in body
+    assert 'data-scan-source-field="cm"' in body
+    assert 'data-scan-source-field="impala"' in body
+    assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
     assert body.index('<label for="diagnosis_cluster_key">Source cluster</label>') < body.index(
         "What to analyze"
     )
@@ -9787,6 +9855,7 @@ def test_web_batch_command_uses_direct_impala_source_for_selected_cluster(tmp_pa
     config.write_text(
         json.dumps(
             {
+                "recent_window_minutes": 43200,
                 "clusters": [
                     {
                         "id": "cm",
@@ -9838,7 +9907,13 @@ def test_web_batch_command_uses_direct_impala_source_for_selected_cluster(tmp_pa
 
     cmd, _out_dir = module.build_batch_command("e" * 32, batch_config, settings)
 
+    assert batch_config.recent_window_minutes == 43200
+    assert batch_config.from_time is None
+    assert batch_config.to_time is None
     assert cmd[cmd.index("--query-profile-source") + 1] == "impala"
+    assert cmd[cmd.index("--recent-window-minutes") + 1] == "43200"
+    assert "--from-time" not in cmd
+    assert "--to-time" not in cmd
     assert cmd.count("--impala-profile-host") == 2
     assert cmd[cmd.index("--impala-profile-timeout-sec") + 1] == "12"
     assert "--impala-profile-prefer-json" in cmd
@@ -10745,7 +10820,7 @@ def test_web_handler_preserves_selected_cluster_when_query_id_missing():
     assert status == 400
     assert "Query ID is required." in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" selected>Staging</option>' in body
+    assert '<option value="stage" data-query-profile-source="cm" selected>Staging</option>' in body
     assert '<input type="hidden" name="cluster_key" value="stage">' in body
     assert 'class="run-main-row known-query-row"' in body
     assert 'id="query_cluster_key"' not in body
@@ -10782,7 +10857,7 @@ def test_web_job_preserves_selected_cluster_during_query_id_analysis():
     body = module.render_query_page(settings, job=snapshot)
 
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="ambari" selected>Ambari</option>' in body
+    assert '<option value="ambari" data-query-profile-source="cm" selected>Ambari</option>' in body
     assert '<input type="hidden" name="cluster_key" value="ambari">' in body
     assert 'class="run-main-row known-query-row"' in body
     assert 'class="batch-progress-steps job-progress-steps"' in body
