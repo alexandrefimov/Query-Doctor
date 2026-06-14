@@ -974,6 +974,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
         has_spill=case_has_spill(case),
+        source_locators=present_source_locators(case.get("source_locators")),
     )
 
 

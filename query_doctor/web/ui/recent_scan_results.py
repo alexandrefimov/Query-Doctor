@@ -51,6 +51,7 @@ from query_doctor.web.ui.recent_scan_progress import (
     render_batch_progress_panel,
     summarize_batch_progress,
 )
+from query_doctor.web.ui.source_locations import render_source_location_chips
 
 
 def render_batch_card(
@@ -905,6 +906,7 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
             else ""
         )
         detail_html = f"<span>{escape_value(why)}.{escape_value(review)}{escape_value(facts)}{escape_value(guardrails)}</span>"
+        source_location_html = render_row_source_location_chips(view, "query_optimization")
     elif normalized == "stats":
         title = f"Stats candidate: {candidate_label(view.stats_tier)}"
         why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
@@ -939,9 +941,15 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
         f"<strong>{escape_value(title)}</strong>"
         f"{primary_html}"
         f"{detail_html}"
+        f"{source_location_html if normalized == 'optimization' else ''}"
         f"{reason_html}"
         "</td>"
     )
+
+
+def render_row_source_location_chips(view: RecentScanCaseRowView, group: str) -> str:
+    locators = view.source_locators.get(group, ()) if view.source_locators else ()
+    return render_source_location_chips(locators, limit=2)
 
 
 def candidate_label(value: Any) -> str:

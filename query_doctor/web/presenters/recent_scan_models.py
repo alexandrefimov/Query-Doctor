@@ -77,6 +77,7 @@ class RecentScanCaseRowView:
     score_severity: str
     has_failure: bool
     has_spill: bool
+    source_locators: dict[str, tuple["RecentScanSourceLocatorView", ...]] | None = None
 
 
 @dataclass(frozen=True)
