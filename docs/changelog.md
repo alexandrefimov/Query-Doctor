@@ -20,6 +20,10 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Browser-visible subprocess failures now include allowlisted safe reason hints
+  for common Recent scan setup failures, including metadata Kerberos, metadata
+  shell, CM credentials, missing direct-Impala hosts, cluster selection, and
+  output-directory validation, while still hiding raw stdout/stderr.
 - `query-doctor-web` can now derive per-request authenticated viewer identity
   from an explicitly configured `viewer_identity_header`, intended for D3-style
   deployments behind a trusted auth proxy or ingress that strips inbound copies
