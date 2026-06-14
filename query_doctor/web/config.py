@@ -39,6 +39,7 @@ from query_doctor.web.models import (
 )
 from query_doctor.web.public_demo import default_public_demo_summary_path
 from query_doctor.web.viewer_identity import (
+    VIEWER_IDENTITY_AUTHENTICATED,
     collectable_owner_users,
     local_first_viewer_identity,
     unauthenticated_viewer_identity,
@@ -49,6 +50,7 @@ from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
 )
 from query_doctor.source_visibility import (
+    SOURCE_VISIBILITY_OWNER_RAW,
     SOURCE_VISIBILITY_SAFE,
     normalize_source_owner_user,
     normalize_source_visibility,
@@ -78,6 +80,39 @@ def validate_bind_host(host: str, *, allow_nonlocal_web_bind: bool) -> None:
     raise WebError(
         "Refusing non-local bind. Use --host 127.0.0.1 or pass "
         "--allow-nonlocal-web-bind explicitly for a local web risk review."
+    )
+
+
+def settings_include_owner_raw_source_visibility(settings: WebSettings) -> bool:
+    if settings.source_visibility == SOURCE_VISIBILITY_OWNER_RAW:
+        return True
+    return any(
+        cluster.source_visibility == SOURCE_VISIBILITY_OWNER_RAW for cluster in settings.clusters
+    )
+
+
+def viewer_identity_has_authenticated_raw_subjects(settings: WebSettings) -> bool:
+    identity = settings.viewer_identity
+    return (
+        identity.mode == VIEWER_IDENTITY_AUTHENTICATED
+        and bool(identity.viewer_user)
+        and bool(identity.viewer_raw_subjects)
+    )
+
+
+def validate_owner_raw_nonlocal_bind(settings: WebSettings) -> None:
+    if settings.host in LOCAL_BIND_HOSTS:
+        return
+    if not settings.allow_nonlocal_web_bind:
+        return
+    if not settings_include_owner_raw_source_visibility(settings):
+        return
+    if viewer_identity_has_authenticated_raw_subjects(settings):
+        return
+    raise WebError(
+        "Refusing non-local web bind with source_visibility=owner_raw. "
+        "Owner raw visibility is local-only unless authenticated viewer identity is configured; "
+        "bind to 127.0.0.1 or use source_visibility=safe for shared web access."
     )
 
 

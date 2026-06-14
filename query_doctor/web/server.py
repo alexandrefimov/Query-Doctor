@@ -115,6 +115,7 @@ from query_doctor.web.config import (
     positive_int,
     resolve_web_config_path,
     validate_bind_host,
+    validate_owner_raw_nonlocal_bind,
     validate_public_demo_settings,
     validate_web_startup_config,
 )
@@ -452,6 +453,7 @@ _FACADE_EXPORT_GROUPS = (
             "positive_int",
             "resolve_web_config_path",
             "validate_bind_host",
+            "validate_owner_raw_nonlocal_bind",
             "validate_public_demo_settings",
             "validate_web_startup_config",
         ),

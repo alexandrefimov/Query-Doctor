@@ -20,6 +20,9 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
 
 ## Unreleased
 
+- Web startup now refuses `source_visibility=owner_raw` on non-local binds
+  unless authenticated viewer identity is configured. This blocks the unsafe
+  shared local-first mode without silently downgrading owner raw visibility.
 - Web settings now model viewer raw-subject identity separately from source
   owner/keytab collection choices. The current local-first mode still maps raw
   viewer subjects to collectable owners, while public demo mode remains
