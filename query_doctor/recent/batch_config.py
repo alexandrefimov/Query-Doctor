@@ -31,7 +31,8 @@ from query_doctor.recent.workload_history import DEFAULT_WORKLOAD_HISTORY_MAX_BY
 from query_doctor.source_visibility import (
     SOURCE_VISIBILITY_OWNER_RAW,
     SOURCE_VISIBILITY_SAFE,
-    normalize_source_owner_user,
+    collectable_owner_user as normalize_collectable_owner_user,
+    collectable_owner_users as normalize_collectable_owner_users,
     normalize_source_visibility,
     source_owner_user_from_env,
 )
@@ -170,13 +171,23 @@ def build_batch_config(
             SOURCE_VISIBILITY_SAFE,
         )
     )
-    source_owner_user = normalize_source_owner_user(
+    source_owner_user_values = source_owner_user_arg_values(
+        getattr(args, "source_owner_user", None)
+    )
+    cli_source_owner_user = source_owner_user_values[0] if source_owner_user_values else None
+    source_owner_user = normalize_collectable_owner_user(
         first_string(
-            getattr(args, "source_owner_user", None),
+            cli_source_owner_user,
             config_values.get("source_owner_user"),
             source_owner_user_from_env(env),
         )
     )
+    collectable_owner_user_values = normalize_collectable_owner_users(
+        source_owner_user,
+        source_owner_user_values,
+    )
+    if source_owner_user is None and collectable_owner_user_values:
+        source_owner_user = collectable_owner_user_values[0]
     cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
     cluster = first_string(args.cluster, config_values.get("cluster"))
     service = first_string(args.service, config_values.get("service"))
@@ -422,15 +433,16 @@ def build_batch_config(
 
     recent_user = first_string(args.user, config_values.get("recent_user"))
     if source_visibility == SOURCE_VISIBILITY_OWNER_RAW:
-        if not source_owner_user:
+        if not collectable_owner_user_values:
             raise ValueError(
-                "source_visibility=owner_raw requires source_owner_user or a simple Kerberos principal."
+                "source_visibility=owner_raw requires at least one collectable source_owner_user or simple Kerberos principal."
             )
-        if recent_user and recent_user != source_owner_user:
+        if recent_user and recent_user not in collectable_owner_user_values:
             raise ValueError(
-                "source_visibility=owner_raw requires recent_user to match source_owner_user."
+                "source_visibility=owner_raw requires recent_user to match a collectable source_owner_user."
             )
-        recent_user = source_owner_user
+        if not recent_user and len(collectable_owner_user_values) == 1:
+            recent_user = collectable_owner_user_values[0]
 
     return BatchConfig(
         out=out,
@@ -574,6 +586,7 @@ def build_batch_config(
         redact_hosts=redact_hosts,
         source_visibility=source_visibility,
         source_owner_user=source_owner_user,
+        collectable_owner_users=collectable_owner_user_values,
     )
 
 
@@ -635,6 +648,18 @@ def first_string(*values: object) -> str | None:
         if normalized:
             return normalized
     return None
+
+
+def source_owner_user_arg_values(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        normalized = value.strip()
+        return (normalized,) if normalized else ()
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    normalized = str(value).strip()
+    return (normalized,) if normalized else ()
 
 
 def first_string_tuple(*values: object) -> tuple[str, ...]:

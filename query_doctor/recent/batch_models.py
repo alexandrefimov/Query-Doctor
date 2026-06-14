@@ -90,6 +90,7 @@ class BatchConfig:
     redact_hosts: bool = True
     source_visibility: str = "safe"
     source_owner_user: str | None = None
+    collectable_owner_users: tuple[str, ...] = ()
     metadata_kerberos_host_fqdn: str | None = None
 
 

@@ -7,7 +7,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from query_doctor.cli.commands import command_prefix
-from query_doctor.source_visibility import SOURCE_VISIBILITY_OWNER_RAW, SOURCE_VISIBILITY_SAFE
+from query_doctor.source_visibility import (
+    SOURCE_VISIBILITY_OWNER_RAW,
+    SOURCE_VISIBILITY_SAFE,
+    collectable_owner_users,
+)
 from query_doctor.web.cluster_selection import (
     require_cm_cluster_settings,
     selected_cluster_key_from_mapping,
@@ -483,12 +487,12 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
     elif settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
         require_cm_cluster_settings(settings)
     if settings.source_visibility == SOURCE_VISIBILITY_OWNER_RAW:
-        if config.user and config.user not in source_owner_user_choices(settings):
+        owner_users = source_owner_user_choices(settings)
+        if config.user and config.user not in owner_users:
             raise WebError(
                 "Owner source visibility requires the User filter to match a configured source owner."
             )
-        owner_user = effective_source_owner_user(config, settings)
-        if not owner_user:
+        if not owner_users:
             raise WebError(
                 "Owner source visibility requires source_owner_user, a keytab Username selection, or a simple Kerberos principal in the web environment."
             )
@@ -502,23 +506,16 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
 
 
 def source_owner_user_choices(settings: WebSettings) -> tuple[str, ...]:
-    choices: list[str] = []
-    seen: set[str] = set()
-    for owner in (settings.source_owner_user, *settings.source_owner_user_options):
-        if not owner or owner in seen:
-            continue
-        seen.add(owner)
-        choices.append(owner)
-    return tuple(choices)
+    return collectable_owner_users(settings.source_owner_user, settings.source_owner_user_options)
 
 
-def effective_source_owner_user(config: BatchRunConfig, settings: WebSettings) -> str | None:
+def effective_source_owner_users(config: BatchRunConfig, settings: WebSettings) -> tuple[str, ...]:
     if settings.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
-        return settings.source_owner_user
+        return ()
     choices = source_owner_user_choices(settings)
     if config.user:
-        return config.user if config.user in choices else None
-    return settings.source_owner_user
+        return (config.user,) if config.user in choices else ()
+    return choices
 
 
 def build_batch_command(
@@ -526,7 +523,7 @@ def build_batch_command(
 ) -> tuple[list[str], Path]:
     settings = settings_for_cluster_key(settings, config.cluster_key)
     validate_batch_config_for_settings(config, settings)
-    source_owner_user = effective_source_owner_user(config, settings)
+    source_owner_users = effective_source_owner_users(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)
     metadata_enabled = config.metadata_top_limit > 0
@@ -571,7 +568,7 @@ def build_batch_command(
         append_web_cm_args(cmd, settings)
     if settings.source_visibility != SOURCE_VISIBILITY_SAFE:
         cmd.extend(["--source-visibility", settings.source_visibility])
-        if source_owner_user:
+        for source_owner_user in source_owner_users:
             cmd.extend(["--source-owner-user", source_owner_user])
     if config.only_running:
         cmd.extend(["--recent-window-minutes", str(config.recent_window_minutes)])
