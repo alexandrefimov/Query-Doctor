@@ -256,6 +256,9 @@ Before enabling non-local `owner_raw`, verify:
 - Audit lines do not contain raw SQL, query ids, case ids, query users, local
   paths, header values, secrets, model names, runtime internals, or raw artifact
   filenames.
+- Denied source pages show only reason-coded remediation text. They must not
+  echo viewer values, query users, header values, query ids, local paths, SQL,
+  secrets, or raw artifact filenames.
 
 ## Policy Simulator
 
