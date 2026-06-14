@@ -27,6 +27,7 @@ ACTIVE_DOCS = (
     "docs/test-matrix.md",
     "docs/validation-log.md",
     "docs/safety-contract.md",
+    "docs/owner-raw-d3-deployment.md",
     "docs/engine-redaction-note-v1.md",
     "docs/brand-voice.md",
     "docs/architecture.md",

@@ -243,6 +243,11 @@ Every isolated owner-raw source page attempt emits a safe server-side audit line
 with request id, route source, HTTP status, reason code, viewer mode/source, and
 switch state. The audit line must not include SQL, query ids, case ids, query
 users, local paths, header values, or secrets.
+For shared/non-local deployments, use
+[owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) as the required
+deployment checklist before enabling `owner_raw`; do not expose
+`viewer_identity_header` without a trusted proxy or ingress that strips inbound
+copies before setting it.
 When the local web wrapper exposes `QD_KEYTAB`, Query Doctor reads simple
 account names from that keytab, sorts them alphabetically, and uses the first
 account as the default Username for `owner_raw`. The keytab path and full
