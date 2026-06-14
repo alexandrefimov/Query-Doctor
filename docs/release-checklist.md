@@ -248,6 +248,7 @@ python -m venv /tmp/query-doctor-release-wheel-venv
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install --upgrade pip
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
 /tmp/query-doctor-release-wheel-venv/bin/query-doctor-self-test
+python scripts/installed_web_e2e_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 ```
 

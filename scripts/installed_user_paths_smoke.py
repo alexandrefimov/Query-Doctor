@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLED_BIN_ENV = "QUERY_DOCTOR_INSTALLED_CLI_BIN"
 ONE_PROFILE_SMOKE_SCRIPT = "scripts/installed_one_profile_smoke.py"
+WEB_E2E_SMOKE_SCRIPT = "scripts/installed_web_e2e_smoke.py"
 DEFAULT_QUERY_ID = "1111111111111111:2222222222222222"
 PROFILE_FIXTURE = ROOT / "tests" / "fixtures" / "mixed_stats_runtime_case" / "profile_digest.md"
 OPTIMIZER_FIXTURE = (
@@ -336,6 +337,37 @@ def smoke_case_commands(
     )
     assert_file(corpus_summary, "installed corpus smoke summary")
     print_ok("report, pipeline, and corpus smoke CLI paths")
+
+
+def smoke_installed_web_e2e(
+    bin_dir: Path,
+    work_dir: Path,
+    env: dict[str, str],
+    timeout_sec: float,
+    query_id: str,
+) -> None:
+    result = run_command(
+        [
+            sys.executable,
+            str(ROOT / WEB_E2E_SMOKE_SCRIPT),
+            "--bin-dir",
+            str(bin_dir),
+            "--work-dir",
+            str(work_dir / "installed-web-e2e"),
+            "--timeout-sec",
+            str(timeout_sec),
+            "--query-id",
+            query_id,
+        ],
+        cwd=ROOT,
+        env=env,
+        timeout_sec=timeout_sec,
+        label="installed one-profile web E2E smoke",
+    )
+    summary = json.loads(result.stdout.splitlines()[0])
+    if summary.get("status") != "OK" or summary.get("real_web_server") is not True:
+        raise SystemExit("[installed-user-paths-smoke] installed web E2E did not pass")
+    print_ok("one-profile real web server E2E path")
 
 
 def smoke_optimizer(
@@ -794,6 +826,7 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
         bin_dir, work_dir, env, args.timeout_sec, args.query_id
     )
     smoke_case_commands(bin_dir, work_dir, env, args.timeout_sec, source_case)
+    smoke_installed_web_e2e(bin_dir, work_dir, env, args.timeout_sec, args.query_id)
     smoke_self_test(bin_dir, work_dir, env, args.timeout_sec)
     smoke_optimizer(bin_dir, work_dir, env, args.timeout_sec)
     smoke_demo(bin_dir, work_dir, env, args.timeout_sec)
