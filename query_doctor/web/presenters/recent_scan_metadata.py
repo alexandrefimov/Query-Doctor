@@ -83,6 +83,10 @@ def metadata_summary_items(
         ("metadata coverage", metadata_coverage_summary(case, statement_counts, table_count)),
         ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
         (
+            "collectable metadata tables",
+            safe_display_value(case.get("collectable_metadata_table_count")),
+        ),
+        (
             "collected metadata tables",
             safe_display_value(case.get("collected_metadata_table_count")),
         ),

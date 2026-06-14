@@ -66,6 +66,9 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   collectable metadata table counts, so redacted placeholder references explain
   why a case can be `metadata=not_requested` without indicating a metadata
   transport or authorization failure.
+- Details metadata facts now show collectable metadata table counts alongside
+  referenced and collected table counts, making the same distinction visible in
+  selected Recent cases without exposing table names or raw metadata.
 - Metadata collection now backtick-quotes validated database and table
   identifiers in generated `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
   `SHOW COLUMN STATS` statements so reserved-word table names do not trip the
