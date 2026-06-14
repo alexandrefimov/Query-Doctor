@@ -102,10 +102,11 @@ gate:
 Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
 scripts, the installed demo web UI, and the installed user workflow matrix with
-`scripts/installed_user_paths_smoke.py`. The matrix includes the one-profile
-Quickstart path, a sanitized Impala Web UI export corpus with filename-derived
-Query ID fallback, and additional offline/dry-run installed CLI paths; Docs CI
-should catch broken local Markdown links before merge.
+`scripts/installed_user_paths_smoke.py`. The matrix includes the public README
+Quickstart copy-paste path, the one-profile Quickstart path and manual inbox
+path, a sanitized Impala Web UI export corpus with filename-derived Query ID
+fallback, and additional offline/dry-run installed CLI paths; Docs CI should
+catch broken local Markdown links before merge.
 Dependency Review should stay enabled on pull requests as a security signal
 alongside Dependabot. CodeQL should scan production code before release tags;
 test fixtures may be excluded from code-scanning noise when they intentionally
@@ -245,10 +246,12 @@ git diff --check
 python -m pip install --upgrade build twine
 python -m build
 python -m twine check dist/*
+python scripts/clean_wheel_quickstart_smoke.py --work-dir /tmp/query-doctor-clean-wheel-quickstart
 python -m venv /tmp/query-doctor-release-wheel-venv
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install --upgrade pip
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
 /tmp/query-doctor-release-wheel-venv/bin/query-doctor-self-test
+python scripts/installed_readme_quickstart_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_web_e2e_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_impala_web_ui_exports_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin

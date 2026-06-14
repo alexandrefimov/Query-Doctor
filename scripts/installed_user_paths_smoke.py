@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLED_BIN_ENV = "QUERY_DOCTOR_INSTALLED_CLI_BIN"
 ONE_PROFILE_SMOKE_SCRIPT = "scripts/installed_one_profile_smoke.py"
+README_QUICKSTART_SMOKE_SCRIPT = "scripts/installed_readme_quickstart_smoke.py"
 WEB_E2E_SMOKE_SCRIPT = "scripts/installed_web_e2e_smoke.py"
 IMPALA_WEB_UI_EXPORTS_SMOKE_SCRIPT = "scripts/installed_impala_web_ui_exports_smoke.py"
 DEFAULT_QUERY_ID = "1111111111111111:2222222222222222"
@@ -274,6 +275,44 @@ def smoke_one_profile_quickstart(
         assert_file(case_dir / name, f"one-profile {name}")
     print_ok("one-profile Quickstart and web inbox path")
     return case_dir
+
+
+def smoke_readme_quickstart(
+    bin_dir: Path,
+    work_dir: Path,
+    env: dict[str, str],
+    timeout_sec: float,
+    query_id: str,
+) -> None:
+    result = run_command(
+        [
+            sys.executable,
+            str(ROOT / README_QUICKSTART_SMOKE_SCRIPT),
+            "--bin-dir",
+            str(bin_dir),
+            "--work-dir",
+            str(work_dir / "installed-readme-quickstart"),
+            "--timeout-sec",
+            str(timeout_sec),
+            "--query-id",
+            query_id,
+        ],
+        cwd=ROOT,
+        env=env,
+        timeout_sec=timeout_sec,
+        label="installed README Quickstart copy-paste smoke",
+    )
+    summary = json.loads(result.stdout.splitlines()[0])
+    if (
+        summary.get("status") != "OK"
+        or summary.get("self_test_checked") is not True
+        or summary.get("analyze_checked") is not True
+        or summary.get("real_web_server") is not True
+        or summary.get("relative_profile_path_checked") != "./exported-impala-profile.txt"
+        or summary.get("relative_corpus_dir_checked") != "cases/cm-corpus"
+    ):
+        raise SystemExit("[installed-user-paths-smoke] README Quickstart smoke did not pass")
+    print_ok("README Quickstart copy-paste path")
 
 
 def copy_case(source: Path, destination: Path) -> Path:
@@ -859,6 +898,7 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
     source_case = smoke_one_profile_quickstart(
         bin_dir, work_dir, env, args.timeout_sec, args.query_id
     )
+    smoke_readme_quickstart(bin_dir, work_dir, env, args.timeout_sec, args.query_id)
     smoke_case_commands(bin_dir, work_dir, env, args.timeout_sec, source_case)
     smoke_installed_web_e2e(bin_dir, work_dir, env, args.timeout_sec, args.query_id)
     smoke_impala_web_ui_exports(bin_dir, work_dir, env, args.timeout_sec)

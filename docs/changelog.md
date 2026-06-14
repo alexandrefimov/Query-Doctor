@@ -28,6 +28,13 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   viewer header values. Shared/D3 `owner_raw` source access still requires a
   trusted proxy or ingress to strip inbound copies and set exactly one
   authenticated viewer value.
+- Added a README Quickstart installed-wheel smoke and a clean-wheel release
+  rehearsal. Package/release/publish user-path smoke now verifies
+  `query-doctor-self-test`, `query-doctor-analyze --profile-text
+  ./exported-impala-profile.txt --out cases/cm-corpus`, and
+  `query-doctor-web --corpus-dir cases/cm-corpus` from installed console
+  scripts, with relative paths, a real local web server, and no external
+  services or LLM calls.
 - Added [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md), an active
   shared/non-local `owner_raw` deployment contract covering trusted ingress
   header stripping, C1/C2 identity separation, kill-switch behavior, raw-free
