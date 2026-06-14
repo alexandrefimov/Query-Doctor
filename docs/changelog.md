@@ -36,7 +36,8 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   metadata, endpoints, local paths, or subprocess output.
 - Added `scripts/query-doctor-table-backed-smoke-query` to generate a local
   read-only table-backed `SELECT` from existing metadata context for Known
-  Query ID metadata smokes, rejecting placeholder table references and avoiding
+  Query ID metadata smokes, rejecting placeholder table references, optionally
+  validating candidates with bounded read-only metadata statements, and avoiding
   table-name output on stdout/stderr.
 - Owner-raw D3 deployment guidance now separates application-side pre-proxy
   readiness from the required live front-door validation gate, and the roadmap

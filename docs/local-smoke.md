@@ -345,12 +345,17 @@ SQL yourself in Hue or another Impala client:
 ```bash
 scripts/query-doctor-table-backed-smoke-query \
   --search-root <ignored-smoke-output-root> \
-  --out <ignored-table-backed-query.sql>
+  --out <ignored-table-backed-query.sql> \
+  --validate-with-metadata \
+  --cluster <direct-impala-cluster-id>
 ```
 
 The helper does not execute SQL and does not print table names. It rejects
-placeholder references such as `<db>.<table>` or `db.table`; if it cannot find a
-real table-backed metadata reference, rerun a direct Recent metadata smoke first.
+placeholder references such as `<db>.<table>` or `db.table`. With
+`--validate-with-metadata`, it also checks candidates with bounded read-only
+`SHOW TABLE STATS` and skips stale tables before writing SQL. If it cannot find
+a real table-backed metadata reference, rerun a direct Recent metadata smoke
+first.
 
 Direct Impala Known Query ID collection must be able to fetch the retained
 profile through the configured `impala_profile_hosts` endpoint. A single
