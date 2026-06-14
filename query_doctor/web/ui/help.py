@@ -119,7 +119,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <ul>
 <li>Verify <strong>Source cluster</strong> first. Credentials and endpoints stay in local config; the browser only selects among configured sources.</li>
 <li>The first workflow control selects <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong>. Finished queries remain the default triage path.</li>
-<li>For <strong>Finished queries</strong>, choose <strong>Scan date</strong> and <strong>Scan Hour</strong>, leave <strong>Minimum duration</strong> empty to include long queries and repeated short workload patterns, or set it to narrow the scan to longer-running queries.</li>
+<li>For <strong>Finished queries</strong>, Cloudera Manager sources use <strong>Scan date</strong> and <strong>Scan Hour</strong>; direct Impala sources use <strong>Search depth</strong> over retained daemon summaries. Leave <strong>Minimum duration</strong> empty to include long queries and repeated short workload patterns, or set it to narrow the scan to longer-running queries.</li>
 <li>Owner-gated sources keep the required <strong>Username</strong> visible in Basic scan. Optional user, resource-pool, and query-type filters stay config-owned unless <code>web_advanced_settings_enabled</code> makes them editable in Advanced settings.</li>
 <li>Runtime context is collected automatically when the selected source supports it. Cloudera Manager clusters add bounded event and metric summaries; direct Impala Recent and Running scans use profile evidence and skip Cloudera Manager-only context.</li>
 <li>The Results filter shows all available views in one toolbar: <strong>Needs attention</strong>, <strong>Worth reviewing</strong>, repeated workloads, rewrite opportunities, and stats candidates.</li>
@@ -345,7 +345,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <ul>
 <li>Сначала проверьте <strong>Source cluster</strong>. Credentials и endpoints остаются в local config.</li>
 <li>Первый переключатель выбирает <strong>Finished queries</strong>, <strong>Running now</strong> или <strong>One Query ID</strong>. Finished queries остается основным triage path.</li>
-<li>Для <strong>Finished queries</strong> задайте <strong>Scan date</strong> и <strong>Scan Hour</strong>. Оставьте <strong>Minimum duration</strong> пустым, чтобы включить длинные запросы и repeated short workload patterns; задайте значение, чтобы сузить скан до долгих запросов.</li>
+<li>Для <strong>Finished queries</strong> источники Cloudera Manager используют <strong>Scan date</strong> и <strong>Scan Hour</strong>, а direct Impala источники используют <strong>Search depth</strong> по retained daemon summaries. Оставьте <strong>Minimum duration</strong> пустым, чтобы включить длинные запросы и repeated short workload patterns; задайте значение, чтобы сузить скан до долгих запросов.</li>
 <li>Runtime context собирается автоматически, когда выбранный source это поддерживает.</li>
 <li>Фильтр Results показывает все доступные срезы в одной панели: <strong>Needs attention</strong>, <strong>Worth reviewing</strong>, repeated workloads, rewrite opportunities и stats candidates.</li>
 <li><strong>Only queries with spills</strong> - display filter по уже проанализированным результатам.</li>

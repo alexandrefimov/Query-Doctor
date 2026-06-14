@@ -41,8 +41,9 @@ environment variables или local env files, описанных в
 - `cluster_type` для различения `cm` и direct `impala` clusters;
 - общий language mode: `language` = `en` или `ru`; он показывается в web
   header и управляет Help, Details static UI и новыми trusted reports;
-- `recent_scan_timezone`, например `UTC`; web Finished queries использует его
-  для Scan date/hour окна и показывает в label текущий UTC offset;
+- `recent_scan_timezone`, например `UTC`; web Cloudera Manager Finished queries
+  использует его для Scan date/hour окна и показывает в label текущий UTC
+  offset; direct Impala Finished queries использует `recent_window_minutes`;
 - non-secret LLM route settings: `report_llm_provider`,
   `report_llm_model`, `optimizer_llm_provider`, `optimizer_llm_model` и
   provider base URLs;

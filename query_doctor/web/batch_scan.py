@@ -71,6 +71,7 @@ BATCH_CM_JOBS_MAX = 100
 BATCH_METADATA_JOBS_MAX = 5
 WEB_RUNNING_SCAN_WINDOW_MINUTES = 120
 WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT = 500
+WEB_DIRECT_RECENT_SCAN_WINDOW_MINUTES_DEFAULT = 60
 SCAN_PRESET_STANDARD = "standard"
 SCAN_PRESET_FREQUENT_SHORT = "frequent_short"
 SCAN_PRESET_VALUES = {SCAN_PRESET_STANDARD, SCAN_PRESET_FREQUENT_SHORT}
@@ -144,10 +145,26 @@ def parse_batch_run_config(
     local_config = _local_config_values(settings)
     scan_preset = normalize_scan_preset(first_form_value(form, "scan_preset"))
     scan_timezone = configured_recent_scan_timezone(selected_settings, local_config)
-    scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(
-        form, scan_timezone=scan_timezone
+    direct_impala_source = (
+        selected_settings is not None and selected_settings.query_profile_source == "impala"
     )
-    recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
+    if direct_impala_source:
+        scan_date, scan_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
+        from_time = to_time = None
+        recent_window_minutes = parse_positive_form_int(
+            form,
+            "recent_window_minutes",
+            default=_config_int(
+                local_config,
+                "recent_window_minutes",
+                fallback=WEB_DIRECT_RECENT_SCAN_WINDOW_MINUTES_DEFAULT,
+            ),
+        )
+    else:
+        scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(
+            form, scan_timezone=scan_timezone
+        )
+        recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit = parse_positive_form_int(
         form,
@@ -445,6 +462,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "scan_target",
         "scan_date",
         "scan_hour",
+        "recent_window_minutes",
         "cluster_key",
         "metadata_top_limit",
         "triage_profile_limit",
@@ -474,6 +492,7 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "scan_target": "running" if config.only_running else "finished",
         "scan_date": config.scan_date,
         "scan_hour": str(config.scan_hour),
+        "recent_window_minutes": str(config.recent_window_minutes),
         "cluster_key": config.cluster_key,
         "metadata_top_limit": str(config.metadata_top_limit),
         "triage_profile_limit": str(config.triage_profile_limit),
@@ -548,7 +567,10 @@ def build_batch_command(
     progress_path = batch_progress_path(job_id)
     metadata_enabled = config.metadata_top_limit > 0
     metadata_mode = "on" if metadata_enabled else "off"
+    direct_impala_source = settings.query_profile_source == "impala"
     if config.only_running:
+        from_time = to_time = None
+    elif direct_impala_source:
         from_time = to_time = None
     elif config.from_time and config.to_time:
         from_time, to_time = config.from_time, config.to_time
@@ -581,7 +603,6 @@ def build_batch_command(
         "--progress-jsonl",
         str(progress_path),
     ]
-    direct_impala_source = settings.query_profile_source == "impala"
     if direct_impala_source:
         append_web_impala_profile_args(cmd, settings)
     else:
@@ -590,7 +611,7 @@ def build_batch_command(
         cmd.extend(["--source-visibility", settings.source_visibility])
         for source_owner_user in source_owner_users:
             cmd.extend(["--source-owner-user", source_owner_user])
-    if config.only_running:
+    if config.only_running or direct_impala_source:
         cmd.extend(["--recent-window-minutes", str(config.recent_window_minutes)])
     else:
         cmd.extend(["--from-time", str(from_time), "--to-time", str(to_time)])

@@ -365,8 +365,9 @@ def test_e2e_diagnose_controls_preserve_cluster_and_scan_target(tmp_path, page):
 
         select_diagnosis_workflow(page, "finished")
         assert page.locator("#batch-form").get_attribute("action") == "/batch/run"
-        assert page.locator("#scan_date").is_visible()
-        assert page.locator("#scan_hour").is_visible()
+        assert not page.locator("#scan_date").is_visible()
+        assert not page.locator("#scan_hour").is_visible()
+        assert page.locator("#recent_window_minutes").is_visible()
 
 
 def test_e2e_optimizer_scope_guidance_is_secondary(tmp_path, page):
