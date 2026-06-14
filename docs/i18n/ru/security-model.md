@@ -31,11 +31,24 @@ raw metadata, raw provider JSON, local paths, subprocess output, credentials,
 Kerberos ticket contents, model names, runtime internals или raw artifact
 filenames. Isolated owner-only selected-case source surface - узкое browser
 исключение для authorized raw SQL source и должна следовать canonical
-safety-contract. Shared/non-local `owner_raw` должен брать raw authorization
-из authenticated per-request viewer identity, например `viewer_identity_header`
-за trusted proxy; collection credential/keytab owner set не являются viewer
-authorization. Isolated owner-raw source surface остается за kill switch и
+safety-contract. Isolated owner-raw source surface остается за kill switch и
 пишет только reason-coded raw-free audit lines.
+
+## Owner Raw Shared Access
+
+Shared/non-local `owner_raw` использует один application contract:
+
+```text
+trusted auth front door -> exactly one normalized viewer header -> Query Doctor owner check
+```
+
+OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP/AD, MFA, session, logout, token и
+group/RBAC handling остаются на trusted ingress/proxy/front door. Query Doctor
+не реализует эти auth-механизмы нативно для owner-raw access. Он принимает
+только уже authenticated и already normalized simple owner value из
+`viewer_identity_header`, а затем сравнивает его с `query.user` выбранного
+case. Collection credential, web process account и keytab owner set не
+являются viewer authorization и не могут разрешать raw reveal.
 
 ## Reporting
 

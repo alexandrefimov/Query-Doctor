@@ -1,6 +1,6 @@
 # Справочник конфигурации
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-06-14
 
 Язык: [English](../../configuration.md) | Русский
 
@@ -54,6 +54,39 @@ environment variables или local env files, описанных в
   из `QD_SOURCE_OWNER_USER`, Kerberos principal или simple principals в
   `QD_KEYTAB`. Keytab users сортируются по алфавиту, первый становится
   Username default.
+- `viewer_identity_header` для shared/non-local `owner_raw` deployments behind
+  trusted auth front door. Front door authenticates request, strips inbound
+  copies и выставляет ровно один normalized simple owner value; Query Doctor
+  использует header только как C2 viewer identity для owner check.
+- `owner_raw_source_enabled`; kill switch для isolated owner-only original
+  source page/link. Он не должен тихо менять collection owner filters или
+  optimizer policy.
+
+## Owner Raw и D3 viewer header
+
+Для local-first `owner_raw` Query Doctor может намеренно сопоставлять
+collectable owner users с локальным viewer. Для shared/non-local D3 это
+запрещено: raw reveal должен зависеть от authenticated human viewer, а не от
+collection credential, web process account или keytab owner set.
+
+D3 поддерживает один application contract:
+
+```text
+trusted auth front door -> exactly one normalized viewer header -> Query Doctor owner check
+```
+
+OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP/AD, MFA, session, logout, token и
+group/RBAC handling должны завершаться на ingress/proxy/front door. Query
+Doctor не реализует native auth modes для owner-raw access и не принимает raw
+identity-provider tokens. Он читает только configured `viewer_identity_header`
+с already normalized simple owner value и сравнивает его с `query.user`
+выбранного case. Missing, duplicate, invalid, UPN/email-style,
+distinguished-name, group/role-like, opaque-subject, display-name,
+comma-separated, service-principal и host-principal values должны fail-closed
+для raw source access.
+
+Канонический deployment checklist находится в
+[owner-raw-d3-deployment.md](../../owner-raw-d3-deployment.md).
 
 ## CM env files
 

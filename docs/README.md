@@ -6,8 +6,9 @@ Language: English | [Russian](i18n/ru/README.md)
 
 This directory contains the current Query Doctor documentation and supporting
 reference material. English is the canonical language for public documentation.
-Russian copies are best-effort companion translations; if they conflict with
-the English source, the English document wins.
+Russian pages are selective user/operator companion translations, not a
+complete mirror of every internal or agent-facing document; if they conflict
+with the English source, the English document wins.
 
 ## Hard Rules Summary
 

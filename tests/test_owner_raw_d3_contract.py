@@ -118,6 +118,32 @@ def test_owner_raw_d3_doc_pins_single_front_door_contract():
     assert "Do not add native OIDC, SAML, SPNEGO" in agents_text
 
 
+def test_owner_raw_d3_russian_companions_pin_selective_i18n_and_contract():
+    ru_index = (REPO_DIR / "docs" / "i18n" / "ru" / "README.md").read_text(encoding="utf-8")
+    ru_config = (REPO_DIR / "docs" / "i18n" / "ru" / "configuration.md").read_text(encoding="utf-8")
+    ru_security = (REPO_DIR / "docs" / "i18n" / "ru" / "security-model.md").read_text(
+        encoding="utf-8"
+    )
+    ru_safety = (REPO_DIR / "docs" / "i18n" / "ru" / "safety-contract.md").read_text(
+        encoding="utf-8"
+    )
+    ru_handoff = (REPO_DIR / "docs" / "i18n" / "ru" / "codex-handoff.md").read_text(
+        encoding="utf-8"
+    )
+    normalized = " ".join(
+        "\n".join([ru_index, ru_config, ru_security, ru_safety, ru_handoff]).split()
+    )
+
+    assert "не полное зеркало всего дерева документации" in ru_index
+    assert "user-facing и operator-facing документы" in ru_index
+    assert "Owner Raw D3 Deployment Contract" in ru_index
+    assert "trusted auth front door -> exactly one normalized viewer header" in normalized
+    assert "ровно один normalized simple owner value" in normalized
+    assert "Query Doctor не реализует native auth modes" in normalized
+    assert "native OIDC, SAML, SPNEGO" in normalized
+    assert "Collection credential/keytab owner set не должен авторизовать raw reveal" in normalized
+
+
 @pytest.mark.parametrize(
     ("headers", "source_status", "source_allowed", "detail_link_allowed"),
     (

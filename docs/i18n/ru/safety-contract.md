@@ -224,14 +224,19 @@ production profile text.
   viewer mode/source и switch state. Audit lines не должны содержать raw SQL,
   query ids, case ids, query users, local paths, header values, secrets, raw
   artifact filenames, model names или runtime internals.
-- Shared/D3 web deployments могут передавать authenticated viewer identity
-  через `viewer_identity_header` только когда Query Doctor стоит за trusted
-  auth proxy или ingress, который аутентифицирует request и удаляет входящие
-  копии этого header перед тем, как выставить его сам. Missing, invalid или
-  service/host-principal header values считаются unauthenticated и должны
-  fail-closed для raw source access. Header задает только C2 viewer identity;
-  он не должен расширять C1 collection credentials или owner-user collection
-  scope.
+- Shared/D3 web deployments используют один Query Doctor application contract:
+  trusted auth front door authenticates request, strips inbound copies of
+  `viewer_identity_header`, sets exactly one normalized simple owner value, and
+  Query Doctor then compares that C2 viewer value with selected case
+  `query.user`. OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP/AD, MFA, session,
+  logout, token, group и RBAC handling должны оставаться на trusted front door;
+  Query Doctor не должен реализовывать native owner-raw auth variants или
+  принимать raw identity-provider tokens. Missing, duplicate, invalid,
+  UPN/email-style, distinguished-name, group/role-like, opaque-subject,
+  whitespace/display-name, comma-separated, service-principal или
+  host-principal header values считаются unauthenticated и должны fail-closed
+  для raw source access. Header задает только C2 viewer identity; он не должен
+  расширять C1 collection credentials или owner-user collection scope.
 
 ## Future Cluster Doctor
 

@@ -87,9 +87,12 @@ details, local output paths и планы следующей сессии дол
   Isolated owner-only selected-case source surface - узкое browser-исключение,
   регулируемое canonical safety-contract.
 - Shared/non-local `owner_raw` должен gate-ить raw source access через
-  authenticated per-request viewer identity, например `viewer_identity_header`
-  за trusted proxy. Collection credential/keytab owner set не должен
-  авторизовать raw reveal.
+  authenticated per-request viewer identity из `viewer_identity_header` за
+  trusted auth front door, который удаляет входящие копии header и выставляет
+  ровно одно normalized simple owner value. Query Doctor не должен добавлять
+  native OIDC, SAML, SPNEGO, Kerberos, LDAP, password, MFA, session, group,
+  RBAC или token auth variants для owner-raw access. Collection
+  credential/keytab owner set не должен авторизовать raw reveal.
 - Isolated owner-raw source surface должна оставаться за kill switch и
   reason-coded raw-free audit line; audit не должен включать raw SQL, query
   ids, case ids, users, paths, header values или secrets.
