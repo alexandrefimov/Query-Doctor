@@ -29,6 +29,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   verifies aggregate metadata collection through the web job path, and checks a
   Details page without printing raw profiles, SQL, metadata, endpoints, local
   paths, or subprocess output.
+- Added a local `scripts/query-doctor-web-known-query-smoke` wrapper that
+  starts the local web UI, submits one explicit Known Query ID from a local file
+  or argument, waits for the web job, and checks Details plus the deterministic
+  Python report route without printing the Query ID, raw profiles, SQL,
+  metadata, endpoints, local paths, or subprocess output.
 - Owner-raw D3 deployment guidance now separates application-side pre-proxy
   readiness from the required live front-door validation gate, and the roadmap
   tracks the remaining real-proxy proof point without promoting general shared

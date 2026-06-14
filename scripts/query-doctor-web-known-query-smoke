@@ -1,0 +1,560 @@
+#!/usr/bin/env python3
+"""Smoke-check Known Query ID analysis through the local web wrapper."""
+
+from __future__ import annotations
+
+import argparse
+import http.client
+import json
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote, urlencode, urlsplit
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_WEB_WRAPPER = ROOT_DIR / "scripts" / "query-doctor-web-local"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_TIMEOUT_SEC = 180.0
+DEFAULT_POLL_INTERVAL_SEC = 0.5
+JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+IMPALA_QUERY_ID_RE = re.compile(r"\b[0-9a-fA-F]{8,32}:[0-9a-fA-F]{8,32}\b")
+LOCAL_PATH_RE = re.compile(r"(?<!\w)/(?:Users|home|private|tmp|var|mnt|etc)/[^\s<>'\"]*")
+UNSAFE_QUERY_ID_CHARS_RE = re.compile(r"[\s/\\?#%]")
+FORBIDDEN_DETAILS_MARKERS = {
+    "local_tmp_path": "/tmp/",
+    "case_dir": "case_dir",
+    "subprocess_output": "subprocess output",
+}
+
+
+class SmokeError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class HttpResponse:
+    status: int
+    headers: dict[str, str]
+    body: str
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run a local-web Known Query ID smoke. The script starts "
+            "scripts/query-doctor-web-local --no-llm, submits the normal "
+            "Known Query ID form, waits for the web job, and checks Details "
+            "and the deterministic Python report without printing the Query ID."
+        )
+    )
+    query_source = parser.add_mutually_exclusive_group(required=True)
+    query_source.add_argument(
+        "--query-id",
+        help=(
+            "Explicit Query ID. Prefer --query-id-file for local production smokes "
+            "so the Query ID does not enter shell history or process arguments."
+        ),
+    )
+    query_source.add_argument(
+        "--query-id-file",
+        type=Path,
+        help="Local file containing exactly one Query ID line.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help=(
+            "Local Query Doctor config. Defaults to $QD_CONFIG, then "
+            "~/.qdcreds/query-doctor-config.json."
+        ),
+    )
+    parser.add_argument(
+        "--cluster",
+        "--config-cluster",
+        dest="cluster",
+        help=(
+            "Cluster id from config clusters[]. Required only when multiple "
+            "direct-Impala clusters exist and no non-direct default is intended."
+        ),
+    )
+    parser.add_argument(
+        "--web-wrapper",
+        type=Path,
+        default=DEFAULT_WEB_WRAPPER,
+        help="Local web wrapper to start. Default: scripts/query-doctor-web-local.",
+    )
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help="Local bind host. Default: %(default)s"
+    )
+    parser.add_argument(
+        "--port",
+        type=positive_int,
+        help="Local bind port. Defaults to a free ephemeral localhost port.",
+    )
+    parser.add_argument(
+        "--require-metadata",
+        action="store_true",
+        help="Fail unless the Known Query ID result renders collected metadata state.",
+    )
+    parser.add_argument(
+        "--skip-report-check",
+        action="store_true",
+        help="Skip the deterministic Python report route check.",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=positive_float,
+        default=DEFAULT_TIMEOUT_SEC,
+        help="Overall startup/job timeout in seconds. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--poll-interval-sec",
+        type=positive_float,
+        default=DEFAULT_POLL_INTERVAL_SEC,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate config/query inputs and print a raw-free run summary without starting web.",
+    )
+    return parser.parse_args(argv)
+
+
+def default_config_path() -> Path:
+    if os.environ.get("QD_CONFIG"):
+        return Path(os.environ["QD_CONFIG"])
+    creds_dir = Path(os.environ.get("QD_CREDS_DIR", str(Path.home() / ".qdcreds")))
+    for candidate in (
+        creds_dir / "query-doctor-config.json",
+        ROOT_DIR / "query-doctor-config.json",
+        ROOT_DIR / ".query-doctor-cm.local.json",
+    ):
+        if candidate.is_file():
+            return candidate
+    return creds_dir / "query-doctor-config.json"
+
+
+def load_json_config(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SmokeError("Config file was not found. Set --config or QD_CONFIG.") from exc
+    except json.JSONDecodeError as exc:
+        raise SmokeError("Config file is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise SmokeError("Config root must be a JSON object.")
+    return payload
+
+
+def is_direct_impala_config(values: dict[str, Any]) -> bool:
+    source = str(values.get("query_profile_source") or values.get("cluster_type") or "").strip()
+    if source:
+        return source.lower() == "impala"
+    hosts = values.get("impala_profile_hosts")
+    return isinstance(hosts, list) and bool(hosts)
+
+
+def safe_cluster_label(cluster: dict[str, Any]) -> str:
+    cluster_id = str(cluster.get("id") or "<missing-id>").strip() or "<missing-id>"
+    label = str(cluster.get("label") or "").strip()
+    return f"{cluster_id} ({label})" if label else cluster_id
+
+
+def select_cluster_id(config: dict[str, Any], requested: str | None) -> str | None:
+    clusters = [cluster for cluster in config.get("clusters") or [] if isinstance(cluster, dict)]
+    direct_clusters = [cluster for cluster in clusters if is_direct_impala_config(cluster)]
+    if requested:
+        matching = [cluster for cluster in clusters if str(cluster.get("id") or "") == requested]
+        if not matching:
+            available = (
+                ", ".join(safe_cluster_label(cluster) for cluster in direct_clusters) or "none"
+            )
+            raise SmokeError(
+                f"Cluster id {requested!r} was not found. Direct-Impala clusters: {available}."
+            )
+        return requested
+    if direct_clusters:
+        if len(direct_clusters) == 1:
+            selected = str(direct_clusters[0].get("id") or "").strip()
+            if not selected:
+                raise SmokeError("The only direct-Impala cluster is missing an id.")
+            return selected
+        available = "\n".join(f"  - {safe_cluster_label(cluster)}" for cluster in direct_clusters)
+        raise SmokeError(
+            "Multiple direct-Impala clusters are configured; choose one with --cluster:\n"
+            + available
+        )
+    if clusters:
+        first_cluster_id = str(clusters[0].get("id") or "").strip()
+        return first_cluster_id or None
+    return None
+
+
+def read_query_id(args: argparse.Namespace) -> str:
+    if args.query_id_file is not None:
+        try:
+            lines = args.query_id_file.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            raise SmokeError("Query ID file could not be read.") from exc
+        values = [line.strip() for line in lines if line.strip()]
+        if len(values) != 1:
+            raise SmokeError("Query ID file must contain exactly one non-empty line.")
+        return validate_query_id_input(values[0])
+    return validate_query_id_input(str(args.query_id or ""))
+
+
+def validate_query_id_input(value: str) -> str:
+    query_id = value.strip()
+    if not query_id:
+        raise SmokeError("Query ID is required.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in query_id):
+        raise SmokeError("Query ID contains invalid control characters.")
+    if UNSAFE_QUERY_ID_CHARS_RE.search(query_id):
+        raise SmokeError("Query ID contains unsupported path or whitespace characters.")
+    return query_id
+
+
+def free_local_port(host: str) -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((host, 0))
+        return int(sock.getsockname()[1])
+
+
+def request(
+    host: str,
+    port: int,
+    method: str,
+    path: str,
+    *,
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> HttpResponse:
+    connection = http.client.HTTPConnection(host, port, timeout=timeout_sec)
+    try:
+        connection.request(method, path, body=body, headers=headers or {})
+        response = connection.getresponse()
+        text = response.read().decode("utf-8", errors="replace")
+        return HttpResponse(
+            status=response.status,
+            headers={name.lower(): value for name, value in response.getheaders()},
+            body=text,
+        )
+    finally:
+        connection.close()
+
+
+def start_web(
+    args: argparse.Namespace,
+    *,
+    config_path: Path,
+    port: int,
+) -> subprocess.Popen[str]:
+    wrapper = args.web_wrapper.expanduser()
+    if not wrapper.is_file():
+        raise SmokeError("Local web wrapper was not found.")
+    env = dict(os.environ)
+    env["QD_CONFIG"] = str(config_path)
+    command = [
+        str(wrapper),
+        "--host",
+        args.host,
+        "--port",
+        str(port),
+        "--no-llm",
+    ]
+    return subprocess.Popen(
+        command,
+        cwd=ROOT_DIR,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=os.name == "posix",
+    )
+
+
+def stop_web(process: subprocess.Popen[str] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
+        process.wait(timeout=5)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        if process.poll() is None:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+            process.wait(timeout=5)
+
+
+def wait_for_web_ready(
+    process: subprocess.Popen[str],
+    *,
+    host: str,
+    port: int,
+    deadline: float,
+    poll_interval_sec: float,
+) -> None:
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise SmokeError(
+                "Local web server exited before becoming ready. Check local credentials, "
+                "Kerberos, config, and port settings."
+            )
+        try:
+            response = request(host, port, "GET", "/", timeout_sec=2.0)
+        except OSError:
+            time.sleep(poll_interval_sec)
+            continue
+        if response.status == 200:
+            return
+        time.sleep(poll_interval_sec)
+    raise SmokeError(
+        "Local web server did not become ready before timeout. Check local credentials, "
+        "Kerberos, config, and port settings."
+    )
+
+
+def analyze_form(query_id: str, cluster_id: str | None) -> dict[str, str]:
+    form = {"query_id": query_id}
+    if cluster_id is not None:
+        form["cluster_key"] = cluster_id
+    return form
+
+
+def start_known_query_scan(
+    args: argparse.Namespace,
+    *,
+    query_id: str,
+    cluster_id: str | None,
+    port: int,
+) -> str:
+    payload = urlencode(analyze_form(query_id, cluster_id)).encode("utf-8")
+    response = request(
+        args.host,
+        port,
+        "POST",
+        "/analyze",
+        body=payload,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Length": str(len(payload)),
+        },
+    )
+    if response.status != 303:
+        raise SmokeError(
+            "Known Query ID analysis did not start. Check selected cluster settings, "
+            "credentials, Kerberos ticket, and the retained profile window."
+        )
+    location = response.headers.get("location", "")
+    path = urlsplit(location).path
+    prefix = "/jobs/"
+    if not path.startswith(prefix):
+        raise SmokeError("Known Query ID analysis returned an unexpected job redirect.")
+    job_id = path[len(prefix) :]
+    if not JOB_ID_RE.fullmatch(job_id):
+        raise SmokeError("Known Query ID analysis returned an invalid job id.")
+    return job_id
+
+
+def safe_error_snippet(value: object) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    text = IMPALA_QUERY_ID_RE.sub("<query-id hidden>", text)
+    lower = text.lower()
+    if "failed with exit code" in lower and "captured subprocess output is not shown" in lower:
+        return "Collector subprocess failed; captured output was hidden by the web safety guard."
+    unsafe_markers = (
+        "file:",
+        "http://",
+        "https://",
+        "case_dir",
+        "raw profile",
+        "raw sql",
+    )
+    if any(marker in lower for marker in unsafe_markers) or LOCAL_PATH_RE.search(text):
+        return ""
+    if "\\" in text:
+        return ""
+    return text[:240]
+
+
+def poll_job(
+    args: argparse.Namespace,
+    *,
+    job_id: str,
+    port: int,
+    deadline: float,
+) -> dict[str, Any]:
+    status_path = f"/jobs/{job_id}/status"
+    while time.monotonic() < deadline:
+        response = request(args.host, port, "GET", status_path, timeout_sec=5.0)
+        if response.status != 200:
+            raise SmokeError("Web job status endpoint returned an unexpected status.")
+        try:
+            payload = json.loads(response.body)
+        except json.JSONDecodeError as exc:
+            raise SmokeError("Web job status endpoint returned invalid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise SmokeError("Web job status payload is invalid.")
+        status = str(payload.get("status") or "")
+        if status == "ok":
+            return payload
+        if status in {"failed", "cancelled"}:
+            detail = safe_error_snippet(payload.get("error"))
+            suffix = f" Safe error: {detail}" if detail else ""
+            raise SmokeError(f"Known Query ID web job failed or was cancelled.{suffix}")
+        time.sleep(args.poll_interval_sec)
+    raise SmokeError("Known Query ID web job did not finish before timeout.")
+
+
+def check_job_result(payload: dict[str, Any], *, require_metadata: bool) -> None:
+    result_html = str(payload.get("result_html") or "")
+    lower = result_html.lower()
+    if "known query id analysis" not in lower:
+        raise SmokeError("Known Query ID job did not render the analysis result.")
+    if "case_dir" in lower or "/tmp/" in result_html:
+        raise SmokeError("Known Query ID job result exposed forbidden browser marker(s).")
+    if require_metadata and ("metadata" not in lower or "collected" not in lower):
+        raise SmokeError("Known Query ID job did not render collected metadata state.")
+
+
+def forbidden_markers_in_html(body: str) -> list[str]:
+    lower_body = body.lower()
+    return [
+        name for name, marker in FORBIDDEN_DETAILS_MARKERS.items() if marker.lower() in lower_body
+    ]
+
+
+def check_details_page(
+    args: argparse.Namespace,
+    *,
+    query_id: str,
+    port: int,
+) -> None:
+    path = f"/query/details/{quote(query_id, safe='')}"
+    response = request(args.host, port, "GET", path, timeout_sec=10.0)
+    if response.status != 200:
+        raise SmokeError("Known Query ID Details page returned an unexpected status.")
+    body = response.body
+    lower = body.lower()
+    leaked = forbidden_markers_in_html(body)
+    if leaked:
+        raise SmokeError("Known Query ID Details exposed forbidden marker(s): " + ", ".join(leaked))
+    if "known query id details" not in lower:
+        raise SmokeError("Known Query ID Details page did not render the expected view.")
+    if args.require_metadata and ("metadata" not in lower or "collected" not in lower):
+        raise SmokeError("Known Query ID Details did not show the collected metadata state.")
+
+
+def check_report_page(
+    args: argparse.Namespace,
+    *,
+    query_id: str,
+    port: int,
+) -> None:
+    path = f"/query/details/{quote(query_id, safe='')}/python-report"
+    response = request(args.host, port, "GET", path, timeout_sec=10.0)
+    if response.status != 200:
+        raise SmokeError("Known Query ID Python report page returned an unexpected status.")
+    body = response.body
+    lower = body.lower()
+    leaked = forbidden_markers_in_html(body)
+    if leaked:
+        raise SmokeError(
+            "Known Query ID Python report exposed forbidden marker(s): " + ", ".join(leaked)
+        )
+    if "validated specific query report" not in lower and "query doctor report" not in lower:
+        raise SmokeError("Known Query ID Python report page did not render the expected view.")
+
+
+def print_dry_run(args: argparse.Namespace, *, cluster_id: str | None) -> None:
+    print("[web-known-query-smoke] dry_run=ok")
+    print(
+        "[web-known-query-smoke] cluster="
+        + ("configured default cluster" if cluster_id is None else "selected configured cluster")
+    )
+    print(
+        "[web-known-query-smoke] query_id=provided "
+        f"require_metadata={'true' if args.require_metadata else 'false'} "
+        f"report_check={'false' if args.skip_report_check else 'true'}"
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    config_path = (args.config or default_config_path()).expanduser()
+    process: subprocess.Popen[str] | None = None
+    try:
+        query_id = read_query_id(args)
+        config = load_json_config(config_path)
+        cluster_id = select_cluster_id(config, args.cluster)
+        if args.dry_run:
+            print_dry_run(args, cluster_id=cluster_id)
+            return 0
+        port = args.port or free_local_port(args.host)
+        deadline = time.monotonic() + args.timeout_sec
+        process = start_web(args, config_path=config_path, port=port)
+        wait_for_web_ready(
+            process,
+            host=args.host,
+            port=port,
+            deadline=deadline,
+            poll_interval_sec=args.poll_interval_sec,
+        )
+        print("[web-known-query-smoke] web=ready", flush=True)
+        job_id = start_known_query_scan(args, query_id=query_id, cluster_id=cluster_id, port=port)
+        payload = poll_job(args, job_id=job_id, port=port, deadline=deadline)
+        check_job_result(payload, require_metadata=args.require_metadata)
+        print("[web-known-query-smoke] analysis=ok", flush=True)
+        check_details_page(args, query_id=query_id, port=port)
+        print("[web-known-query-smoke] details=ok", flush=True)
+        if not args.skip_report_check:
+            check_report_page(args, query_id=query_id, port=port)
+            print("[web-known-query-smoke] python_report=ok", flush=True)
+        print("[web-known-query-smoke] ok", flush=True)
+        return 0
+    except SmokeError as exc:
+        print(f"[web-known-query-smoke] {exc}", file=sys.stderr)
+        return 2
+    finally:
+        stop_web(process)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
