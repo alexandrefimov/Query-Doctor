@@ -37,9 +37,12 @@ from query_doctor.web.models import (
     WebClusterConfig,
     WebSettings,
 )
+from query_doctor.web.owner_raw_policy import (
+    authenticated_viewer_identity_configured_for_policy,
+    owner_raw_nonlocal_bind_requires_authenticated_viewer,
+)
 from query_doctor.web.public_demo import default_public_demo_summary_path
 from query_doctor.web.viewer_identity import (
-    VIEWER_IDENTITY_AUTHENTICATED,
     local_first_viewer_identity,
     normalize_viewer_identity_header,
     unauthenticated_viewer_identity,
@@ -93,28 +96,26 @@ def settings_include_owner_raw_source_visibility(settings: WebSettings) -> bool:
 
 
 def viewer_identity_has_authenticated_raw_subjects(settings: WebSettings) -> bool:
-    identity = settings.viewer_identity
-    return (
-        identity.mode == VIEWER_IDENTITY_AUTHENTICATED
-        and bool(identity.viewer_user)
-        and bool(identity.viewer_raw_subjects)
+    return authenticated_viewer_identity_configured_for_policy(
+        settings.viewer_identity,
+        viewer_identity_header=None,
     )
 
 
 def authenticated_viewer_identity_configured(settings: WebSettings) -> bool:
-    if settings.viewer_identity_header:
-        return True
-    return viewer_identity_has_authenticated_raw_subjects(settings)
+    return authenticated_viewer_identity_configured_for_policy(
+        settings.viewer_identity,
+        viewer_identity_header=settings.viewer_identity_header,
+    )
 
 
 def validate_owner_raw_nonlocal_bind(settings: WebSettings) -> None:
-    if settings.host in LOCAL_BIND_HOSTS:
-        return
-    if not settings.allow_nonlocal_web_bind:
-        return
-    if not settings_include_owner_raw_source_visibility(settings):
-        return
-    if authenticated_viewer_identity_configured(settings):
+    if not owner_raw_nonlocal_bind_requires_authenticated_viewer(
+        host=settings.host,
+        allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind,
+        source_visibility_owner_raw=settings_include_owner_raw_source_visibility(settings),
+        authenticated_viewer_configured=authenticated_viewer_identity_configured(settings),
+    ):
         return
     raise WebError(
         "Refusing non-local web bind with source_visibility=owner_raw. "

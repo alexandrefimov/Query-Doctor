@@ -24,6 +24,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Added a dev-only owner-raw policy simulator that evaluates the raw source
+  allow/deny matrix over sanitized inputs and emits raw-free reason-code JSON,
+  while the web owner-raw source route and non-local startup guard now share the
+  same policy helper.
 
 ## 0.8.0 - 2026-06-14
 
