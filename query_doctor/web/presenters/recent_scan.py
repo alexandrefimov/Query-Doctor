@@ -6,6 +6,11 @@ from dataclasses import replace
 import re
 from typing import Any
 
+from query_doctor.source_spans import (
+    format_source_line_span,
+    parse_source_coordinate,
+    source_line_span_from_payload,
+)
 from query_doctor.web.action_outcomes import (
     WorkloadOutcomeMetric,
     workload_outcome_summary_text,
@@ -1628,6 +1633,9 @@ def source_locator_group_views(value: Any) -> tuple[RecentScanSourceLocatorView,
             continue
         kind, label = label_info
         coordinate = safe_source_locator_coordinate(item.get("coordinate"))
+        line_span = safe_source_locator_line_span(item.get("line_span"), coordinate=coordinate)
+        if line_span:
+            coordinate = format_source_line_span(line_span)
         detail = safe_source_locator_detail(item.get("detail"))
         key = (label, coordinate, detail)
         if key in seen:
@@ -1639,6 +1647,7 @@ def source_locator_group_views(value: Any) -> tuple[RecentScanSourceLocatorView,
                 label=label,
                 coordinate=coordinate,
                 detail=detail,
+                line_span=(line_span.start_line, line_span.end_line) if line_span else None,
             )
         )
         if len(views) >= 5:
@@ -1653,15 +1662,12 @@ def safe_source_locator_detail(value: Any) -> str:
 
 
 def safe_source_locator_coordinate(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    if not text:
-        return ""
-    if re.fullmatch(r"line [1-9]\d{0,5}", text):
-        return text
-    if re.fullmatch(r"lines [1-9]\d{0,5}-[1-9]\d{0,5}", text):
-        start, end = (int(part) for part in text.removeprefix("lines ").split("-", 1))
-        return text if start <= end else ""
-    return ""
+    span = parse_source_coordinate(value)
+    return format_source_line_span(span) if span else ""
+
+
+def safe_source_locator_line_span(value: Any, *, coordinate: str = ""):
+    return source_line_span_from_payload(value) or parse_source_coordinate(coordinate)
 
 
 def prioritized_query_counter_signals(value: Any) -> list[str]:

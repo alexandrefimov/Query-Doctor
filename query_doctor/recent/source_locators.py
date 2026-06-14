@@ -12,8 +12,15 @@ from query_doctor.optimizer.source_sql import (
 )
 from query_doctor.optimizer.sql import OptimizerSqlError
 from query_doctor.recent.batch_models import CaseResult
-from query_doctor.recent.source_coordinates import sql_source_coordinates
+from query_doctor.recent.source_coordinates import sql_source_line_spans
 from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.source_spans import (
+    SourceLineSpan,
+    format_source_line_span,
+    parse_source_coordinate,
+    source_line_span_from_payload,
+    source_line_span_payload,
+)
 
 SOURCE_LOCATOR_GROUPS = {
     "query_optimization",
@@ -60,11 +67,11 @@ def build_source_locators(
     analysis: dict[str, object] | None,
     *,
     include_source_coordinates: bool = False,
-) -> dict[str, list[dict[str, str]]]:
+) -> dict[str, list[dict[str, object]]]:
     """Build browser-safe locator hints from already trusted structured facts."""
 
     support = case.optimizer_rewrite_support.to_dict() if case.optimizer_rewrite_support else {}
-    coordinates = source_coordinates_for_case(case) if include_source_coordinates else {}
+    coordinates = source_line_spans_for_case(case) if include_source_coordinates else {}
     locators = {
         "query_optimization": query_optimization_locators(
             case, analysis, support, coordinates=coordinates
@@ -80,9 +87,9 @@ def query_optimization_locators(
     analysis: dict[str, object] | None,
     support: dict[str, object],
     *,
-    coordinates: dict[str, str],
-) -> list[dict[str, str]]:
-    locators: list[dict[str, str]] = []
+    coordinates: dict[str, SourceLineSpan],
+) -> list[dict[str, object]]:
+    locators: list[dict[str, object]] = []
     candidate = case.query_optimization_candidate
     if candidate is None or candidate.tier not in {"high", "medium"}:
         return locators
@@ -113,7 +120,7 @@ def query_optimization_locators(
             locator(
                 "sql_join_filter_review",
                 "join and filter placement",
-                coordinate=coordinates.get("sql_join_filter_review", ""),
+                line_span=coordinates.get("sql_join_filter_review"),
             )
         )
     return dedupe_locators(locators, limit=5)
@@ -122,8 +129,8 @@ def query_optimization_locators(
 def stats_refresh_locators(
     case: CaseResult,
     analysis: dict[str, object] | None,
-) -> list[dict[str, str]]:
-    locators: list[dict[str, str]] = []
+) -> list[dict[str, object]]:
+    locators: list[dict[str, object]] = []
     candidate = case.stats_optimization_candidate
     if candidate is None or candidate.tier not in {"high", "medium"}:
         return locators
@@ -153,7 +160,7 @@ def stats_refresh_locators(
     return dedupe_locators(locators, limit=5)
 
 
-def runtime_admission_locators(case: CaseResult) -> list[dict[str, str]]:
+def runtime_admission_locators(case: CaseResult) -> list[dict[str, object]]:
     bottleneck = (
         case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
     )
@@ -186,10 +193,10 @@ def normalized_bottleneck_reasons(bottleneck: dict[str, object]) -> set[str]:
 
 
 def add_sql_shape_locators(
-    locators: list[dict[str, str]],
+    locators: list[dict[str, object]],
     support: dict[str, object],
     *,
-    coordinates: dict[str, str],
+    coordinates: dict[str, SourceLineSpan],
 ) -> None:
     cte_count = positive_int(support.get("cte_count"))
     if cte_count:
@@ -197,7 +204,7 @@ def add_sql_shape_locators(
             locator(
                 "sql_cte_block",
                 f"{cte_count} CTEs",
-                coordinate=coordinates.get("sql_cte_block", ""),
+                line_span=coordinates.get("sql_cte_block"),
             )
         )
     predicate_origin = str(support.get("cte_predicate_origin_status") or "").strip().lower()
@@ -206,7 +213,7 @@ def add_sql_shape_locators(
             locator(
                 "sql_final_select_filter",
                 "predicate near final SELECT",
-                coordinate=coordinates.get("sql_final_select_filter", ""),
+                line_span=coordinates.get("sql_final_select_filter"),
             )
         )
     elif predicate_origin == "downstream_cte_filter":
@@ -214,7 +221,7 @@ def add_sql_shape_locators(
             locator(
                 "sql_downstream_cte_filter",
                 "predicate in downstream CTE",
-                coordinate=coordinates.get("sql_downstream_cte_filter", ""),
+                line_span=coordinates.get("sql_downstream_cte_filter"),
             )
         )
     elif predicate_origin in {"mixed_downstream_filters", "mixed"}:
@@ -222,7 +229,7 @@ def add_sql_shape_locators(
             locator(
                 "sql_mixed_downstream_filters",
                 "mixed downstream filters",
-                coordinate=coordinates.get("sql_mixed_downstream_filters", ""),
+                line_span=coordinates.get("sql_mixed_downstream_filters"),
             )
         )
     union_branches = positive_int(support.get("cte_union_branch_count"))
@@ -231,7 +238,7 @@ def add_sql_shape_locators(
             locator(
                 "sql_union_branch",
                 f"{union_branches} UNION branches",
-                coordinate=coordinates.get("sql_union_branch", ""),
+                line_span=coordinates.get("sql_union_branch"),
             )
         )
     derived_count = positive_int(support.get("derived_table_count"))
@@ -240,7 +247,7 @@ def add_sql_shape_locators(
             locator(
                 "sql_derived_table",
                 f"{derived_count} derived tables",
-                coordinate=coordinates.get("sql_derived_table", ""),
+                line_span=coordinates.get("sql_derived_table"),
             )
         )
     derived_origin = str(support.get("derived_predicate_origin_status") or "").strip().lower()
@@ -249,13 +256,13 @@ def add_sql_shape_locators(
             locator(
                 "sql_derived_table",
                 "outer filter on derived table",
-                coordinate=coordinates.get("sql_derived_table", ""),
+                line_span=coordinates.get("sql_derived_table"),
             )
         )
 
 
 def add_operator_locator(
-    locators: list[dict[str, str]],
+    locators: list[dict[str, object]],
     locator_id: str,
     operator: dict[str, object] | None,
 ) -> None:
@@ -264,30 +271,46 @@ def add_operator_locator(
         locators.append(locator(locator_id, detail))
 
 
-def locator(locator_id: str, detail: str = "", *, coordinate: str = "") -> dict[str, str]:
+def locator(
+    locator_id: str,
+    detail: str = "",
+    *,
+    coordinate: str = "",
+    line_span: SourceLineSpan | None = None,
+) -> dict[str, object]:
     if locator_id not in SOURCE_LOCATOR_IDS:
         raise ValueError(f"unknown source locator id: {locator_id}")
     clean_detail = safe_detail(detail)
-    clean_coordinate = safe_coordinate(coordinate)
-    result = {"id": locator_id}
+    clean_line_span = safe_line_span(line_span) or parse_source_coordinate(coordinate)
+    clean_coordinate = (
+        format_source_line_span(clean_line_span) if clean_line_span else safe_coordinate(coordinate)
+    )
+    result: dict[str, object] = {"id": locator_id}
     if clean_coordinate:
         result["coordinate"] = clean_coordinate
+    if clean_line_span:
+        result["line_span"] = source_line_span_payload(clean_line_span)
     if clean_detail:
         result["detail"] = clean_detail
     return result
 
 
 def dedupe_locators(
-    locators: list[dict[str, str]],
+    locators: list[dict[str, object]],
     *,
     limit: int,
-) -> list[dict[str, str]]:
-    deduped: list[dict[str, str]] = []
+) -> list[dict[str, object]]:
+    deduped: list[dict[str, object]] = []
     seen: set[tuple[str, str, str]] = set()
     for item in locators:
-        locator_id = item.get("id", "")
-        coordinate = item.get("coordinate", "")
-        detail = item.get("detail", "")
+        locator_id = str(item.get("id", ""))
+        line_span = source_line_span_from_payload(item.get("line_span"))
+        coordinate = (
+            format_source_line_span(line_span)
+            if line_span
+            else safe_coordinate(item.get("coordinate", ""))
+        )
+        detail = str(item.get("detail", ""))
         if locator_id not in SOURCE_LOCATOR_IDS:
             continue
         key = (locator_id, coordinate, detail)
@@ -298,6 +321,7 @@ def dedupe_locators(
             {
                 "id": locator_id,
                 **({"coordinate": coordinate} if coordinate else {}),
+                **({"line_span": source_line_span_payload(line_span)} if line_span else {}),
                 **({"detail": detail} if detail else {}),
             }
         )
@@ -307,6 +331,13 @@ def dedupe_locators(
 
 
 def source_coordinates_for_case(case: CaseResult) -> dict[str, str]:
+    return {
+        locator_id: format_source_line_span(span)
+        for locator_id, span in source_line_spans_for_case(case).items()
+    }
+
+
+def source_line_spans_for_case(case: CaseResult) -> dict[str, SourceLineSpan]:
     if case.actual_case_dir is None:
         return {}
     try:
@@ -315,7 +346,7 @@ def source_coordinates_for_case(case: CaseResult) -> dict[str, str]:
         return {}
     if source.scope != "read_only_statement":
         return {}
-    return sql_source_coordinates(source.sql)
+    return sql_source_line_spans(source.sql)
 
 
 def first_operator(value: object) -> dict[str, object] | None:
@@ -428,12 +459,11 @@ def safe_detail(value: object) -> str:
 
 
 def safe_coordinate(value: object) -> str:
-    text = str(value or "").strip().lower()
-    if not text:
-        return ""
-    if re.fullmatch(r"line [1-9]\d{0,5}", text):
-        return text
-    if re.fullmatch(r"lines [1-9]\d{0,5}-[1-9]\d{0,5}", text):
-        start, end = (int(part) for part in text.removeprefix("lines ").split("-", 1))
-        return text if start <= end else ""
-    return ""
+    span = parse_source_coordinate(value)
+    return format_source_line_span(span) if span else ""
+
+
+def safe_line_span(value: object) -> SourceLineSpan | None:
+    if isinstance(value, SourceLineSpan):
+        return value
+    return source_line_span_from_payload(value)
