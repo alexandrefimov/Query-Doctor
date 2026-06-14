@@ -246,15 +246,23 @@ git diff --check
 python -m pip install --upgrade build twine
 python -m build
 python -m twine check dist/*
-python scripts/clean_wheel_quickstart_smoke.py --work-dir /tmp/query-doctor-clean-wheel-quickstart
+python scripts/clean_wheel_quickstart_smoke.py \
+  --work-dir /tmp/query-doctor-clean-wheel-quickstart \
+  --replace-work-dir
 python -m venv /tmp/query-doctor-release-wheel-venv
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install --upgrade pip
 /tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
 /tmp/query-doctor-release-wheel-venv/bin/query-doctor-self-test
-python scripts/installed_readme_quickstart_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
+python scripts/installed_readme_quickstart_smoke.py \
+  --bin-dir /tmp/query-doctor-release-wheel-venv/bin \
+  --work-dir /tmp/query-doctor-release-readme-quickstart \
+  --replace-work-dir
 python scripts/installed_web_e2e_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_impala_web_ui_exports_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
-python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
+python scripts/installed_user_paths_smoke.py \
+  --bin-dir /tmp/query-doctor-release-wheel-venv/bin \
+  --work-dir /tmp/query-doctor-release-user-paths \
+  --replace-work-dir
 ```
 
 - Prefer a TestPyPI upload first for the first release or any packaging change.
@@ -264,6 +272,12 @@ python scripts/installed_user_paths_smoke.py --bin-dir /tmp/query-doctor-release
 
 ```bash
 python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple query-doctor==VERSION
+python scripts/index_install_quickstart_smoke.py \
+  --version VERSION \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple \
+  --work-dir /tmp/query-doctor-testpypi-install-smoke \
+  --replace-work-dir
 ```
 
 - Cut a protected release tag matching the package version exactly, for example
@@ -277,6 +291,7 @@ python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-ur
   accepted by PyPI, bump the version for the next attempt.
 - After PyPI upload, install the exact released version from production PyPI in
   a clean virtual environment and smoke the public demo commands plus
+  `scripts/index_install_quickstart_smoke.py` and
   `scripts/installed_user_paths_smoke.py` against that environment.
 
 ## After Release

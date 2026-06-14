@@ -19,6 +19,7 @@ def test_installed_user_paths_smoke_help_documents_installed_bin_contract():
 
     assert result.returncode == 0
     assert "--bin-dir" in result.stdout
+    assert "--replace-work-dir" in result.stdout
     assert "QUERY_DOCTOR_INSTALLED_CLI_BIN" in result.stdout
     assert "installed Query Doctor wheel" in result.stdout
 
@@ -55,6 +56,7 @@ def test_installed_user_paths_smoke_script_covers_public_workflow_families():
     assert "QD_COMMAND_BACKEND" in text
     assert "PYTHONPATH" in text
     assert "CM_" in text
+    assert "prepare_smoke_work_dir" in text
 
 
 def test_release_and_publish_workflows_run_installed_user_paths_smoke():

@@ -23,6 +23,7 @@ def test_installed_web_e2e_smoke_help_documents_real_server_contract() -> None:
     assert result.returncode == 0, result.stderr
     assert "--bin-dir" in result.stdout
     assert "--work-dir" in result.stdout
+    assert "--replace-work-dir" in result.stdout
     assert "--host" in result.stdout
     assert "installed web server" in result.stdout
     assert "one-profile Quickstart" in result.stdout
@@ -48,6 +49,7 @@ def test_installed_web_e2e_smoke_uses_installed_cli_and_real_http_server() -> No
     assert "python_report_action_rendered" in text
     assert "external_services_used" in text
     assert "llm_used" in text
+    assert "prepare_smoke_work_dir" in text
 
 
 def test_installed_user_paths_matrix_runs_installed_web_e2e_smoke() -> None:
