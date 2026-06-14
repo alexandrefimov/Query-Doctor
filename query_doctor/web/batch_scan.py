@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -76,6 +77,7 @@ SCAN_PRESET_VALUES = {SCAN_PRESET_STANDARD, SCAN_PRESET_FREQUENT_SHORT}
 RECENT_SCAN_TIMEZONE = ZoneInfo(DEFAULT_RECENT_SCAN_TIMEZONE)
 RECENT_SCAN_LOOKBACK_DAYS = 2
 RECENT_SCAN_BUCKET_HOURS = 1
+QUERY_TYPE_FILTER_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
 
 
 def default_recent_scan_bucket(
@@ -211,6 +213,7 @@ def parse_batch_run_config(
         if "pool" in form
         else _config_string(local_config, "recent_pool")
     )
+    query_type = parse_query_type_filter(form, local_config)
     collect_cm_events = _config_bool(
         local_config,
         "recent_collect_cm_events",
@@ -267,7 +270,7 @@ def parse_batch_run_config(
         metadata_jobs=metadata_jobs,
         user=user,
         pool=pool,
-        query_type="",
+        query_type=query_type,
         include_failed=True,
         include_running=False,
         collect_cm_events=collect_cm_events,
@@ -346,6 +349,7 @@ def parse_running_run_config(
         ),
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
+    query_type = parse_query_type_filter(form, local_config)
     return BatchRunConfig(
         recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
         cluster_key=cluster_key or "",
@@ -371,7 +375,7 @@ def parse_running_run_config(
             if "pool" in form
             else _config_string(local_config, "recent_pool")
         ),
-        query_type="",
+        query_type=query_type,
         include_failed=False,
         include_running=True,
         only_running=True,
@@ -420,6 +424,20 @@ def _config_string(config_values: dict[str, object], key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def parse_query_type_filter(form: dict[str, list[str]], config_values: dict[str, object]) -> str:
+    raw_value = (
+        first_form_value(form, "query_type")
+        if "query_type" in form
+        else _config_string(config_values, "query_type")
+    )
+    normalized = str(raw_value or "").strip().upper()
+    if not normalized:
+        return ""
+    if QUERY_TYPE_FILTER_RE.fullmatch(normalized) is None:
+        raise WebError("Query type filter must be a short identifier such as QUERY, DML, or DDL.")
+    return normalized
+
+
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
@@ -442,6 +460,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "cm_timeseries_top_limit",
         "user",
         "pool",
+        "query_type",
     ):
         values[name] = first_form_value(form, name)
     if not values.get("parallelism"):
@@ -474,6 +493,7 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "cm_timeseries_top_limit": str(config.cm_timeseries_top_limit),
         "user": config.user,
         "pool": config.pool,
+        "query_type": config.query_type,
     }
 
 

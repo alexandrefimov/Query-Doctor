@@ -32,6 +32,14 @@ handoff, see [release-notes-0.7.0.md](release-notes-0.7.0.md). Historical
   shared/non-local `owner_raw` deployment contract covering trusted ingress
   header stripping, C1/C2 identity separation, kill-switch behavior, raw-free
   audit checks, and the absence of admin, group, role, or delegation bypasses.
+- Web Recent and Running scans now honor the local `query_type` filter and can
+  expose it as a config-enabled Advanced settings field via
+  `web_advanced_filters=["query_type"]`; invalid browser values fail before a
+  subprocess is started.
+- Recent triage scoring now suppresses stats-hygiene-only attention for
+  sub-30-second queries, reducing noise from very short queries with missing
+  table or column stats while leaving longer stats candidates and runtime
+  anomaly scoring unchanged.
 - Owner-raw source access now has a global kill switch
   (`owner_raw_source_enabled=false` or `--disable-owner-raw-source`) and emits a
   request-id correlated safe audit line for every isolated raw source page

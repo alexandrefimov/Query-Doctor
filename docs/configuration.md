@@ -261,7 +261,7 @@ browser.
 | `host` | string | Web bind host. Use `127.0.0.1` for normal local operation. |
 | `port` | positive integer | Web bind port. |
 | `web_advanced_settings_enabled` | boolean | Shows the Diagnose Advanced settings disclosure when set to `true`. Default is hidden. |
-| `web_advanced_filters` | string list | Optional editable filters inside Diagnose Advanced settings. Supported values: `user`, `pool`. When omitted and advanced settings are enabled, both filters are shown. |
+| `web_advanced_filters` | string list | Optional editable filters inside Diagnose Advanced settings. Supported values: `user`, `pool`, `query_type`. When omitted and advanced settings are enabled, `user` and `pool` are shown. |
 
 Non-local binds require the explicit web CLI risk flag and are not the
 supported shared-service deployment model.
@@ -334,12 +334,12 @@ to narrow to longer-running queries.
 
 Recent and Running web workflows do not auto-run LLM reports or optimizer jobs.
 The default Diagnose form keeps source, scan target, time window, duration, and
-required owner filters in the browser. Optional `recent_user` and `recent_pool`
-filters can remain config defaults, or can be made editable by setting
-`web_advanced_settings_enabled=true` and `web_advanced_filters`. Worker-count
-settings such as `recent_parallelism` and `recent_metadata_jobs` are intended
-as local config defaults or explicit request overrides, not normal per-scan
-browser choices.
+required owner filters in the browser. Optional `recent_user`, `recent_pool`,
+and `query_type` filters can remain config defaults, or can be made editable by
+setting `web_advanced_settings_enabled=true` and `web_advanced_filters`.
+Worker-count settings such as `recent_parallelism` and `recent_metadata_jobs`
+are intended as local config defaults or explicit request overrides, not normal
+per-scan browser choices.
 
 ## Manual Profile Inbox
 

@@ -352,7 +352,7 @@ def test_supported_keys_are_accepted(tmp_path):
         "metadata_redact": True,
         "krb5ccname": "FILE:/tmp/krb5cc_query_doctor",
         "web_advanced_settings_enabled": True,
-        "web_advanced_filters": ["pool", "user", "pool"],
+        "web_advanced_filters": ["pool", "query_type", "user", "pool"],
     }
     path = write_config(tmp_path / "config.json", payload)
 
@@ -362,7 +362,7 @@ def test_supported_keys_are_accepted(tmp_path):
     assert loaded["recent_min_duration_sec"] == 1.0
     assert loaded["metadata_auth"] == "kerberos"
     assert loaded["web_advanced_settings_enabled"] is True
-    assert loaded["web_advanced_filters"] == ["pool", "user"]
+    assert loaded["web_advanced_filters"] == ["pool", "query_type", "user"]
     assert loaded["query_profile_source"] == "impala"
     assert loaded["impala_profile_timeout_sec"] == 12
     assert loaded["impala_profile_prefer_json"] is True
@@ -437,7 +437,7 @@ def test_web_advanced_filters_reject_unknown_values(tmp_path):
 
     with pytest.raises(
         config_contract.ConfigError,
-        match="Config field web_advanced_filters only supports: user, pool.",
+        match="Config field web_advanced_filters only supports: user, pool, query_type.",
     ):
         config_contract.load_local_config(path, cwd=tmp_path)
 
