@@ -23,6 +23,107 @@ WEB_CANCELLED_RETURN_CODE = -15
 WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES = 1_048_576
 WEB_SUBPROCESS_READ_CHUNK_BYTES = 8192
 WEB_SUBPROCESS_STOP_GRACE_SEC = 2.0
+SUBPROCESS_OUTPUT_HIDDEN_MESSAGE = (
+    "Captured subprocess output is not shown because it may contain raw "
+    "profile text, SQL, JSON, or credentials."
+)
+SAFE_SUBPROCESS_FAILURE_HINTS: tuple[tuple[str, str], ...] = (
+    (
+        "krb5ccname is required before metadata collection can use kerberos",
+        "Recognized safe failure reason: metadata Kerberos cache is not configured. "
+        "Configure a valid Kerberos ticket cache or disable metadata collection.",
+    ),
+    (
+        "kerberos ticket cache is missing or expired",
+        "Recognized safe failure reason: metadata Kerberos ticket is missing or expired. "
+        "Renew the Kerberos ticket or disable metadata collection.",
+    ),
+    (
+        "kerberos ticket preflight could not run because klist is not available",
+        "Recognized safe failure reason: Kerberos klist is not available. "
+        "Install Kerberos client tools or disable metadata collection.",
+    ),
+    (
+        "kerberos ticket preflight timed out before metadata collection started",
+        "Recognized safe failure reason: Kerberos ticket preflight timed out. "
+        "Check local Kerberos responsiveness or disable metadata collection.",
+    ),
+    (
+        "kerberos ticket preflight could not inspect the ticket cache",
+        "Recognized safe failure reason: Kerberos ticket cache could not be inspected. "
+        "Check local Kerberos setup or disable metadata collection.",
+    ),
+    (
+        "metadata impala-shell is not available",
+        "Recognized safe failure reason: metadata impala-shell is not available. "
+        "Fix metadata_impala_shell or disable metadata collection.",
+    ),
+    (
+        "impala-shell executable is not available",
+        "Recognized safe failure reason: metadata impala-shell is not available. "
+        "Fix metadata_impala_shell or disable metadata collection.",
+    ),
+    (
+        "metadata collection is not configured",
+        "Recognized safe failure reason: metadata collection is not configured. "
+        "Add metadata coordinator and impala-shell settings or disable metadata collection.",
+    ),
+    (
+        "impala query discovery requires --impala-profile-host or local config impala_profile_hosts",
+        "Recognized safe failure reason: direct Impala discovery has no configured impalad host. "
+        "Select or fix a direct-Impala cluster with impala_profile_hosts.",
+    ),
+    (
+        "cm auth env is not set in this execution environment",
+        "Recognized safe failure reason: Cloudera Manager credentials are not available. "
+        "Start the web server with CM credentials, or select a direct-Impala cluster.",
+    ),
+    (
+        "missing --cm-url",
+        "Recognized safe failure reason: Cloudera Manager URL is not configured. "
+        "Select or fix a configured CM cluster.",
+    ),
+    (
+        "missing --cluster",
+        "Recognized safe failure reason: Cloudera Manager cluster name is not configured. "
+        "Select or fix a configured CM cluster.",
+    ),
+    (
+        "missing --service",
+        "Recognized safe failure reason: Cloudera Manager Impala service is not configured. "
+        "Select or fix a configured CM cluster.",
+    ),
+    (
+        "--config-cluster requires local config clusters[]",
+        "Recognized safe failure reason: cluster selection requires clusters[] in local config. "
+        "Fix local config or choose a configured cluster.",
+    ),
+    (
+        "was not found in local config clusters[]",
+        "Recognized safe failure reason: selected cluster was not found in local config. "
+        "Choose an existing local config cluster.",
+    ),
+    (
+        "output directory exists and is not empty",
+        "Recognized safe failure reason: batch output directory is not empty. "
+        "Choose a fresh Query Doctor output directory or allow overwrite.",
+    ),
+    (
+        "--out must point to a dedicated batch directory",
+        "Recognized safe failure reason: batch output directory failed safety validation. "
+        "Use a dedicated query-doctor-* directory under the system temp directory.",
+    ),
+    (
+        "--out path is too shallow",
+        "Recognized safe failure reason: batch output directory failed safety validation. "
+        "Use a dedicated query-doctor-* directory under the system temp directory.",
+    ),
+    (
+        "--out directory name must start with query-doctor-",
+        "Recognized safe failure reason: batch output directory failed safety validation. "
+        "Use a dedicated query-doctor-* directory under the system temp directory.",
+    ),
+)
 
 
 def run_subprocess(
@@ -285,16 +386,34 @@ def preflight_web_metadata_batch(
 
 def subprocess_failure_message(stage: str, completed: subprocess.CompletedProcess[str]) -> str:
     message = (
-        f"{stage} failed with exit code {completed.returncode}. "
-        "Captured subprocess output is not shown because it may contain raw "
-        "profile text, SQL, JSON, or credentials."
+        f"{stage} failed with exit code {completed.returncode}. {SUBPROCESS_OUTPUT_HIDDEN_MESSAGE}"
     )
+    safe_hint = safe_subprocess_failure_hint(completed)
+    if safe_hint:
+        message += f" {safe_hint}"
     if completed.returncode == 2:
         message += (
             " Exit code 2 usually indicates command-line argument validation or "
             "local configuration validation failed."
         )
     return message
+
+
+def safe_subprocess_failure_hint(completed: subprocess.CompletedProcess[str]) -> str | None:
+    output = safe_subprocess_failure_search_text(completed)
+    if not output:
+        return None
+    for pattern, hint in SAFE_SUBPROCESS_FAILURE_HINTS:
+        if pattern in output:
+            return hint
+    return None
+
+
+def safe_subprocess_failure_search_text(completed: subprocess.CompletedProcess[str]) -> str:
+    combined = "\n".join(
+        (bound_output_value(completed.stdout), bound_output_value(completed.stderr))
+    )
+    return " ".join(combined.casefold().split())
 
 
 def has_cm_credentials(

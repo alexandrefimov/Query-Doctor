@@ -10206,6 +10206,56 @@ def test_web_batch_job_failure_hides_raw_subprocess_output(tmp_path):
     assert "raw json" not in captured["body"]
 
 
+def test_web_batch_job_failure_shows_safe_subprocess_hint(tmp_path):
+    module = load_web_module()
+    settings = module.WebSettings(config=tmp_path / "cm-config.json", repo_dir=REPO_DIR)
+    settings.config.write_text("{}", encoding="utf-8")
+    store = module.WebJobStore()
+
+    def fake_runner(cmd, **kwargs):
+        out_dir = Path(cmd[cmd.index("--out") + 1])
+        progress_path = Path(cmd[cmd.index("--progress-jsonl") + 1])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        progress_path.write_text(
+            json.dumps({"stage": "batch", "status": "failed", "phase": "runtime"}) + "\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(
+            cmd,
+            2,
+            stdout="SELECT secret_column FROM table",
+            stderr=(
+                "[batch] ERROR: Kerberos ticket cache is missing or expired; "
+                "refresh it before metadata collection. FILE:/tmp/krb5cc_secret"
+            ),
+        )
+
+    status, location = module.start_batch_job(
+        {"analysis_depth": ["fast"], "parallelism": ["1"]},
+        settings,
+        store,
+        runner=fake_runner,
+    )
+
+    assert status == 303
+    job_id = job_id_from_location(location)
+    snapshot = store.get(job_id)
+    for _ in range(50):
+        if snapshot is not None and snapshot.status == "failed":
+            break
+        time.sleep(0.01)
+        snapshot = store.get(job_id)
+
+    assert snapshot is not None
+    assert snapshot.status == "failed"
+    payload = json.loads(module.render_job_status_json(snapshot))
+    assert "metadata Kerberos ticket is missing or expired" in payload["error"]
+    assert "Captured subprocess output is not shown" in payload["error"]
+    assert "SELECT" not in payload["error"]
+    assert "secret_column" not in payload["error"]
+    assert "krb5cc_secret" not in payload["error"]
+
+
 def test_web_handler_rejects_missing_query_id_without_calling_analysis():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
@@ -11737,6 +11787,60 @@ def test_subprocess_failure_message_adds_safe_exit_2_hint():
     assert "SELECT" not in message
     assert "secret_column" not in message
     assert "raw json" not in message
+
+
+@pytest.mark.parametrize(
+    ("stderr", "expected"),
+    [
+        (
+            "[batch] ERROR: KRB5CCNAME is required before metadata collection can use Kerberos.",
+            "metadata Kerberos cache is not configured",
+        ),
+        (
+            "[batch] ERROR: Kerberos ticket cache is missing or expired; refresh it before metadata collection.",
+            "metadata Kerberos ticket is missing or expired",
+        ),
+        (
+            "[batch] ERROR: metadata impala-shell is not available: /private/tmp/impala-shell",
+            "metadata impala-shell is not available",
+        ),
+        (
+            "[batch] ERROR: Impala query discovery requires --impala-profile-host or local config impala_profile_hosts.",
+            "direct Impala discovery has no configured impalad host",
+        ),
+        (
+            "[batch] ERROR: CM auth env is not set in this execution environment.",
+            "Cloudera Manager credentials are not available",
+        ),
+        (
+            "[batch] ERROR: --config-cluster 'private-prod' was not found in local config clusters[].",
+            "selected cluster was not found in local config",
+        ),
+        (
+            "[batch] ERROR: --out must point to a dedicated batch directory, not filesystem root",
+            "batch output directory failed safety validation",
+        ),
+    ],
+)
+def test_subprocess_failure_message_adds_safe_allowlisted_hints(stderr, expected):
+    module = load_web_module()
+    message = module.subprocess_failure_message(
+        "Query Doctor recent scan",
+        subprocess.CompletedProcess(
+            [],
+            2,
+            stdout="SELECT secret_column FROM sensitive_table",
+            stderr=stderr,
+        ),
+    )
+
+    assert expected in message
+    assert "Captured subprocess output is not shown" in message
+    assert "SELECT" not in message
+    assert "secret_column" not in message
+    assert "sensitive_table" not in message
+    assert "private-prod" not in message
+    assert "/private/tmp" not in message
 
 
 def test_web_reuses_existing_complete_case_without_collector(tmp_path):
