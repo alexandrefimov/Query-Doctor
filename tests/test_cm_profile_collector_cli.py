@@ -602,7 +602,7 @@ def test_list_recent_queries_selects_data_processing_dml_and_ctas():
         ("drop-query", False, "excluded: admin or metadata statement"),
         ("get-query", False, "excluded: admin or metadata statement"),
         ("show-query", False, "excluded: admin or metadata statement"),
-        ("plain-create", False, "excluded: not analyzable query text"),
+        ("plain-create", False, "excluded: DDL statement"),
     ]
     assert [candidate.sql_verb for candidate in candidates] == [
         "INSERT",

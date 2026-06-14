@@ -37,6 +37,7 @@ CTAS_RE = re.compile(
 )
 ANALYZABLE_SQL_VERBS = {"SELECT", "WITH", "INSERT", "DELETE", "UPSERT"}
 ANALYZABLE_QUERY_TYPES = {"QUERY", "SELECT", "INSERT", "DML"}
+NON_CTAS_DDL_SQL_VERBS = {"CREATE"}
 RUNNING_QUERY_STATUSES = {
     "running",
     "executing",
@@ -194,9 +195,20 @@ def classify_recent_query_candidate(
     if statement:
         if QUERY_DOCTOR_SMOKE_RE.search(statement):
             return False, "excluded: Query Doctor collector smoke statement", sql_verb
+        if is_create_table_as_select(statement):
+            duration_ok, duration_reason = classify_recent_query_duration(
+                summary,
+                min_duration_sec=min_duration_sec,
+                max_duration_sec=max_duration_sec,
+            )
+            if not duration_ok:
+                return False, duration_reason, sql_verb
+            return True, recent_selected_reason(sql_verb, statement), sql_verb
         if sql_verb in ADMIN_SQL_VERBS or ADMIN_SQL_PREFIX_RE.match(normalized_statement):
             return False, "excluded: admin or metadata statement", sql_verb
-        if sql_verb in ANALYZABLE_SQL_VERBS or is_create_table_as_select(statement):
+        if sql_verb in NON_CTAS_DDL_SQL_VERBS:
+            return False, "excluded: DDL statement", sql_verb
+        if sql_verb in ANALYZABLE_SQL_VERBS:
             duration_ok, duration_reason = classify_recent_query_duration(
                 summary,
                 min_duration_sec=min_duration_sec,

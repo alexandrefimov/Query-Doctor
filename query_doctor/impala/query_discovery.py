@@ -145,7 +145,7 @@ def iter_query_entries(payload: Any) -> Iterable[tuple[dict[str, Any], str | Non
             for item in value:
                 if isinstance(item, dict):
                     yield item, default_status
-    for wrapper_key in ("queries", "query_info", "queryInfo", "queryLocations"):
+    for wrapper_key in ("queries", "query_info", "queryInfo"):
         value = payload.get(wrapper_key)
         if isinstance(value, list):
             for item in value:
@@ -157,7 +157,9 @@ def iter_query_entries(payload: Any) -> Iterable[tuple[dict[str, Any], str | Non
 
 def key_is_query_collection(key: str) -> bool:
     normalized = key.lower()
-    return "quer" in normalized and isinstance(key, str)
+    if "location" in normalized:
+        return False
+    return "queries" in normalized or "query_info" in normalized or "queryinfo" in normalized
 
 
 def default_status_for_collection_key(key: str) -> str | None:
