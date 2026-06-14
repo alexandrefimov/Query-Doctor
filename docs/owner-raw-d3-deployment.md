@@ -102,6 +102,91 @@ Query Doctor to bind to LDAP, collect user passwords, or manage login sessions.
 If the site uses LDAP-backed authentication, the proxy or identity provider
 must authenticate the request and emit the same normalized simple owner header.
 
+## Public-Safe Front Door Snippets
+
+These snippets are review patterns, not complete ingress or reverse-proxy
+configuration. Keep real issuer URLs, client ids, client secrets, realm names,
+hostnames, certificate paths, upstream addresses, and cluster selectors out of
+committed docs. Adapt the pattern inside the site's approved front-door
+technology.
+
+The common invariant is:
+
+```text
+reject unauthenticated request
+strip inbound X-Query-Doctor-Viewer
+derive one simple owner value from verified front-door identity
+set exactly one X-Query-Doctor-Viewer upstream header
+deny direct client network access to Query Doctor
+```
+
+Direct access to the Query Doctor web process must be blocked by network
+policy, firewall rules, sidecar policy, or an equivalent deployment control.
+If a browser can reach Query Doctor without passing through the trusted front
+door, the browser can spoof `viewer_identity_header` and the deployment is not
+D3-safe.
+
+### Common Upstream Header Pattern
+
+Use one configured header name and one owner namespace:
+
+```text
+# Pseudocode at the trusted front door after authentication has succeeded.
+strip_request_header("X-Query-Doctor-Viewer")
+viewer = map_authenticated_identity_to_query_owner()
+reject_unless_simple_owner(viewer)
+set_upstream_header("X-Query-Doctor-Viewer", viewer)
+drop_upstream_identity_tokens()
+proxy_to_query_doctor()
+```
+
+`drop_upstream_identity_tokens()` means the front door must not forward raw
+OIDC tokens, SAML assertions, Kerberos tickets, cookies used only for
+front-door login, LDAP bind material, proxy auth blobs, groups, roles, or
+display names as Query Doctor authorization inputs. Query Doctor needs only the
+one normalized owner value.
+
+### OIDC/SSO Claim Mapping Pattern
+
+Prefer a claim that already matches the Impala `query.user` namespace, such as
+an AD-backed `sAMAccountName` claim. If the identity provider does not emit
+that namespace directly, do the mapping at the front door or identity provider,
+not inside Query Doctor:
+
+```text
+# Pseudocode at the trusted front door.
+claims = verified_oidc_or_sso_claims()
+viewer = claims["sAMAccountName"]
+reject_if_missing(viewer)
+reject_unless_simple_owner(viewer)
+strip_request_header("X-Query-Doctor-Viewer")
+set_upstream_header("X-Query-Doctor-Viewer", viewer)
+```
+
+Do not use `sub`, email, UPN, display name, group, role, or tenant-scoped
+opaque ids as the viewer header unless the front door first maps them to the
+same simple owner namespace as `query.user`.
+
+### SPNEGO/Kerberos Principal Mapping Pattern
+
+SPNEGO negotiation belongs at the front door. Query Doctor should receive
+neither tickets nor principals:
+
+```text
+# Pseudocode at the trusted front door.
+principal = authenticated_kerberos_principal()
+reject_if_service_or_host_principal(principal)
+viewer = kerberos_human_primary(principal)
+reject_if_contains_slash_realm_or_at_sign(viewer)
+reject_unless_simple_owner(viewer)
+strip_request_header("X-Query-Doctor-Viewer")
+set_upstream_header("X-Query-Doctor-Viewer", viewer)
+```
+
+For example, the front door may map `analyst_one@EXAMPLE.REALM` to
+`analyst_one`. It must reject service or host principals such as
+`impala/host@EXAMPLE.REALM` or `HTTP/host@EXAMPLE.REALM`.
+
 ## Required Configuration
 
 For shared `owner_raw`, configure all of these:
@@ -151,6 +236,8 @@ viewer as unauthenticated. Raw source access then fails closed.
 
 Before enabling non-local `owner_raw`, verify:
 
+- Direct browser access to the Query Doctor web process is blocked; only the
+  trusted front door can reach the upstream web process.
 - `query-doctor-web` refuses to start without authenticated viewer identity
   configuration.
 - Requests without the viewer header receive no owner-raw source link and no
