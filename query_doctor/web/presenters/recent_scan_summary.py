@@ -42,8 +42,8 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
     parts: list[str] = []
     summaries = summary.get("summaries_inspected")
     if summary.get("cm_summary_safety_cap_hit"):
-        cap = summary.get("cm_summary_safety_cap") or summaries
-        parts.append(f"Query match limit hit: {safe_display_text(cap)}")
+        cap = recent_scan_limit_text(summary) or safe_display_text(summaries)
+        parts.append(f"Partial CM scan: cap {cap}")
     elif summaries is not None:
         parts.append(f"Query summaries inspected: {safe_display_text(summaries)}")
     if summary.get("from_time") or summary.get("to_time"):
@@ -194,7 +194,11 @@ def case_has_spill(case: dict[str, Any]) -> bool:
 
 def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:
     if summary.get("scan_too_broad"):
-        return "This hour has more matching queries than the scan limit. Narrow the filters or choose a smaller hour slice."
+        return (
+            "The CM query summary scan cap was reached before discovery completed. Results are "
+            "a partial bounded analysis of the summaries collected so far; use a smaller Search "
+            "depth or add user, pool, or query type filters for complete coverage."
+        )
     if summary.get("discovery_failed"):
         return "Recent scan discovery failed before case selection. Check CM connectivity and access settings, then run again."
     selected = numeric_count(summary.get("selected_count"))
@@ -208,6 +212,18 @@ def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> st
     if summaries is not None:
         return "No query candidates matched the current scan criteria. Try another hour or changing filters."
     return None
+
+
+def recent_scan_limit_text(summary: dict[str, Any]) -> str:
+    if summary.get("cm_summary_raw_scan_cap_hit"):
+        raw_cap = safe_display_text(summary.get("cm_summary_raw_scan_cap"))
+        if raw_cap and raw_cap.lower() not in {"none", "unknown"}:
+            return raw_cap
+    for key in ("cm_summary_safety_cap", "cm_inspect_limit", "summaries_inspected"):
+        value = safe_display_text(summary.get(key))
+        if value and value.lower() not in {"none", "unknown"}:
+            return value
+    return ""
 
 
 def recent_scan_warning_messages(summary: dict[str, Any]) -> tuple[str, ...]:

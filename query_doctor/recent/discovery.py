@@ -130,7 +130,7 @@ def discover_candidates(
     )
     if raw_scan_cap_hit:
         warnings.append(
-            "CM summary raw scan cap was reached before discovery completed. Narrow the scan window or filters and run again."
+            "CM summary raw scan cap was reached before discovery completed. Continuing with bounded partial candidates; narrow the scan window or filters for complete coverage."
         )
     candidate_limit_hit = matching_candidate_limit_hit(candidates)
     if candidate_limit_hit and not raw_scan_cap_hit:
@@ -140,7 +140,7 @@ def discover_candidates(
         )
     if raw_scan_cap_hit:
         return DiscoveryResult(
-            candidates=[],
+            candidates=candidates,
             warnings=list(warnings),
             duration_filter_mode=duration_filter_mode,
             server_filter_expression=server_filter_expression,

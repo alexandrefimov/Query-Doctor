@@ -10254,11 +10254,13 @@ def test_web_batch_summary_shows_cm_safety_cap_truncation(tmp_path):
     summary_path.write_text(
         json.dumps(
             {
-                "summaries_inspected": 5000,
+                "summaries_inspected": 2656,
                 "duration_filter": ">= 5 sec",
                 "triage_profile_limit": 100,
                 "cm_summary_safety_cap": 5000,
                 "cm_summary_safety_cap_hit": True,
+                "cm_summary_raw_scan_cap": 20000,
+                "cm_summary_raw_scan_cap_hit": True,
                 "scan_too_broad": True,
                 "cases": [],
             }
@@ -10270,14 +10272,15 @@ def test_web_batch_summary_shows_cm_safety_cap_truncation(tmp_path):
         module.WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary_path)
     )
 
-    assert "Query match limit hit: 5000" in body
+    assert "Partial CM scan: cap 20000" in body
     assert "Duration filter: &gt;= 5 sec" not in body
     assert "Analyzer limit: 100" not in body
     assert '<details class="batch-notices" aria-label="Scan notes" open>' in body
     assert "<summary>Scan notes</summary>" in body
-    assert "<strong>Scan stopped</strong>" in body
-    assert "This hour has more matching queries than the scan limit." in body
-    assert "Scan stopped because this hour has more than 5000 matching CM summaries." in body
+    assert "<strong>Partial scan</strong>" in body
+    assert "CM query summary scan cap was reached before discovery completed" in body
+    assert "partial bounded analysis of the summaries collected so far" in body
+    assert "use a smaller Search depth or add user, pool, or query type filters" in body
 
 
 def test_web_batch_summary_shows_safe_cm_events_context(tmp_path):

@@ -21,6 +21,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 
 ## Unreleased
 
+- Web Recent scans now continue with bounded partial analysis when a broad CM
+  discovery hits the raw query-summary cap, while clearly marking the result as
+  partial and showing guidance to reduce Search depth or add user, pool, or
+  query-type filters for complete coverage instead of looking like an ordinary
+  zero-query result.
 - Added `scripts/query-doctor-web-recent-to-known-smoke` to run the local web
   Recent-to-Known Query ID smoke chain in one command. It keeps the selected
   Query ID in a temporary local file, accepts metadata-backed Recent cases with

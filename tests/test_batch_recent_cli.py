@@ -2339,7 +2339,11 @@ def test_batch_recent_raw_scan_cap_marks_discovery_too_broad_even_when_candidate
 
     discovery = module.discover_candidates(config, env=auth_env())
 
-    assert discovery.candidates == []
+    assert len(discovery.candidates) == 20
+    assert sum(1 for candidate in discovery.candidates if candidate.selected) == 0
+    assert {candidate.reason for candidate in discovery.candidates} == {
+        "excluded: admin or metadata statement"
+    }
     assert discovery.summaries_inspected == 20
     assert discovery.scan_too_broad is True
     assert discovery.raw_summary_scan_cap_hit is True
@@ -2355,7 +2359,8 @@ def test_batch_recent_raw_scan_cap_marks_discovery_too_broad_even_when_candidate
     )
     assert summary["cm_summary_raw_scan_cap_hit"] is True
     assert summary["scan_too_broad"] is True
-    assert summary["candidate_reason_counts"] == {}
+    assert summary["candidate_exclusion_count"] == 20
+    assert summary["candidate_reason_counts"] == {"excluded: admin or metadata statement": 20}
 
 
 def test_batch_recent_default_web_filters_do_not_add_hidden_constraints(tmp_path):
@@ -2747,7 +2752,8 @@ def test_batch_recent_discovery_stops_when_cm_window_exceeds_limit(monkeypatch, 
     discovery = module.discover_candidates(config, env=auth_env())
 
     assert calls[-1] == (1000, "19000")
-    assert discovery.candidates == []
+    assert len(discovery.candidates) == 20000
+    assert sum(1 for candidate in discovery.candidates if candidate.selected) == 5000
     assert discovery.summaries_inspected == 20000
     assert discovery.scan_too_broad is True
     assert "CM summary raw scan cap was reached" in discovery.warnings[-1]
@@ -2762,8 +2768,11 @@ def test_batch_recent_discovery_stops_when_cm_window_exceeds_limit(monkeypatch, 
     assert summary["summaries_inspected"] == 20000
     assert summary["scan_too_broad"] is True
     assert summary["cm_summary_safety_cap_hit"] is True
-    assert summary["candidate_exclusion_count"] == 0
-    assert summary["candidate_reason_counts"] == {}
+    assert summary["candidate_exclusion_count"] == 20000
+    assert summary["candidate_reason_counts"] == {
+        "eligible but not selected because recent-select limit was reached": 15000,
+        "selected: SELECT-like user query": 5000,
+    }
 
 
 def test_select_limit_remains_deprecated_alias_for_triage_profile_limit(tmp_path):
