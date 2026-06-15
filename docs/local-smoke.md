@@ -355,8 +355,24 @@ For a table-backed query where metadata collection is expected, add
 For a Recent-to-Known Query ID smoke, run the generic web Recent smoke first,
 write one selected Query ID into an ignored local file without printing it, then
 run `scripts/query-doctor-web-known-query-smoke --require-metadata` against the
-same cluster. Keep the retained summary path, Query ID file, and any selected
-case evidence in local exclude-only notes.
+same cluster. The input helper prefers a fully collected metadata case and
+falls back to partial metadata only when it still has collected table context.
+It prints only aggregate counters, never the Query ID, summary path, or output
+path:
+
+```bash
+scripts/query-doctor-known-query-input-from-summary \
+  --summary <ignored-smoke-output-dir>/batch_summary.json \
+  --out /tmp/query-doctor-known-query-smoke.input
+
+scripts/query-doctor-web-known-query-smoke \
+  --cluster <cluster-id> \
+  --query-id-file /tmp/query-doctor-known-query-smoke.input \
+  --require-metadata
+```
+
+Keep the retained summary path, Query ID file, and any selected case evidence
+in local exclude-only notes.
 
 Use `--require-metadata` only with a fresh retained table-backed `SELECT` whose
 profile exposes source tables. DDL, `SHOW` statements, CTE-only queries, and
