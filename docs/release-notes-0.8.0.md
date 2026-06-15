@@ -1,6 +1,6 @@
 # Query Doctor 0.8.0 Release Notes
 
-Release date: 2026-06-14
+Release date: 2026-06-15
 Package: `query-doctor` 0.8.0
 Supported production diagnostic engine: Apache Impala
 Release focus: first-run reliability, installed user-path validation, and
@@ -35,15 +35,32 @@ package index".
   configured PyPI/TestPyPI-compatible index in a clean venv, checks that the
   package imports from that venv instead of the source checkout, and replays
   the README Quickstart.
+- Local release validation now includes installed README, installed web E2E,
+  installed user-path, generic web Recent, direct-Impala web Recent, Known
+  Query ID, and Recent-to-Known smoke wrappers. These wrappers print only safe
+  aggregate counters and redacted setup hints.
 
 ## Web And Impala Workflow Improvements
 
 - Recent and Running scans can honor a local `query_type` filter, exposed as an
   Advanced field only when configured.
+- Web Recent scans now continue with bounded partial analysis when a broad
+  Cloudera Manager discovery reaches the raw query-summary cap. The UI marks
+  those results as partial and tells operators to reduce Search depth or add
+  user, pool, or query-type filters for complete coverage.
+- Empty Recent results now distinguish "no matching queries" from source
+  failures such as Cloudera Manager timeouts, so a timed-out summary read no
+  longer looks like proof that no queries exist.
+- Recent scan progress now explains that broad Cloudera Manager discovery can
+  take a minute, and browser polling surfaces a safe "Scan status unavailable"
+  state if the local Query Doctor web server stops responding.
 - Recent triage scoring suppresses stats-hygiene-only attention for
   sub-30-second queries, reducing noisy recommendations for very short queries.
 - Known Query ID analysis now generates and validates the deterministic Python
   report as part of the explicit submit job.
+- Known Query ID and Recent-to-Known smoke paths accept collected or partial
+  metadata state and redact Query IDs, local paths, raw SQL, profiles, and
+  metadata from child output.
 - Details folds validated optimizer recommendations, manual optimizer guidance,
   or a safe link to a validated SQL draft into the same Recommended change
   area as deterministic analyzer action cards.
@@ -88,7 +105,9 @@ package index".
 
 ## Release Validation
 
-The 0.8.0 release candidate should be validated with:
+The 0.8.0 release candidate has been validated with the local public release
+gate, package artifact checks, installed user-path smokes, and a bounded live
+Cloudera Manager web Recent smoke. The repeatable validation path is:
 
 - `PUBLIC_RELEASE=1 scripts/local_gate.sh`
 - `pre-commit run --all-files`
@@ -96,7 +115,10 @@ The 0.8.0 release candidate should be validated with:
 - `python -m build`
 - `python -m twine check dist/*`
 - `python scripts/clean_wheel_quickstart_smoke.py --replace-work-dir`
+- `python scripts/installed_readme_quickstart_smoke.py --bin-dir <installed-venv>/bin --replace-work-dir`
+- `python scripts/installed_web_e2e_smoke.py --bin-dir <installed-venv>/bin`
 - `python scripts/installed_user_paths_smoke.py --bin-dir <installed-venv>/bin --replace-work-dir`
+- `scripts/query-doctor-web-recent-smoke --cluster <cluster-id> --window-minutes <minutes> --limit <n> --allow-no-metadata`
 
 ```bash
 python scripts/index_install_quickstart_smoke.py \
