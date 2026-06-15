@@ -55,7 +55,15 @@ jobs:
         run: python -m ruff check query_doctor tests
 
       - name: Run public-release preflight
-        run: query-doctor-demo-preflight --public-release
+        env:
+          RELEASE_HISTORY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_HISTORY_HEAD: ${{ github.sha }}
+        run: |
+          if [ -n "${RELEASE_HISTORY_BASE}" ] && ! echo "${RELEASE_HISTORY_BASE}" | grep -Eq '^0+$' && git cat-file -e "${RELEASE_HISTORY_BASE}^{commit}" 2>/dev/null; then
+            query-doctor-demo-preflight --public-release --history-base "${RELEASE_HISTORY_BASE}" --history-head "${RELEASE_HISTORY_HEAD}"
+          else
+            query-doctor-demo-preflight --public-release --skip-history
+          fi
 
       - name: Run focused safety tests
         run: |
