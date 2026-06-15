@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -26,6 +26,9 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   partial and showing guidance to reduce Search depth or add user, pool, or
   query-type filters for complete coverage instead of looking like an ordinary
   zero-query result.
+- Web Recent scan polling now surfaces a safe "Scan status unavailable" state
+  when the local Query Doctor web server stops responding, so a lost local
+  connection no longer looks like a scan that is still running.
 - Added `scripts/query-doctor-web-recent-to-known-smoke` to run the local web
   Recent-to-Known Query ID smoke chain in one command. It keeps the selected
   Query ID in a temporary local file, accepts metadata-backed Recent cases with

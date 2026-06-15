@@ -2616,6 +2616,16 @@ def test_web_static_js_opens_new_scan_deep_link():
     assert "[data-open-new-scan]" in script
 
 
+def test_web_static_js_surfaces_lost_job_polling_connection():
+    script = (REPO_DIR / "query_doctor/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "var pollFailureCount = 0;" in script
+    assert "function showPollingUnavailable()" in script
+    assert "Scan status unavailable" in script
+    assert "local Query Doctor web server is not responding" in script
+    assert "pollFailureCount >= 3" in script
+
+
 def test_web_unavailable_case_actions_render_compact_status():
     from query_doctor.web.ui.llm_actions import (
         present_optimized_query_action,

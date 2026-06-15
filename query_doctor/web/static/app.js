@@ -475,6 +475,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var resultSlot = document.getElementById('job-result-slot');
   var errorSlot = document.getElementById('job-error-slot');
   var title = jobPanel.querySelector('.progress-title');
+  var pollFailureCount = 0;
   function runButtonsForJobKind(kind) {
     var selector = '';
     if (kind === 'batch') {
@@ -493,10 +494,27 @@ document.addEventListener('DOMContentLoaded', function () {
       button.textContent = label;
     });
   }
+  function clearPollingUnavailable() {
+    if (errorSlot && errorSlot.getAttribute('data-polling-unavailable') === 'true') {
+      errorSlot.hidden = true;
+      errorSlot.textContent = '';
+      errorSlot.removeAttribute('data-polling-unavailable');
+    }
+  }
+  function showPollingUnavailable() {
+    if (title) { title.textContent = 'Scan status unavailable'; }
+    if (errorSlot) {
+      errorSlot.hidden = false;
+      errorSlot.setAttribute('data-polling-unavailable', 'true');
+      errorSlot.textContent = 'Scan status is unavailable because the local Query Doctor web server is not responding. Restart Query Doctor or refresh this page after the server is back.';
+    }
+  }
   function poll() {
     fetch(jobPanel.getAttribute('data-job-status-url'), {cache: 'no-store'})
       .then(function (response) { return response.json(); })
       .then(function (data) {
+        pollFailureCount = 0;
+        clearPollingUnavailable();
         applyProgressView(jobPanel, data.progress_view, data.stage, data.progress);
         var runningProgressSlot = document.getElementById('batch-progress-slot');
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
@@ -519,7 +537,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         window.setTimeout(poll, 1200);
       })
-      .catch(function () { window.setTimeout(poll, 1800); });
+      .catch(function () {
+        pollFailureCount += 1;
+        if (pollFailureCount >= 3) {
+          showPollingUnavailable();
+        }
+        window.setTimeout(poll, 1800);
+      });
   }
   poll();
 });
