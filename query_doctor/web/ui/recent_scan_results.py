@@ -511,9 +511,9 @@ def compact_scan_context_scope_parts(summary: dict[str, Any]) -> list[str]:
     parts: list[str] = []
     summaries = coverage_metric_text(summary.get("summaries_inspected"))
     if summary.get("cm_summary_safety_cap_hit"):
-        cap = coverage_metric_text(summary.get("cm_summary_safety_cap")) or summaries
+        cap = recent_scan_too_broad_limit_text(summary) or summaries
         if cap:
-            parts.append(f"Query match limit hit: {cap}")
+            parts.append(f"Partial CM scan: cap {cap}")
     if summary.get("only_running"):
         parts.append("Status: running only")
     cluster_context = compact_cluster_event_context(summary)
@@ -572,19 +572,32 @@ def batch_empty_notice_parts(summary: dict[str, Any]) -> tuple[str, str] | None:
     message = present_recent_scan_summary(summary).empty_message
     if not message:
         return None
-    heading = "Scan stopped" if summary.get("scan_too_broad") else "No cases selected"
+    heading = "Partial scan" if summary.get("scan_too_broad") else "No cases selected"
     return heading, html.escape(message)
 
 
 def recent_scan_too_broad_message(summary: dict[str, Any]) -> str | None:
     if not summary.get("scan_too_broad"):
         return None
-    cap = (
-        summary.get("cm_summary_safety_cap")
-        or summary.get("cm_inspect_limit")
-        or summary.get("summaries_inspected")
+    cap = recent_scan_too_broad_limit_text(summary)
+    cap_text = f" ({cap})" if cap else ""
+    return (
+        f"The CM query summary scan cap{cap_text} was reached before discovery completed. "
+        "This table shows only the bounded partial result; use a smaller Search depth or add "
+        "user, pool, or query type filters for complete coverage."
     )
-    return f"Scan stopped because this hour has more than {cap} matching CM summaries. Narrow the filters or choose another hour."
+
+
+def recent_scan_too_broad_limit_text(summary: dict[str, Any]) -> str:
+    if summary.get("cm_summary_raw_scan_cap_hit"):
+        raw_cap = coverage_metric_text(summary.get("cm_summary_raw_scan_cap"))
+        if raw_cap:
+            return raw_cap
+    return (
+        coverage_metric_text(summary.get("cm_summary_safety_cap"))
+        or coverage_metric_text(summary.get("cm_inspect_limit"))
+        or coverage_metric_text(summary.get("summaries_inspected"))
+    )
 
 
 def batch_result_empty_message(

@@ -160,12 +160,8 @@ def build_summary(
         if discovery.summaries_inspected is not None
         else len(discovery.candidates)
     )
-    reason_counts = (
-        {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
-    )
-    reason_sql_verb_counts = (
-        {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
-    )
+    reason_counts = candidate_reason_counts(discovery.candidates)
+    reason_sql_verb_counts = candidate_reason_sql_verb_counts(discovery.candidates)
     primary_distribution = case_primary_bottleneck_distribution(cases)
     primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
     scoring_distribution = scoring_evidence_source_distribution(cases)
@@ -230,9 +226,7 @@ def build_summary(
         "selected_count": selected_count,
         "candidate_reason_counts": reason_counts,
         "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
-        "candidate_exclusion_count": 0
-        if discovery.scan_too_broad
-        else max(0, inspected - selected_count),
+        "candidate_exclusion_count": max(0, inspected - selected_count),
         "case_primary_bottleneck_distribution": primary_distribution,
         "case_primary_unknown_breakdown": primary_unknown_breakdown,
         "scoring_evidence_source_distribution": scoring_distribution,
