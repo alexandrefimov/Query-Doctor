@@ -1,0 +1,468 @@
+#!/usr/bin/env python3
+"""Run a local web Recent smoke and validate one selected Known Query ID."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_RECENT_SMOKE = ROOT_DIR / "scripts" / "query-doctor-web-recent-smoke"
+DEFAULT_INPUT_HELPER = ROOT_DIR / "scripts" / "query-doctor-known-query-input-from-summary"
+DEFAULT_KNOWN_QUERY_SMOKE = ROOT_DIR / "scripts" / "query-doctor-web-known-query-smoke"
+DEFAULT_WEB_WRAPPER = ROOT_DIR / "scripts" / "query-doctor-web-local"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_WINDOW_MINUTES = 120
+DEFAULT_TRIAGE_LIMIT = 3
+DEFAULT_METADATA_TOP_LIMIT = 3
+DEFAULT_PARALLELISM = 2
+DEFAULT_METADATA_JOBS = 1
+DEFAULT_TIMEOUT_SEC = 180.0
+DEFAULT_POLL_INTERVAL_SEC = 0.5
+LARGE_WINDOW_MINUTES = 24 * 60
+SUMMARY_GLOB = "query-doctor-web-batch-*/batch_summary.json"
+IMPALA_QUERY_ID_RE = re.compile(r"\b[0-9a-fA-F]{8,32}:[0-9a-fA-F]{8,32}\b")
+LOCAL_PATH_RE = re.compile(r"(?<!\w)/(?:Users|home|private|tmp|var|mnt|etc)/[^\s<>'\"]*")
+
+
+class SmokeChainError(Exception):
+    pass
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def non_negative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def non_negative_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run the local-web Recent-to-Known Query ID smoke chain for one "
+            "configured Impala cluster. The chain submits a bounded Finished-query "
+            "Recent scan, selects one fully collected metadata-backed case from the "
+            "retained summary, then submits Known Query ID analysis from a temporary "
+            "local input file without printing the Query ID."
+        )
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help=("Local Query Doctor config. Defaults are delegated to the child smoke scripts."),
+    )
+    parser.add_argument(
+        "--cluster",
+        "--config-cluster",
+        dest="cluster",
+        help="Cluster id from config clusters[].",
+    )
+    parser.add_argument(
+        "--web-wrapper",
+        type=Path,
+        default=DEFAULT_WEB_WRAPPER,
+        help="Local web wrapper passed to child smokes. Default: scripts/query-doctor-web-local.",
+    )
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help="Local bind host. Default: %(default)s"
+    )
+    parser.add_argument(
+        "--port",
+        type=positive_int,
+        help="Local bind port reused for both sequential web smokes.",
+    )
+    parser.add_argument(
+        "--window-minutes",
+        type=positive_int,
+        default=int(
+            os.environ.get(
+                "QD_WEB_RECENT_TO_KNOWN_SMOKE_WINDOW_MINUTES",
+                DEFAULT_WINDOW_MINUTES,
+            )
+        ),
+        help="Finished-query Search depth in minutes. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--limit",
+        type=positive_int,
+        default=int(os.environ.get("QD_WEB_RECENT_TO_KNOWN_SMOKE_LIMIT", DEFAULT_TRIAGE_LIMIT)),
+        help="Maximum profiles to collect/analyze through the Recent web form. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--metadata-top-limit",
+        type=non_negative_int,
+        default=int(
+            os.environ.get(
+                "QD_WEB_RECENT_TO_KNOWN_SMOKE_METADATA_TOP_LIMIT",
+                DEFAULT_METADATA_TOP_LIMIT,
+            )
+        ),
+        help="Maximum selected Recent cases to refresh metadata for. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--metadata-jobs",
+        type=positive_int,
+        default=int(
+            os.environ.get(
+                "QD_WEB_RECENT_TO_KNOWN_SMOKE_METADATA_JOBS",
+                DEFAULT_METADATA_JOBS,
+            )
+        ),
+        help="Metadata parallelism passed through the Recent web form. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--parallelism",
+        type=positive_int,
+        default=int(
+            os.environ.get(
+                "QD_WEB_RECENT_TO_KNOWN_SMOKE_PARALLELISM",
+                DEFAULT_PARALLELISM,
+            )
+        ),
+        help="Recent scan parallelism passed through the web form. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--query-type",
+        default=os.environ.get("QD_WEB_RECENT_TO_KNOWN_SMOKE_QUERY_TYPE", "QUERY"),
+        help="Optional query type filter for Recent. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--all-query-types",
+        action="store_true",
+        help="Do not submit a Recent query type filter.",
+    )
+    parser.add_argument(
+        "--min-duration-sec",
+        type=non_negative_float,
+        help="Optional minimum duration filter submitted through the Recent web form.",
+    )
+    parser.add_argument(
+        "--max-duration-sec",
+        type=non_negative_float,
+        help="Optional maximum duration filter submitted through the Recent web form.",
+    )
+    parser.add_argument(
+        "--order",
+        choices=(
+            "recent",
+            "duration-desc",
+            "duration-asc",
+            "recent-duration-desc",
+            "status-priority",
+        ),
+        default=os.environ.get("QD_WEB_RECENT_TO_KNOWN_SMOKE_ORDER", "duration-desc"),
+        help="Recent scan ordering passed through the web form. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--skip-recent-details-check",
+        action="store_true",
+        help="Skip the Recent selected Details page safety check.",
+    )
+    parser.add_argument(
+        "--skip-known-report-check",
+        action="store_true",
+        help="Skip the Known Query ID deterministic Python report route check.",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=positive_float,
+        default=DEFAULT_TIMEOUT_SEC,
+        help="Per-step startup/job timeout in seconds. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the Recent child smoke selection without starting the full chain.",
+    )
+    parser.add_argument(
+        "--poll-interval-sec",
+        type=positive_float,
+        default=DEFAULT_POLL_INTERVAL_SEC,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--summary-search-root",
+        type=Path,
+        default=Path("/tmp"),
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--recent-smoke-script",
+        type=Path,
+        default=DEFAULT_RECENT_SMOKE,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--input-helper-script",
+        type=Path,
+        default=DEFAULT_INPUT_HELPER,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--known-query-smoke-script",
+        type=Path,
+        default=DEFAULT_KNOWN_QUERY_SMOKE,
+        help=argparse.SUPPRESS,
+    )
+    args = parser.parse_args(argv)
+    if (
+        args.min_duration_sec is not None
+        and args.max_duration_sec is not None
+        and args.max_duration_sec < args.min_duration_sec
+    ):
+        parser.error("--max-duration-sec must be greater than or equal to --min-duration-sec")
+    if args.metadata_top_limit < 1 and not args.dry_run:
+        parser.error("--metadata-top-limit must be positive for the Recent-to-Known smoke chain")
+    return args
+
+
+def safe_output(text: str) -> str:
+    text = IMPALA_QUERY_ID_RE.sub("<query-id hidden>", text)
+    return LOCAL_PATH_RE.sub("<path hidden>", text)
+
+
+def emit_child_output(text: str, *, stream) -> None:
+    if not text:
+        return
+    rendered = safe_output(text)
+    stream.write(rendered)
+    if not rendered.endswith("\n"):
+        stream.write("\n")
+    stream.flush()
+
+
+def run_child(label: str, command: list[str]) -> None:
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise SmokeChainError(f"{label} step could not start.") from exc
+    emit_child_output(completed.stdout, stream=sys.stdout)
+    emit_child_output(completed.stderr, stream=sys.stderr)
+    if completed.returncode != 0:
+        raise SmokeChainError(f"{label} step failed with exit code {completed.returncode}.")
+
+
+def add_if_present(command: list[str], option: str, value: object | None) -> None:
+    if value is not None:
+        command.extend([option, str(value)])
+
+
+def build_recent_command(args: argparse.Namespace, *, dry_run: bool) -> list[str]:
+    command = [
+        str(args.recent_smoke_script.expanduser()),
+        "--web-wrapper",
+        str(args.web_wrapper.expanduser()),
+        "--host",
+        str(args.host),
+        "--window-minutes",
+        str(args.window_minutes),
+        "--limit",
+        str(args.limit),
+        "--metadata-top-limit",
+        str(args.metadata_top_limit),
+        "--metadata-jobs",
+        str(args.metadata_jobs),
+        "--parallelism",
+        str(args.parallelism),
+        "--order",
+        str(args.order),
+        "--timeout-sec",
+        str(args.timeout_sec),
+        "--poll-interval-sec",
+        str(args.poll_interval_sec),
+    ]
+    add_if_present(command, "--config", args.config.expanduser() if args.config else None)
+    add_if_present(command, "--cluster", args.cluster)
+    add_if_present(command, "--port", args.port)
+    add_if_present(command, "--min-duration-sec", args.min_duration_sec)
+    add_if_present(command, "--max-duration-sec", args.max_duration_sec)
+    if args.all_query_types:
+        command.append("--all-query-types")
+    else:
+        command.extend(["--query-type", str(args.query_type or "").strip() or "QUERY"])
+    if args.skip_recent_details_check:
+        command.append("--skip-details-check")
+    if dry_run:
+        command.append("--dry-run")
+    return command
+
+
+def build_input_helper_command(
+    args: argparse.Namespace,
+    *,
+    summary_path: Path,
+    query_id_file: Path,
+) -> list[str]:
+    return [
+        str(args.input_helper_script.expanduser()),
+        "--summary",
+        str(summary_path),
+        "--out",
+        str(query_id_file),
+        "--require-collected",
+    ]
+
+
+def build_known_query_command(
+    args: argparse.Namespace,
+    *,
+    query_id_file: Path,
+) -> list[str]:
+    command = [
+        str(args.known_query_smoke_script.expanduser()),
+        "--query-id-file",
+        str(query_id_file),
+        "--web-wrapper",
+        str(args.web_wrapper.expanduser()),
+        "--host",
+        str(args.host),
+        "--require-metadata",
+        "--timeout-sec",
+        str(args.timeout_sec),
+        "--poll-interval-sec",
+        str(args.poll_interval_sec),
+    ]
+    add_if_present(command, "--config", args.config.expanduser() if args.config else None)
+    add_if_present(command, "--cluster", args.cluster)
+    add_if_present(command, "--port", args.port)
+    if args.skip_known_report_check:
+        command.append("--skip-report-check")
+    return command
+
+
+def list_summary_paths(root: Path) -> set[Path]:
+    expanded = root.expanduser()
+    if not expanded.exists():
+        return set()
+    return {path for path in expanded.glob(SUMMARY_GLOB) if path.is_file()}
+
+
+def find_new_summary(
+    *,
+    root: Path,
+    before: set[Path],
+    started_at: float,
+) -> Path:
+    candidates: list[tuple[float, str, Path]] = []
+    for path in list_summary_paths(root):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if path not in before or stat.st_mtime >= started_at:
+            candidates.append((stat.st_mtime, str(path), path))
+    if not candidates:
+        raise SmokeChainError("Recent smoke completed but no new retained batch summary was found.")
+    candidates.sort(reverse=True)
+    print(f"[recent-to-known-smoke] summary=selected candidates={len(candidates)}", flush=True)
+    return candidates[0][2]
+
+
+def warn_if_large_window(args: argparse.Namespace) -> None:
+    if args.window_minutes <= LARGE_WINDOW_MINUTES:
+        return
+    print(
+        "[recent-to-known-smoke] warning=large_window "
+        f"window_minutes={args.window_minutes} "
+        "use_filters=true impact=cm_impala_ui_prometheus",
+        flush=True,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        warn_if_large_window(args)
+        if args.dry_run:
+            print("[recent-to-known-smoke] step=recent dry_run=true", flush=True)
+            run_child("Recent smoke", build_recent_command(args, dry_run=True))
+            print("[recent-to-known-smoke] dry_run=ok", flush=True)
+            print("[recent-to-known-smoke] known_query=skipped", flush=True)
+            return 0
+
+        before = list_summary_paths(args.summary_search_root)
+        started_at = time.time() - 0.25
+        print("[recent-to-known-smoke] step=recent", flush=True)
+        run_child("Recent smoke", build_recent_command(args, dry_run=False))
+        summary_path = find_new_summary(
+            root=args.summary_search_root,
+            before=before,
+            started_at=started_at,
+        )
+
+        with tempfile.TemporaryDirectory(
+            prefix="query-doctor-known-query-",
+            dir=tempfile.gettempdir(),
+        ) as query_id_dir:
+            query_id_file = Path(query_id_dir) / "query-id.input"
+            print("[recent-to-known-smoke] step=known_query_input", flush=True)
+            run_child(
+                "Known Query input",
+                build_input_helper_command(
+                    args,
+                    summary_path=summary_path,
+                    query_id_file=query_id_file,
+                ),
+            )
+            print("[recent-to-known-smoke] step=known_query", flush=True)
+            run_child(
+                "Known Query smoke",
+                build_known_query_command(args, query_id_file=query_id_file),
+            )
+
+        print("[recent-to-known-smoke] query_id_input=removed", flush=True)
+        print("[recent-to-known-smoke] ok", flush=True)
+        return 0
+    except SmokeChainError as exc:
+        print(f"[recent-to-known-smoke] {safe_output(str(exc))}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

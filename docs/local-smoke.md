@@ -352,18 +352,33 @@ scripts/query-doctor-web-known-query-smoke \
 For a table-backed query where metadata collection is expected, add
 `--require-metadata`.
 
-For a Recent-to-Known Query ID smoke, run the generic web Recent smoke first,
-write one selected Query ID into an ignored local file without printing it, then
-run `scripts/query-doctor-web-known-query-smoke --require-metadata` against the
-same cluster. The input helper prefers a fully collected metadata case and
-falls back to partial metadata only when it still has collected table context.
-It prints only aggregate counters, never the Query ID, summary path, or output
+For a Recent-to-Known Query ID smoke, use the chain wrapper. It runs the generic
+web Recent smoke first, selects one fully collected metadata-backed case from
+the retained summary, writes the Query ID into a temporary local file without
+printing it, then runs `scripts/query-doctor-web-known-query-smoke
+--require-metadata` against the same cluster. It prints only raw-free step
+status and aggregate counters, never the Query ID, summary path, Query ID file,
+raw SQL, profiles, or metadata:
+
+```bash
+scripts/query-doctor-web-recent-to-known-smoke \
+  --cluster <cluster-id> \
+  --window-minutes 120 \
+  --limit 3 \
+  --metadata-top-limit 3 \
+  --query-type QUERY
+```
+
+For deeper debugging, run the pieces manually. The input helper can select from
+an existing retained `batch_summary.json` and write the local Known Query ID
+smoke input without printing the selected Query ID, summary path, or output
 path:
 
 ```bash
 scripts/query-doctor-known-query-input-from-summary \
   --summary <ignored-smoke-output-dir>/batch_summary.json \
-  --out /tmp/query-doctor-known-query-smoke.input
+  --out /tmp/query-doctor-known-query-smoke.input \
+  --require-collected
 
 scripts/query-doctor-web-known-query-smoke \
   --cluster <cluster-id> \
@@ -371,8 +386,8 @@ scripts/query-doctor-web-known-query-smoke \
   --require-metadata
 ```
 
-Keep the retained summary path, Query ID file, and any selected case evidence
-in local exclude-only notes.
+Keep the retained summary path, any manual Query ID file, and selected case
+evidence in local exclude-only notes.
 
 Use `--require-metadata` only with a fresh retained table-backed `SELECT` whose
 profile exposes source tables. DDL, `SHOW` statements, CTE-only queries, and
