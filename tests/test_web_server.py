@@ -8718,6 +8718,20 @@ def test_web_batch_progress_keeps_early_stage_events_for_large_batches(tmp_path)
     assert "batch-progress-step--done" in body
 
 
+def test_web_batch_progress_explains_running_discovery_for_broad_cm_windows(tmp_path):
+    module = load_web_module()
+    progress_path = tmp_path / "progress.jsonl"
+    progress_path.write_text(
+        json.dumps({"stage": "discovery", "status": "started"}) + "\n",
+        encoding="utf-8",
+    )
+
+    body = module.render_batch_progress_panel(progress_path, "running")
+
+    assert "… Query discovery" in body
+    assert "reading query summaries; broad CM windows can take a minute" in body
+
+
 def test_web_batch_progress_advances_stages_incrementally(tmp_path):
     module = load_web_module()
     progress_path = tmp_path / "progress.jsonl"
