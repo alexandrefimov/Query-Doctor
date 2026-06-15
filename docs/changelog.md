@@ -24,6 +24,10 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Added `scripts/query-doctor-known-query-input-from-summary` to select one
+  successful metadata-backed Recent case from a retained `batch_summary.json`
+  and write a local Known Query ID smoke input file without printing the Query
+  ID, summary path, output path, raw SQL, profiles, or metadata.
 - Added a generic local `scripts/query-doctor-web-recent-smoke` wrapper for
   configured Cloudera Manager or direct-Impala clusters. It starts the local web
   UI, submits a bounded Finished-query scan with optional duration and query

@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Write one Known Query ID smoke input from a retained Recent summary."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+DEFAULT_OUT = Path(
+    os.environ.get("QD_KNOWN_QUERY_SMOKE_INPUT", "/tmp/query-doctor-known-query-smoke.input")
+)
+IMPALA_QUERY_ID_RE = re.compile(r"^[0-9a-fA-F]{8,32}:[0-9a-fA-F]{8,32}$")
+
+
+class SmokeInputError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Candidate:
+    query_id: str
+    metadata_status: str
+    collected_tables: int
+    collectable_tables: int
+    metadata_refreshed: bool
+    case_index: int
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Select one metadata-backed case from a retained batch_summary.json "
+            "and write its Query ID to a local file for query-doctor-web-known-query-smoke. "
+            "The script never prints the Query ID, summary path, or output path."
+        )
+    )
+    parser.add_argument(
+        "--summary",
+        type=Path,
+        required=True,
+        help="Retained batch_summary.json from a Recent smoke.",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="Local Query ID input file to write. Default: /tmp/query-doctor-known-query-smoke.input",
+    )
+    parser.add_argument(
+        "--require-collected",
+        action="store_true",
+        help="Require metadata_status=collected instead of accepting partial metadata with tables.",
+    )
+    parser.add_argument(
+        "--allow-non-tmp-out",
+        action="store_true",
+        help="Allow writing outside the system temporary directory.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Select a case and print raw-free counters without writing the Query ID file.",
+    )
+    return parser.parse_args(argv)
+
+
+def int_value(value: object) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def bool_value(value: object) -> bool:
+    return value is True
+
+
+def load_summary(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SmokeInputError("Summary file was not found.") from exc
+    except json.JSONDecodeError as exc:
+        raise SmokeInputError("Summary file is not valid JSON.") from exc
+    except OSError as exc:
+        raise SmokeInputError("Summary file could not be read.") from exc
+    if not isinstance(payload, dict):
+        raise SmokeInputError("Summary root must be a JSON object.")
+    return payload
+
+
+def summary_cases(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    cases = summary.get("cases")
+    if not isinstance(cases, list):
+        return []
+    return [case for case in cases if isinstance(case, dict)]
+
+
+def valid_query_id(value: object) -> str | None:
+    query_id = str(value or "").strip()
+    if not query_id or IMPALA_QUERY_ID_RE.fullmatch(query_id) is None:
+        return None
+    return query_id
+
+
+def metadata_status(case: dict[str, Any]) -> str:
+    status = str(case.get("metadata_status") or "").strip().lower()
+    return status or "unknown"
+
+
+def case_has_metadata_context(case: dict[str, Any], *, require_collected: bool) -> bool:
+    status = metadata_status(case)
+    if status == "collected":
+        return True
+    if require_collected:
+        return False
+    return int_value(case.get("collected_metadata_table_count")) > 0
+
+
+def candidate_from_case(
+    case: dict[str, Any],
+    *,
+    require_collected: bool,
+) -> Candidate | None:
+    if str(case.get("collection_status") or "") != "ok":
+        return None
+    if str(case.get("analysis_status") or "") != "ok":
+        return None
+    query_id = valid_query_id(case.get("query_id"))
+    if query_id is None:
+        return None
+    if not case_has_metadata_context(case, require_collected=require_collected):
+        return None
+    return Candidate(
+        query_id=query_id,
+        metadata_status=metadata_status(case),
+        collected_tables=int_value(case.get("collected_metadata_table_count")),
+        collectable_tables=int_value(case.get("collectable_metadata_table_count")),
+        metadata_refreshed=bool_value(case.get("metadata_refreshed")),
+        case_index=int_value(case.get("case_index")),
+    )
+
+
+def candidate_sort_key(candidate: Candidate) -> tuple[int, int, int, int, int]:
+    metadata_rank = 2 if candidate.metadata_status == "collected" else 1
+    refreshed_rank = 1 if candidate.metadata_refreshed else 0
+    case_index = candidate.case_index if candidate.case_index > 0 else 999_999
+    return (
+        -metadata_rank,
+        -refreshed_rank,
+        -candidate.collected_tables,
+        -candidate.collectable_tables,
+        case_index,
+    )
+
+
+def select_candidate(
+    cases: list[dict[str, Any]],
+    *,
+    require_collected: bool,
+) -> tuple[Candidate | None, int, int]:
+    query_id_candidates = sum(1 for case in cases if valid_query_id(case.get("query_id")))
+    candidates = [
+        candidate
+        for case in cases
+        if (candidate := candidate_from_case(case, require_collected=require_collected)) is not None
+    ]
+    if not candidates:
+        return None, query_id_candidates, 0
+    return sorted(candidates, key=candidate_sort_key)[0], query_id_candidates, len(candidates)
+
+
+def path_is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def validate_output_path(path: Path, *, allow_non_tmp_out: bool) -> Path:
+    out = path.expanduser()
+    if allow_non_tmp_out:
+        return out
+    parent = out.parent if out.parent != Path("") else Path(".")
+    temp_roots = {Path("/tmp"), Path(tempfile.gettempdir())}
+    if not any(path_is_under(parent, root) for root in temp_roots):
+        raise SmokeInputError(
+            "Output path must be under a system temporary directory, or pass --allow-non-tmp-out."
+        )
+    return out
+
+
+def write_query_id(path: Path, query_id: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(query_id + "\n", encoding="utf-8")
+        path.chmod(0o600)
+    except OSError as exc:
+        raise SmokeInputError("Query ID input file could not be written.") from exc
+
+
+def print_summary(
+    *,
+    cases_scanned: int,
+    query_id_candidates: int,
+    metadata_candidates: int,
+    selected: Candidate,
+    dry_run: bool,
+) -> None:
+    print("known_query_input=selected")
+    print(f"cases_scanned={cases_scanned}")
+    print(f"query_id_candidates={query_id_candidates}")
+    print(f"metadata_candidates={metadata_candidates}")
+    print(f"selected_metadata_status={selected.metadata_status}")
+    print(f"selected_collected_tables={selected.collected_tables}")
+    print(f"output={'dry_run' if dry_run else 'written'}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        summary = load_summary(args.summary)
+        cases = summary_cases(summary)
+        selected, query_id_candidates, metadata_candidates = select_candidate(
+            cases,
+            require_collected=args.require_collected,
+        )
+        if selected is None:
+            raise SmokeInputError(
+                "No successful metadata-backed Known Query ID candidate was found. "
+                f"cases_scanned={len(cases)} query_id_candidates={query_id_candidates} "
+                f"metadata_candidates={metadata_candidates}"
+            )
+        out = validate_output_path(args.out, allow_non_tmp_out=args.allow_non_tmp_out)
+        if not args.dry_run:
+            write_query_id(out, selected.query_id)
+        print_summary(
+            cases_scanned=len(cases),
+            query_id_candidates=query_id_candidates,
+            metadata_candidates=metadata_candidates,
+            selected=selected,
+            dry_run=args.dry_run,
+        )
+        return 0
+    except SmokeInputError as exc:
+        print(f"[known-query-input] {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
