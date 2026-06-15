@@ -81,9 +81,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description=(
             "Run the local-web Recent-to-Known Query ID smoke chain for one "
             "configured Impala cluster. The chain submits a bounded Finished-query "
-            "Recent scan, selects one fully collected metadata-backed case from the "
-            "retained summary, then submits Known Query ID analysis from a temporary "
-            "local input file without printing the Query ID."
+            "Recent scan, selects one metadata-backed case from the retained "
+            "summary, then submits Known Query ID analysis from a temporary local "
+            "input file without printing the Query ID."
         )
     )
     parser.add_argument(
@@ -202,6 +202,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--skip-known-report-check",
         action="store_true",
         help="Skip the Known Query ID deterministic Python report route check.",
+    )
+    parser.add_argument(
+        "--require-collected-metadata",
+        action="store_true",
+        help=(
+            "Require metadata_status=collected in the Recent summary. By default "
+            "the chain also accepts refreshed partial metadata when collected table "
+            "context is present."
+        ),
     )
     parser.add_argument(
         "--timeout-sec",
@@ -339,14 +348,16 @@ def build_input_helper_command(
     summary_path: Path,
     query_id_file: Path,
 ) -> list[str]:
-    return [
+    command = [
         str(args.input_helper_script.expanduser()),
         "--summary",
         str(summary_path),
         "--out",
         str(query_id_file),
-        "--require-collected",
     ]
+    if args.require_collected_metadata:
+        command.append("--require-collected")
+    return command
 
 
 def build_known_query_command(

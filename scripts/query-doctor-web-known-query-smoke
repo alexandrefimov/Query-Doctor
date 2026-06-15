@@ -122,7 +122,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--require-metadata",
         action="store_true",
-        help="Fail unless the Known Query ID result renders collected metadata state.",
+        help="Fail unless the Known Query ID result renders collected or partial metadata state.",
     )
     parser.add_argument(
         "--skip-report-check",
@@ -397,6 +397,9 @@ def safe_error_snippet(value: object) -> str:
         return ""
     text = IMPALA_QUERY_ID_RE.sub("<query-id hidden>", text)
     lower = text.lower()
+    recognized = recognized_safe_failure_reason(text)
+    if recognized:
+        return recognized
     if "failed with exit code" in lower and "captured subprocess output is not shown" in lower:
         return "Collector subprocess failed; captured output was hidden by the web safety guard."
     unsafe_markers = (
@@ -412,6 +415,19 @@ def safe_error_snippet(value: object) -> str:
     if "\\" in text:
         return ""
     return text[:240]
+
+
+def recognized_safe_failure_reason(text: str) -> str:
+    marker = "Recognized safe failure reason:"
+    start = text.lower().find(marker.lower())
+    if start < 0:
+        return ""
+    reason = text[start:]
+    for delimiter in (" Exit code ", " Captured subprocess output "):
+        index = reason.find(delimiter)
+        if index > 0:
+            reason = reason[:index]
+    return reason[:240]
 
 
 def poll_job(
@@ -443,6 +459,11 @@ def poll_job(
     raise SmokeError("Known Query ID web job did not finish before timeout.")
 
 
+def has_metadata_state(text: str) -> bool:
+    lower = text.lower()
+    return "metadata" in lower and any(state in lower for state in ("collected", "partial"))
+
+
 def check_job_result(payload: dict[str, Any], *, require_metadata: bool) -> None:
     result_html = str(payload.get("result_html") or "")
     lower = result_html.lower()
@@ -450,8 +471,8 @@ def check_job_result(payload: dict[str, Any], *, require_metadata: bool) -> None
         raise SmokeError("Known Query ID job did not render the analysis result.")
     if "case_dir" in lower or "/tmp/" in result_html:
         raise SmokeError("Known Query ID job result exposed forbidden browser marker(s).")
-    if require_metadata and ("metadata" not in lower or "collected" not in lower):
-        raise SmokeError("Known Query ID job did not render collected metadata state.")
+    if require_metadata and not has_metadata_state(result_html):
+        raise SmokeError("Known Query ID job did not render metadata state.")
 
 
 def forbidden_markers_in_html(body: str) -> list[str]:
@@ -478,8 +499,8 @@ def check_details_page(
         raise SmokeError("Known Query ID Details exposed forbidden marker(s): " + ", ".join(leaked))
     if "known query id details" not in lower:
         raise SmokeError("Known Query ID Details page did not render the expected view.")
-    if args.require_metadata and ("metadata" not in lower or "collected" not in lower):
-        raise SmokeError("Known Query ID Details did not show the collected metadata state.")
+    if args.require_metadata and not has_metadata_state(body):
+        raise SmokeError("Known Query ID Details did not show metadata state.")
 
 
 def check_report_page(

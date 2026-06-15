@@ -26,9 +26,12 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   even when the daemon also reports a stale terminal `state`.
 - Added `scripts/query-doctor-web-recent-to-known-smoke` to run the local web
   Recent-to-Known Query ID smoke chain in one command. It keeps the selected
-  Query ID in a temporary local file, requires fully collected metadata for the
-  selected Recent case, runs the Known Query ID smoke with metadata validation,
-  and redacts Query IDs and local paths from child output.
+  Query ID in a temporary local file, accepts metadata-backed Recent cases with
+  collected table context, runs the Known Query ID smoke with metadata
+  validation, accepts collected or partial Known Query ID metadata state, and
+  redacts Query IDs and local paths from child output. Known Query smoke errors
+  now preserve recognized safe subprocess hints while still hiding raw
+  subprocess output.
 - Added `scripts/query-doctor-known-query-input-from-summary` to select one
   successful metadata-backed Recent case from a retained `batch_summary.json`
   and write a local Known Query ID smoke input file without printing the Query

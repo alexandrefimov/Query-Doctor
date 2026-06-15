@@ -350,12 +350,14 @@ scripts/query-doctor-web-known-query-smoke \
 ```
 
 For a table-backed query where metadata collection is expected, add
-`--require-metadata`.
+`--require-metadata`. The smoke accepts collected or partial metadata state so
+bounded Cloudera Manager metadata evidence does not fail only because the UI
+marks coverage as partial.
 
 For a Recent-to-Known Query ID smoke, use the chain wrapper. It runs the generic
-web Recent smoke first, selects one fully collected metadata-backed case from
-the retained summary, writes the Query ID into a temporary local file without
-printing it, then runs `scripts/query-doctor-web-known-query-smoke
+web Recent smoke first, selects one metadata-backed case from the retained
+summary, writes the Query ID into a temporary local file without printing it,
+then runs `scripts/query-doctor-web-known-query-smoke
 --require-metadata` against the same cluster. It prints only raw-free step
 status and aggregate counters, never the Query ID, summary path, Query ID file,
 raw SQL, profiles, or metadata:
@@ -368,6 +370,11 @@ scripts/query-doctor-web-recent-to-known-smoke \
   --metadata-top-limit 3 \
   --query-type QUERY
 ```
+
+By default the wrapper accepts refreshed partial metadata when collected table
+context is present, which is expected for some Cloudera Manager summaries. Add
+`--require-collected-metadata` when the smoke must require
+`metadata_status=collected` in the Recent summary.
 
 For deeper debugging, run the pieces manually. The input helper can select from
 an existing retained `batch_summary.json` and write the local Known Query ID
