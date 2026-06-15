@@ -44,7 +44,7 @@ def test_impala_web_ui_exports_fixture_manifest_is_public_safe() -> None:
     )
     assert "synthetic" in fixture_text
     assert "example.invalid" in fixture_text
-    assert "a_efimov" not in fixture_text
+    assert "maintainer_local_user" not in fixture_text
     assert "/Users/" not in fixture_text
     assert "cloudera" not in fixture_text.lower()
 
