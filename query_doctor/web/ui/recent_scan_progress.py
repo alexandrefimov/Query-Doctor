@@ -453,7 +453,7 @@ def discovery_detail(counters: dict[str, Any]) -> str:
         return detail_with_time(
             f"{counters['candidates_selected']} selected", counters.get("discovery_seconds")
         )
-    return "waiting"
+    return "reading query summaries; broad CM windows can take a minute"
 
 
 def case_detail(counters: dict[str, Any], key: str) -> str:

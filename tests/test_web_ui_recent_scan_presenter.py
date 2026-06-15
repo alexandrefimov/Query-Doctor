@@ -446,6 +446,25 @@ def test_recent_scan_summary_view_empty_scan_message_and_scope():
     assert view.rows == ()
 
 
+def test_recent_scan_summary_view_source_timeout_is_not_empty_match_message():
+    view = present_recent_scan_summary(
+        {
+            "selected_count": 0,
+            "summaries_inspected": 0,
+            "duration_filter": None,
+            "warnings": ["CM request failed: <urlopen error [Errno 60] Operation timed out>"],
+            "cases": [],
+        }
+    )
+
+    assert "could not read CM query summaries" in view.empty_message
+    assert "does not prove that no queries exist" in view.empty_message
+    assert "No matching queries found" not in view.empty_message
+    assert view.warning_messages == (
+        "CM request failed: <urlopen error [Errno 60] Operation timed out>",
+    )
+
+
 def test_recent_scan_summary_view_labels_unfiltered_query_type():
     view = present_recent_scan_summary(
         {

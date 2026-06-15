@@ -206,6 +206,9 @@ def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> st
         return None
     summaries = summary.get("summaries_inspected")
     if summaries is not None and numeric_count(summaries) == 0:
+        source_failure = recent_scan_source_failure_message(summary)
+        if source_failure:
+            return source_failure
         return (
             "No matching queries found for this hour bucket. Try another hour or changing filters."
         )
@@ -223,6 +226,21 @@ def recent_scan_limit_text(summary: dict[str, Any]) -> str:
         value = safe_display_text(summary.get(key))
         if value and value.lower() not in {"none", "unknown"}:
             return value
+    return ""
+
+
+def recent_scan_source_failure_message(summary: dict[str, Any]) -> str:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return ""
+    for warning in warnings:
+        text = str(warning or "").strip().lower()
+        if "cm request failed" in text or "timed out" in text or "timeout" in text:
+            return (
+                "Recent scan could not read CM query summaries from the selected source. "
+                "This does not prove that no queries exist; check CM connectivity/access or "
+                "reduce Search depth and run again."
+            )
     return ""
 
 
