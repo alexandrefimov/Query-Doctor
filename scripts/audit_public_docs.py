@@ -47,7 +47,7 @@ LOCAL_ONLY_PATTERNS = (
         "workstation-specific notes belong in local exclude-only notes",
     ),
     LocalOnlyPattern(
-        re.compile(r"\bk8s-impala-master\b"),
+        re.compile(r"\b(?:k8s[-_]impala|impala[-_]k8s)[-_][a-z0-9-]*\b", re.IGNORECASE),
         "local cluster IDs belong in ignored local config or local exclude-only notes",
     ),
     LocalOnlyPattern(

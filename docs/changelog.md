@@ -21,9 +21,6 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 
 ## Unreleased
 
-- Direct-Impala Running scans now treat daemon query-list entries from
-  in-flight/running collections, or entries with `executing=true`, as running
-  even when the daemon also reports a stale terminal `state`.
 - Added `scripts/query-doctor-web-recent-to-known-smoke` to run the local web
   Recent-to-Known Query ID smoke chain in one command. It keeps the selected
   Query ID in a temporary local file, accepts metadata-backed Recent cases with
@@ -114,6 +111,9 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   allow/deny matrix over sanitized inputs and emits raw-free reason-code JSON,
   while the web owner-raw source route and non-local startup guard now share the
   same policy helper.
+- Direct-Impala Running scans now treat daemon query-list entries from
+  in-flight/running collections, or entries with `executing=true`, as running
+  even when the daemon also reports a stale terminal `state`.
 
 ## 0.8.0 - 2026-06-14
 
@@ -123,20 +123,24 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   Quickstart installed-wheel smoke as a standalone CI step, and release
   operators can use `scripts/index_install_quickstart_smoke.py` to verify an
   exact PyPI/TestPyPI install in a clean venv before or after publication.
-- Browser-visible subprocess failures now include allowlisted safe reason hints
-  for common Recent scan setup failures, including metadata Kerberos, metadata
-  shell, CM credentials, missing direct-Impala hosts, cluster selection, and
-  output-directory validation, while still hiding raw stdout/stderr.
-- Known Query ID profile collection failures now include allowlisted safe
-  reason hints for direct-Impala profile collection failures, including
-  missing retained daemon profiles, unavailable profile endpoints, endpoint
-  request failures, and profile byte-limit failures, while still hiding raw
-  child output.
 - D3 `viewer_identity_header` values now require an already normalized simple
   owner token, such as an Active Directory `sAMAccountName` or Kerberos primary.
   UPN/email-style values, distinguished names, group/role-like values, opaque
   subjects, whitespace/display names, comma-separated subjects, and service or
   host principals fail closed for owner-raw source access.
+- Browser-visible subprocess failures now include allowlisted safe reason hints
+  for direct-Impala Known Query ID profile collection failures, including
+  missing retained daemon profiles, unavailable profile endpoints, endpoint
+  request failures, and profile byte-limit failures, while still hiding raw
+  child output.
+- Web Recent and Running scans now honor the local `query_type` filter and can
+  expose it as a config-enabled Advanced settings field via
+  `web_advanced_filters=["query_type"]`; invalid browser values fail before a
+  subprocess is started.
+- Recent triage scoring now suppresses stats-hygiene-only attention for
+  sub-30-second queries, reducing noise from very short queries with missing
+  table or column stats while leaving longer stats candidates and runtime
+  anomaly scoring unchanged.
 - `viewer_identity_header` now fails closed when a request exposes duplicate
   viewer header values. Shared/D3 `owner_raw` source access still requires a
   trusted proxy or ingress to strip inbound copies and set exactly one
@@ -152,19 +156,15 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   shared/non-local `owner_raw` deployment contract covering trusted ingress
   header stripping, C1/C2 identity separation, kill-switch behavior, raw-free
   audit checks, and the absence of admin, group, role, or delegation bypasses.
-- Web Recent and Running scans now honor the local `query_type` filter and can
-  expose it as a config-enabled Advanced settings field via
-  `web_advanced_filters=["query_type"]`; invalid browser values fail before a
-  subprocess is started.
-- Recent triage scoring now suppresses stats-hygiene-only attention for
-  sub-30-second queries, reducing noise from very short queries with missing
-  table or column stats while leaving longer stats candidates and runtime
-  anomaly scoring unchanged.
 - Owner-raw source access now has a global kill switch
   (`owner_raw_source_enabled=false` or `--disable-owner-raw-source`) and emits a
   request-id correlated safe audit line for every isolated raw source page
   attempt. The audit line is reason-coded and omits raw SQL, query ids,
   case ids, query users, paths, header values, and secrets.
+- Browser-visible subprocess failures now include allowlisted safe reason hints
+  for common Recent scan setup failures, including metadata Kerberos, metadata
+  shell, CM credentials, missing direct-Impala hosts, cluster selection, and
+  output-directory validation, while still hiding raw stdout/stderr.
 - `query-doctor-web` can now derive per-request authenticated viewer identity
   from an explicitly configured `viewer_identity_header`, intended for D3-style
   deployments behind a trusted auth proxy or ingress that strips inbound copies
@@ -182,28 +182,28 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Safe Recent summaries now carry raw-free SQL line coordinates and Details
   renders a redacted source map for locator-backed findings without exposing
   source SQL text.
+- Local `owner_raw` Recent scans can now collect across all configured/keytab
+  owner users in one bounded scan, while still excluding service/host
+  principals and keeping raw reveal governed by viewer identity rather than the
+  collection credential.
 - Installed-wheel user-path smoke now includes a real local web-server E2E for
   the one-profile Quickstart corpus path and manual-profile Known Query ID
   path. The smoke starts packaged `query-doctor-analyze`, starts packaged
   `query-doctor-web`, fetches Diagnose, Details, Known Query ID Details, static
   assets, and a generated Python report over HTTP, and checks that raw profile
   text and local paths stay out of browser-visible pages.
-- Local `owner_raw` Recent scans can now collect across all configured/keytab
-  owner users in one bounded scan, while still excluding service/host
-  principals and keeping raw reveal governed by viewer identity rather than the
-  collection credential.
 - Installed-wheel user-path smoke now also replays a sanitized Impala Web UI
   export corpus through packaged `query-doctor-analyze`,
   `query-doctor-corpus-smoke`, and a real packaged `query-doctor-web` server.
   The corpus covers embedded Query ID intake, strict Web UI filename-derived
   Query IDs, and accepted zero-operator profile exports.
+- Recent Details and rewrite-opportunity rows now render raw-free source
+  location chips from owner-gated source locators when line coordinates are
+  already present, without exposing SQL text or changing the safe-mode summary.
 - Direct Impala Recent discovery now ignores inconsistent daemon query-list
   `end_time` values that precede `start_time`, using the sane start timestamp
   for window filtering so fresh SELECT queries are not dropped when the daemon
   snapshot carries a stale completion timestamp.
-- Recent Details and rewrite-opportunity rows now render raw-free source
-  location chips from owner-gated source locators when line coordinates are
-  already present, without exposing SQL text or changing the safe-mode summary.
 - Web startup now refuses `source_visibility=owner_raw` on non-local binds
   unless authenticated viewer identity is configured. This blocks the unsafe
   shared local-first mode without silently downgrading owner raw visibility.
