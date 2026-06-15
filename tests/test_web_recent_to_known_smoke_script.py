@@ -72,7 +72,7 @@ if not os.environ.get("FAKE_SKIP_SUMMARY"):
                 "query_id": os.environ["FAKE_QUERY_ID"],
                 "collection_status": "ok",
                 "analysis_status": "ok",
-                "metadata_status": "collected",
+                "metadata_status": os.environ.get("FAKE_METADATA_STATUS", "collected"),
                 "metadata_refreshed": True,
                 "collectable_metadata_table_count": 1,
                 "collected_metadata_table_count": 1,
@@ -214,6 +214,67 @@ def test_recent_to_known_chain_selects_new_summary_without_echoing_identifiers(t
     assert known_argv[known_argv.index("--cluster") + 1] == "direct-impala"
     query_file = Path(known_argv[known_argv.index("--query-id-file") + 1])
     assert not query_file.exists()
+
+
+def test_recent_to_known_accepts_partial_metadata_with_collected_tables(tmp_path):
+    home = tmp_path / "home"
+    summary_root = tmp_path / "summary-root"
+    recent_script = tmp_path / "fake-recent"
+    known_script = tmp_path / "fake-known"
+    write_fake_recent_script(recent_script)
+    write_fake_known_script(known_script)
+    known_query = tmp_path / "known-query.txt"
+
+    result = run_wrapper(
+        base_args(tmp_path, recent_script, known_script),
+        home=home,
+        env={
+            "FAKE_RECENT_ARGS": str(tmp_path / "recent-args.json"),
+            "FAKE_KNOWN_ARGS": str(tmp_path / "known-args.json"),
+            "FAKE_KNOWN_QUERY": str(known_query),
+            "FAKE_SUMMARY_ROOT": str(summary_root),
+            "FAKE_JOB_ID": "1234567890abcdef1234567890abcdef",
+            "FAKE_QUERY_ID": QUERY_ID,
+            "FAKE_METADATA_STATUS": "partial",
+        },
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 0, combined_output
+    assert "selected_metadata_status=partial" in result.stdout
+    assert "[web-known-query-smoke] ok" in result.stdout
+    assert known_query.read_text(encoding="utf-8") == QUERY_ID + "\n"
+    assert QUERY_ID not in combined_output
+    assert str(tmp_path) not in combined_output
+
+
+def test_recent_to_known_can_require_collected_metadata(tmp_path):
+    home = tmp_path / "home"
+    summary_root = tmp_path / "summary-root"
+    recent_script = tmp_path / "fake-recent"
+    known_script = tmp_path / "fake-known"
+    write_fake_recent_script(recent_script)
+    write_fake_known_script(known_script)
+
+    result = run_wrapper(
+        [*base_args(tmp_path, recent_script, known_script), "--require-collected-metadata"],
+        home=home,
+        env={
+            "FAKE_RECENT_ARGS": str(tmp_path / "recent-args.json"),
+            "FAKE_KNOWN_ARGS": str(tmp_path / "known-args.json"),
+            "FAKE_KNOWN_QUERY": str(tmp_path / "known-query.txt"),
+            "FAKE_SUMMARY_ROOT": str(summary_root),
+            "FAKE_JOB_ID": "1234567890abcdef1234567890abcdef",
+            "FAKE_QUERY_ID": QUERY_ID,
+            "FAKE_METADATA_STATUS": "partial",
+        },
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "No successful metadata-backed Known Query ID candidate" in result.stderr
+    assert QUERY_ID not in combined_output
+    assert str(tmp_path) not in combined_output
 
 
 def test_recent_to_known_dry_run_only_runs_recent_child(tmp_path):

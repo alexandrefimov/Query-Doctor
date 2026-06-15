@@ -171,6 +171,7 @@ job_id = os.environ["FAKE_JOB_ID"]
 query_id = os.environ["FAKE_QUERY_ID"]
 capture = Path(os.environ["FAKE_FORM_CAPTURE"])
 job_error = os.environ.get("FAKE_JOB_ERROR", "")
+metadata_state = os.environ.get("FAKE_METADATA_STATE", "Collected")
 details_path = "/query/details/" + quote(query_id, safe="")
 
 class Handler(BaseHTTPRequestHandler):
@@ -203,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "stage": "Done",
                 "progress": 100,
-                "result_html": "<section>Known Query ID analysis <span>Metadata</span><span>Collected</span></section>",
+                "result_html": f"<section>Known Query ID analysis <span>Metadata</span><span>{metadata_state}</span></section>",
             }
             body = json.dumps(payload).encode()
             self.send_response(200)
@@ -213,7 +214,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if self.path == details_path:
-            body = b"<html><body><h1>Known Query ID details</h1><p>Metadata collected</p></body></html>"
+            body = f"<html><body><h1>Known Query ID details</h1><p>Metadata {metadata_state}</p></body></html>".encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.send_header("Content-Length", str(len(body)))
@@ -310,6 +311,59 @@ def test_web_known_query_smoke_runs_analyze_details_and_report(tmp_path):
     form = json.loads(capture.read_text(encoding="utf-8"))
     assert form["query_id"] == QUERY_ID
     assert form["cluster_key"] == "direct-impala"
+
+
+def test_web_known_query_smoke_accepts_partial_metadata_state(tmp_path):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "direct-impala",
+                    "label": "Direct Impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                }
+            ]
+        },
+    )
+    query_id_file = write_query_id_file(tmp_path)
+    wrapper = tmp_path / "fake-web-wrapper"
+    write_fake_web_wrapper(wrapper)
+    capture = tmp_path / "form.json"
+    job_id = "1234567890abcdef1234567890abcdef"
+    port = free_local_port()
+
+    result = run_smoke(
+        [
+            "--config",
+            str(config),
+            "--query-id-file",
+            str(query_id_file),
+            "--web-wrapper",
+            str(wrapper),
+            "--port",
+            str(port),
+            "--timeout-sec",
+            "10",
+            "--poll-interval-sec",
+            "0.05",
+            "--require-metadata",
+        ],
+        home=home,
+        env={
+            "FAKE_JOB_ID": job_id,
+            "FAKE_QUERY_ID": QUERY_ID,
+            "FAKE_FORM_CAPTURE": str(capture),
+            "FAKE_METADATA_STATE": "Partial",
+        },
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 0, combined_output
+    assert "[web-known-query-smoke] ok" in result.stdout
+    assert QUERY_ID not in combined_output
 
 
 def test_web_known_query_smoke_redacts_query_id_from_failed_job_error(tmp_path):
@@ -419,6 +473,69 @@ def test_web_known_query_smoke_classifies_hidden_subprocess_output_error(tmp_pat
     combined_output = result.stdout + result.stderr
     assert result.returncode == 2
     assert "Safe error: Collector subprocess failed" in result.stderr
+    assert "raw profile text" not in combined_output
+    assert QUERY_ID not in combined_output
+    assert str(query_id_file) not in combined_output
+    assert str(config) not in combined_output
+
+
+def test_web_known_query_smoke_preserves_recognized_safe_subprocess_hint(tmp_path):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        {
+            "clusters": [
+                {
+                    "id": "direct-impala",
+                    "label": "Direct Impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                }
+            ]
+        },
+    )
+    query_id_file = write_query_id_file(tmp_path)
+    wrapper = tmp_path / "fake-web-wrapper"
+    write_fake_web_wrapper(wrapper)
+    capture = tmp_path / "form.json"
+    job_id = "1234567890abcdef1234567890abcdef"
+    port = free_local_port()
+
+    result = run_smoke(
+        [
+            "--config",
+            str(config),
+            "--query-id-file",
+            str(query_id_file),
+            "--web-wrapper",
+            str(wrapper),
+            "--port",
+            str(port),
+            "--timeout-sec",
+            "10",
+            "--poll-interval-sec",
+            "0.05",
+        ],
+        home=home,
+        env={
+            "FAKE_JOB_ID": job_id,
+            "FAKE_QUERY_ID": QUERY_ID,
+            "FAKE_FORM_CAPTURE": str(capture),
+            "FAKE_JOB_ERROR": (
+                "Impala daemon single-query profile collection failed with exit code 1. "
+                "Captured subprocess output is not shown because it may contain raw profile text, "
+                "SQL, JSON, or credentials. Recognized safe failure reason: direct Impala profile "
+                "was not found on the configured impalad endpoints."
+            ),
+        },
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert (
+        "Safe error: Recognized safe failure reason: direct Impala profile was not found"
+        in result.stderr
+    )
     assert "raw profile text" not in combined_output
     assert QUERY_ID not in combined_output
     assert str(query_id_file) not in combined_output
