@@ -316,7 +316,24 @@ filter, lower the duration filter, or run a fresh table-backed query.
 scripts/query-doctor-web-direct-impala-smoke --cluster <direct-impala-cluster-id>
 ```
 
-The web smoke requires at least one selected table-backed query to collect
+For either Cloudera Manager or direct-Impala clusters, use the generic web
+Recent smoke. It runs the same local web Finished-query path and is preferred
+when validating configured cluster labels or CM behavior. On busy CM clusters,
+start with a duration filter rather than a large unfiltered Search depth; a
+raw summary scan cap means the scan was intentionally too broad and should be
+narrowed with Search depth, query type, user/pool, or duration filters.
+
+```bash
+scripts/query-doctor-web-recent-smoke \
+  --cluster <cluster-id> \
+  --window-minutes 60 \
+  --min-duration-sec 10 \
+  --limit 3 \
+  --metadata-top-limit 3 \
+  --query-type QUERY
+```
+
+The web smokes require at least one selected table-backed query to collect
 metadata by default. For a discovery/profile/analyzer-only check, use
 `--allow-no-metadata` or set `--metadata-top-limit 0`.
 
@@ -328,12 +345,18 @@ deterministic Python report route without printing the Query ID.
 
 ```bash
 scripts/query-doctor-web-known-query-smoke \
-  --cluster <direct-impala-cluster-id> \
+  --cluster <cluster-id> \
   --query-id-file <ignored-query-id-file>
 ```
 
 For a table-backed query where metadata collection is expected, add
 `--require-metadata`.
+
+For a Recent-to-Known Query ID smoke, run the generic web Recent smoke first,
+write one selected Query ID into an ignored local file without printing it, then
+run `scripts/query-doctor-web-known-query-smoke --require-metadata` against the
+same cluster. Keep the retained summary path, Query ID file, and any selected
+case evidence in local exclude-only notes.
 
 Use `--require-metadata` only with a fresh retained table-backed `SELECT` whose
 profile exposes source tables. DDL, `SHOW` statements, CTE-only queries, and

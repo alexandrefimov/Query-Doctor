@@ -24,6 +24,11 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Direct-Impala Running scans now treat daemon query-list entries from
   in-flight/running collections, or entries with `executing=true`, as running
   even when the daemon also reports a stale terminal `state`.
+- Added a generic local `scripts/query-doctor-web-recent-smoke` wrapper for
+  configured Cloudera Manager or direct-Impala clusters. It starts the local web
+  UI, submits a bounded Finished-query scan with optional duration and query
+  type filters, checks Details, and prints only raw-free aggregate selection,
+  collection, analysis, and metadata counters.
 - Local direct-Impala CLI and web smoke wrappers now print safe aggregate
   candidate-selection diagnostics from retained Recent summaries, including
   normalized exclusion reason and SQL-verb counters, so "selected no cases"
