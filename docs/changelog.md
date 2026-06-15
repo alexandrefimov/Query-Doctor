@@ -29,6 +29,9 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 - Web Recent scan polling now surfaces a safe "Scan status unavailable" state
   when the local Query Doctor web server stops responding, so a lost local
   connection no longer looks like a scan that is still running.
+- Safety CI now bounds pull-request public-release history scanning to the
+  event base/head range, matching the local release gate and avoiding
+  full-repository history scans on release PRs.
 - Added `scripts/query-doctor-web-recent-to-known-smoke` to run the local web
   Recent-to-Known Query ID smoke chain in one command. It keeps the selected
   Query ID in a temporary local file, accepts metadata-backed Recent cases with
