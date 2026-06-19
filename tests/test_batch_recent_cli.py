@@ -2129,6 +2129,180 @@ def test_batch_recent_cm_env_ignores_non_cm_keys(tmp_path):
     assert "UNSUPPORTED_OWNER" not in loaded
 
 
+def test_discovery_select_limit_adds_large_no_report_backfill_reserve(tmp_path):
+    module = load_batch_module()
+    args = module.parse_args(
+        [
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--cm-url",
+            "https://cm.example.net:7183",
+            "--cluster",
+            "cluster",
+            "--service",
+            "impala",
+            "--cm-inspect-limit",
+            "130",
+            "--select-limit",
+            "100",
+            "--metadata-mode",
+            "off",
+            "--top-reports",
+            "0",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+
+    assert module.discovery_select_limit(config) == 110
+
+
+def test_discovery_select_limit_leaves_non_calibration_runs_unchanged(tmp_path):
+    module = load_batch_module()
+    base_args = [
+        "--out",
+        str(batch_dir(tmp_path)),
+        "--cm-url",
+        "https://cm.example.net:7183",
+        "--cluster",
+        "cluster",
+        "--service",
+        "impala",
+        "--cm-inspect-limit",
+        "130",
+        "--select-limit",
+        "100",
+        "--metadata-mode",
+        "off",
+    ]
+
+    report_config = module.build_batch_config(
+        module.parse_args([*base_args, "--top-reports", "1"]),
+        env={},
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+    discover_only_config = module.build_batch_config(
+        module.parse_args([*base_args, "--top-reports", "0", "--discover-only"]),
+        env={},
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+    small_config = module.build_batch_config(
+        module.parse_args(
+            [
+                "--out",
+                str(batch_dir(tmp_path)),
+                "--cm-url",
+                "https://cm.example.net:7183",
+                "--cluster",
+                "cluster",
+                "--service",
+                "impala",
+                "--cm-inspect-limit",
+                "130",
+                "--select-limit",
+                "99",
+                "--metadata-mode",
+                "off",
+                "--top-reports",
+                "0",
+            ]
+        ),
+        env={},
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+
+    assert module.discovery_select_limit(report_config) == 100
+    assert module.discovery_select_limit(discover_only_config) == 100
+    assert module.discovery_select_limit(small_config) == 99
+
+
+def test_retain_backfilled_case_results_keeps_requested_successes(tmp_path):
+    module = load_batch_module()
+    args = module.parse_args(
+        [
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--cm-url",
+            "https://cm.example.net:7183",
+            "--cluster",
+            "cluster",
+            "--service",
+            "impala",
+            "--cm-inspect-limit",
+            "130",
+            "--select-limit",
+            "100",
+            "--metadata-mode",
+            "off",
+            "--top-reports",
+            "0",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+    cases = [
+        case_result(module, index=index, query_id=f"query-{index}", score=0)
+        for index in range(1, 111)
+    ]
+    for case in cases[:5]:
+        case.collection_status = "failed"
+        case.analysis_status = "not_started"
+        case.failure_category = "collection"
+    for case in cases[5:105]:
+        case.collection_status = "ok"
+        case.analysis_status = "ok"
+
+    retained, warning = module.retain_backfilled_case_results(config, cases)
+
+    assert len(retained) == 100
+    assert sum(1 for case in retained if case.analysis_status == "ok") == 100
+    assert warning is not None
+    assert "retained 100 successfully analyzed cases" in warning
+
+
+def test_retain_backfilled_case_results_keeps_all_when_target_not_met(tmp_path):
+    module = load_batch_module()
+    args = module.parse_args(
+        [
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--cm-url",
+            "https://cm.example.net:7183",
+            "--cluster",
+            "cluster",
+            "--service",
+            "impala",
+            "--cm-inspect-limit",
+            "130",
+            "--select-limit",
+            "100",
+            "--metadata-mode",
+            "off",
+            "--top-reports",
+            "0",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+    cases = [
+        case_result(module, index=index, query_id=f"query-{index}", score=0)
+        for index in range(1, 111)
+    ]
+    for case in cases[:15]:
+        case.collection_status = "failed"
+        case.analysis_status = "not_started"
+        case.failure_category = "collection"
+    for case in cases[15:]:
+        case.collection_status = "ok"
+        case.analysis_status = "ok"
+
+    retained, warning = module.retain_backfilled_case_results(config, cases)
+
+    assert retained == cases
+    assert warning is not None
+    assert "retained all 110 processed candidates with 95 successful analyses" in warning
+
+
 def test_candidate_discovery_respects_bounded_limit_and_triage_profile_limit(monkeypatch):
     module = load_batch_module()
     calls = []
@@ -3899,6 +4073,62 @@ def test_progress_jsonl_records_sanitized_successful_batch(tmp_path, monkeypatch
     assert "aaaaaaaaaaaaaaaa" not in progress_text
     assert "secret_column" not in progress_text
     assert "another_secret" not in progress_text
+
+
+def test_parallel_case_processing_streams_analysis_after_each_collection(tmp_path, monkeypatch):
+    module = load_batch_module()
+    progress_path = batch_dir(tmp_path) / "progress.jsonl"
+    analysis_started = threading.Event()
+    selected = [
+        candidate(module, "aaaaaaaaaaaaaaaa:0000000000000001", 61000),
+        candidate(module, "bbbbbbbbbbbbbbbb:0000000000000002", 62000),
+    ]
+
+    monkeypatch.setattr(
+        module,
+        "discover_candidates",
+        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
+    )
+
+    def fake_run(cmd, cwd, env):
+        if command_uses_role(cmd, "collect_cm"):
+            query_id = cmd[cmd.index("--query-id") + 1]
+            if query_id.startswith("bbbb"):
+                analysis_started.wait(timeout=1.0)
+            out = Path(cmd[cmd.index("--out") + 1])
+            write_case(out / query_id.replace(":", "_"), healthy_facts())
+        elif command_uses_role(cmd, "pipeline") and "--stop-after-analysis" in cmd:
+            case_dir = Path(command_args(cmd, "pipeline")[0])
+            if "aaaaaaaaaaaaaaaa" in str(case_dir):
+                analysis_started.set()
+            (case_dir / "analysis_facts.md").write_text(healthy_facts(), encoding="utf-8")
+        return completed()
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run)
+
+    result = module.main(
+        base_args(tmp_path)
+        + ["--jobs", "2", "--cm-jobs", "2", "--progress-jsonl", str(progress_path)],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    events = read_jsonl(progress_path)
+    first_analysis_started = next(
+        index
+        for index, event in enumerate(events)
+        if event["stage"] == "case"
+        and event["case_id"] == "case-001"
+        and event["status"] == "analysis_started"
+    )
+    second_collection_done = next(
+        index
+        for index, event in enumerate(events)
+        if event["stage"] == "case"
+        and event["case_id"] == "case-002"
+        and event["status"] == "collection_done"
+    )
+    assert first_analysis_started < second_collection_done
 
 
 def test_progress_jsonl_records_failed_case_without_secrets(tmp_path, monkeypatch):
@@ -7454,6 +7684,180 @@ def test_collection_failure_recorded_and_batch_continues(tmp_path, monkeypatch):
     assert failed["failure_category"] == "profile_collection_failed"
     assert failed["failure_reason"] == "Cloudera Manager profile collection returned HTTP 500."
     assert "raw-subprocess-secret" not in json.dumps(payload)
+
+
+@pytest.mark.parametrize("analyzer_jobs", [1, 2])
+def test_cm_http_5xx_collection_circuit_breaker_stops_new_profile_jobs(
+    tmp_path, monkeypatch, analyzer_jobs
+):
+    module = load_batch_module()
+    progress_path = batch_dir(tmp_path) / "progress.jsonl"
+    selected = [
+        candidate(module, f"{index:016x}:0000000000000001", 61000 + index) for index in range(1, 13)
+    ]
+
+    monkeypatch.setattr(
+        module,
+        "discover_candidates",
+        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
+    )
+    collected_query_ids = []
+
+    def fake_run(cmd, cwd, env):
+        if command_uses_role(cmd, "collect_cm"):
+            collected_query_ids.append(cmd[cmd.index("--query-id") + 1])
+            return completed(1, stderr="HTTP 500 Server Error raw-subprocess-secret")
+        return completed()
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run)
+
+    result = module.main(
+        base_args(tmp_path)
+        + [
+            "--jobs",
+            str(analyzer_jobs),
+            "--cm-jobs",
+            "2",
+            "--progress-jsonl",
+            str(progress_path),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    assert any(
+        "Cloudera Manager profile collection was stopped after repeated HTTP 5xx responses"
+        in warning
+        for warning in payload["warnings"]
+    )
+    cases = payload["cases"]
+    assert any(case["collection_status"] == "skipped" for case in cases)
+    assert len(set(collected_query_ids)) < len(selected)
+    assert "raw-subprocess-secret" not in json.dumps(payload)
+
+    events = read_jsonl(progress_path)
+    stopped = [
+        event
+        for event in events
+        if event["stage"] == "profile_collection" and event["status"] == "stopped"
+    ]
+    assert stopped
+    assert stopped[0]["reason"] == "cm_http_5xx_circuit_breaker"
+    assert stopped[0]["http_5xx_failures"] >= 5
+
+
+def test_cm_http_5xx_collection_circuit_breaker_does_not_stop_direct_impala(tmp_path, monkeypatch):
+    module = load_batch_module()
+    selected = [
+        candidate(module, f"{index:016x}:0000000000000001", 61000 + index) for index in range(1, 8)
+    ]
+
+    monkeypatch.setattr(
+        module,
+        "discover_candidates",
+        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
+    )
+    collected_query_ids = []
+
+    def fake_run(cmd, cwd, env):
+        if command_uses_role(cmd, "collect_impala_profile"):
+            collected_query_ids.append(cmd[cmd.index("--query-id") + 1])
+            return completed(1, stderr="HTTP 500 Server Error")
+        return completed()
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run)
+
+    result = module.main(
+        base_args(tmp_path)
+        + [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--jobs",
+            "1",
+            "--cm-jobs",
+            "2",
+        ],
+        env={},
+    )
+
+    assert result == 0
+    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    assert len(set(collected_query_ids)) == len(selected)
+    assert not any("repeated HTTP 5xx" in warning for warning in payload["warnings"])
+    assert {case["collection_status"] for case in payload["cases"]} == {"failed"}
+
+
+def test_collection_transient_failure_retried_before_analysis(tmp_path, monkeypatch):
+    module = load_batch_module()
+    selected = [
+        candidate(module, "aaaaaaaaaaaaaaaa:0000000000000001", 61000),
+    ]
+
+    monkeypatch.setattr(
+        module,
+        "discover_candidates",
+        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
+    )
+
+    attempts = 0
+
+    def fake_run(cmd, cwd, env):
+        nonlocal attempts
+        if command_uses_role(cmd, "collect_cm"):
+            attempts += 1
+            if attempts == 1:
+                return completed(1, stderr="temporary collector failure")
+            query_id = cmd[cmd.index("--query-id") + 1]
+            out = Path(cmd[cmd.index("--out") + 1])
+            write_case(out / query_id.replace(":", "_"), healthy_facts())
+        return completed()
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run)
+
+    result = module.main(base_args(tmp_path), env=auth_env())
+
+    assert result == 0
+    assert attempts == 2
+    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    [case] = payload["cases"]
+    assert case["collection_status"] == "ok"
+    assert case["analysis_status"] == "ok"
+    assert case["failure_category"] is None
+
+
+def test_collection_client_error_is_not_retried(tmp_path, monkeypatch):
+    module = load_batch_module()
+    selected = [candidate(module, "aaaaaaaaaaaaaaaa:0000000000000001", 61000)]
+
+    monkeypatch.setattr(
+        module,
+        "discover_candidates",
+        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
+    )
+
+    attempts = 0
+
+    def fake_run(cmd, cwd, env):
+        nonlocal attempts
+        if command_uses_role(cmd, "collect_cm"):
+            attempts += 1
+            return completed(1, stderr="HTTP 404 Not Found")
+        return completed()
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run)
+
+    result = module.main(base_args(tmp_path), env=auth_env())
+
+    assert result == 0
+    assert attempts == 1
+    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    [case] = payload["cases"]
+    assert case["collection_status"] == "failed"
+    assert case["failure_category"] == "profile_collection_failed"
+    assert case["failure_reason"] == "Cloudera Manager profile collection returned HTTP 404."
 
 
 def test_collection_timeout_recorded_safely_and_batch_continues(tmp_path, monkeypatch):

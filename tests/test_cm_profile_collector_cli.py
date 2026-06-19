@@ -3278,10 +3278,8 @@ def test_build_cm_profile_text_request_uses_non_secret_params():
     path, params = module.build_cm_profile_text_request(filters, query_id)
 
     assert path == (
-        "/api/v32/clusters/CLUSTER_NAME/services/IMPALA_SERVICE_NAME/impalaQueries/"
-        "aaaaaaaaaaaaaaaa:0000000000000001"
+        f"/api/v32/clusters/CLUSTER_NAME/services/IMPALA_SERVICE_NAME/impalaQueries/{query_id}"
     )
-    assert "%3A" not in path
     assert params == {"format": "text"}
     assert "password" not in repr(params).lower()
     assert "token" not in repr(params).lower()
@@ -3333,7 +3331,7 @@ def test_build_cm_profile_text_request_rejects_unsafe_query_id_shapes(query_id):
         module.build_cm_profile_text_request(filters, query_id)
 
 
-def test_build_cm_profile_text_request_encodes_cluster_and_service_but_preserves_query_id_colon():
+def test_build_cm_profile_text_request_encodes_cluster_and_service_but_preserves_query_id_separator():
     module = load_collector_module()
     filters = module.CMQueryFilters(
         cluster="../CLUSTER NAME?x=1",
@@ -3351,7 +3349,7 @@ def test_build_cm_profile_text_request_encodes_cluster_and_service_but_preserves
     assert path == (
         "/api/v32/clusters/..%2FCLUSTER%20NAME%3Fx%3D1/services/"
         "http%3A%2F%2Fservice%2Fname/impalaQueries/"
-        "aaaaaaaaaaaaaaaa:0000000000000001"
+        f"{query_id}"
     )
     assert params == {"format": "text"}
     assert path.rsplit("/", 1)[-1] == query_id

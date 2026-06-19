@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import re
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
+from query_doctor.recent.backfill import backfill_pool_warning, discovery_select_limit
 from query_doctor.recent.batch_config import MAX_RAW_CM_SUMMARY_SCAN_LIMIT, secret_values
 from query_doctor.recent.batch_models import BatchConfig, DiscoveryResult
 from query_doctor.source_visibility import SOURCE_VISIBILITY_OWNER_RAW
@@ -115,9 +116,10 @@ def discover_candidates(
         time_sharded = True
         raw_scan_cap_hit = sharded_collection.raw_scan_cap_hit
     summaries = filter_summaries_for_collectable_owners(config, summaries)
+    select_limit = discovery_select_limit(config)
     candidates = cm_profiles.select_recent_query_candidates(
         summaries,
-        select_limit=config.triage_profile_limit,
+        select_limit=select_limit,
         include_failed=config.include_failed,
         include_running=config.include_running or config.only_running,
         only_running=config.only_running,
@@ -132,11 +134,14 @@ def discover_candidates(
         warnings.append(
             "CM summary raw scan cap was reached before discovery completed. Continuing with bounded partial candidates; narrow the scan window or filters for complete coverage."
         )
+    pool_warning = backfill_pool_warning(config, select_limit=select_limit)
+    if pool_warning:
+        warnings.append(pool_warning)
     candidate_limit_hit = matching_candidate_limit_hit(candidates)
     if candidate_limit_hit and not raw_scan_cap_hit:
         warnings.append(
-            f"More than {config.triage_profile_limit} query summaries matched "
-            f"the current filters; selected the top {config.triage_profile_limit} by scan order."
+            f"More than {select_limit} query summaries matched "
+            f"the current filters; selected the top {select_limit} by scan order."
         )
     if raw_scan_cap_hit:
         return DiscoveryResult(

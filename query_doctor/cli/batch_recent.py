@@ -68,6 +68,11 @@ from query_doctor.recent.batch_config import (
     validate_safe_overwrite_target,
 )
 from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryResult
+from query_doctor.recent.backfill import (
+    backfill_pool_warning,
+    discovery_select_limit,
+    retain_backfilled_case_results,
+)
 from query_doctor.recent.batch_scoring import (
     backend_data_skew_value,
     count_max_table_skips,
@@ -696,7 +701,16 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
                 cm_jobs=config.cm_jobs,
                 metadata_jobs=config.metadata_jobs,
             )
-            process_cases(config, case_results, env=env, repo_root=repo_root, progress=progress)
+            case_processing_warnings = process_cases(
+                config, case_results, env=env, repo_root=repo_root, progress=progress
+            )
+            warnings.extend(case_processing_warnings)
+            processed_case_count = len(case_results)
+            case_results, backfill_retention_warning = retain_backfilled_case_results(
+                config, case_results
+            )
+            if backfill_retention_warning:
+                warnings.append(backfill_retention_warning)
             rank_cases_for_metadata(case_results)
             refresh_top_metadata(
                 config, case_results, env=env, repo_root=repo_root, progress=progress
@@ -706,7 +720,8 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             progress.emit(
                 stage="case_processing",
                 status="done",
-                total=len(case_results),
+                total=processed_case_count,
+                retained=len(case_results),
                 completed=completed_cases,
                 failed=failed_cases,
             )
@@ -769,9 +784,10 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
         )
         summaries = filter_impala_summaries_for_window(config, result.summaries)
         summaries = filter_impala_summaries_for_owner(config, summaries)
+        select_limit = discovery_select_limit(config)
         candidates = cm_profiles.select_recent_query_candidates(
             summaries,
-            select_limit=config.triage_profile_limit,
+            select_limit=select_limit,
             include_failed=config.include_failed,
             include_running=config.include_running or config.only_running,
             only_running=config.only_running,
@@ -783,10 +799,13 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
             order=config.order,
         )
         warnings = list(result.warnings)
+        pool_warning = backfill_pool_warning(config, select_limit=select_limit)
+        if pool_warning:
+            warnings.append(pool_warning)
         if matching_candidate_limit_hit(candidates):
             warnings.append(
-                f"More than {config.triage_profile_limit} query summaries matched "
-                f"the current filters; selected the top {config.triage_profile_limit} by scan order."
+                f"More than {select_limit} query summaries matched "
+                f"the current filters; selected the top {select_limit} by scan order."
             )
         return DiscoveryResult(
             candidates=candidates,

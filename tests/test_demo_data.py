@@ -18,6 +18,7 @@ from query_doctor.web.trusted_artifacts import (
 from query_doctor.web.ui.action_candidates import render_action_candidate_findings
 from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
 from query_doctor.web.ui.recent_scan_results import render_batch_summary
+from query_doctor.web.ui.trino_demo import render_trino_demo_sections
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -34,6 +35,7 @@ def test_package_entrypoint_exposes_demo_generator_api():
 
     assert demo_data.REPO_DIR == REPO_DIR
     assert demo_data.SUMMARY_NAME == "batch_summary.json"
+    assert demo_data.TRINO_DEMO_NAME == "trino_demo.json"
 
 
 def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
@@ -45,8 +47,11 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
     assert result == 0
     summary_path = out_dir / "batch_summary.json"
     assert summary_path.is_file()
+    trino_demo_path = out_dir / "trino_demo.json"
+    assert trino_demo_path.is_file()
     assert (out_dir / "README.md").is_file()
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    trino_demo = json.loads(trino_demo_path.read_text(encoding="utf-8"))
     cases = summary["cases"]
     assert summary["demo_mode"] is True
     assert [case["query_id"] for case in cases] == [
@@ -70,6 +75,12 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
     ]
     assert workload_groups[0]["baseline"]["regression"] == "strong"
     assert workload_groups[1]["baseline"]["regression"] == "none"
+    assert trino_demo["schema_version"] == "query_doctor_trino_demo_v1"
+    assert [case["query_id"] for case in trino_demo["cases"]] == [
+        "20260603_120102_00001_demoa",
+        "20260603_120212_00002_demob",
+    ]
+    assert trino_demo["recent"]["records_diagnosed"] == 2
 
     settings = WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary_path)
     optimizer_case = cases[0]
@@ -136,6 +147,33 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
         "runtime_admission_check.v1",
     }
     assert all(record.note_redacted == "synthetic demo outcome" for record in records)
+
+
+def test_generated_demo_renders_read_only_trino_beta_cases(tmp_path):
+    module = load_demo_module()
+    out_dir = tmp_path / "query-doctor-demo-pack"
+    module.main(["--out", str(out_dir)])
+    settings = WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=out_dir / "batch_summary.json",
+    )
+
+    html = render_trino_demo_sections(settings)
+
+    assert "Trino Beta demo cases" in html
+    assert "20260603_120102_00001_demoa" in html
+    assert "20260603_120212_00002_demob" in html
+    assert "Trino spill observed" in html
+    assert "Trino queue or blocked" in html
+    assert "Trino SQL execution" in html
+    assert "not_performed" in html
+    assert 'href="#trino-demo-001"' in html
+    assert 'action="/analyze"' not in html
+    assert 'href="/batch/case/' not in html
+    assert 'href="/query/' not in html
+    assert 'href="/optimizer"' not in html
+    assert "SELECT" not in html
+    assert str(out_dir) not in html
 
 
 def test_generated_demo_optimizer_case_renders_safe_review_locations(tmp_path):

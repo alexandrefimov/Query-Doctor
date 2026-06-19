@@ -77,6 +77,16 @@ CLASSIC_TEXT_MARKER_RE = re.compile(
     r"|^\s*#{1,6}\s*(?:ExecSummary|Backend counters|Metric lines)\b",
     re.IGNORECASE | re.MULTILINE,
 )
+CLASSIC_TEXT_SECTION_MARKERS = (
+    "Admission result:",
+    "Backend startup latencies",
+    "Per Node Peak Memory Usage",
+    "Per Node Bytes Read",
+    "Per Node User Time",
+    "Per Node System Time",
+    "Per Host Number of Fragment Instances",
+    "Fragment Instance Lifecycle",
+)
 THRIFT_PROFILE_RE = re.compile(
     r"\b(?:TQueryProfile|TRuntimeProfileTree|TRuntimeProfileNode|TExecSummary)\b",
     re.IGNORECASE,
@@ -208,16 +218,17 @@ def detect_profile_dialect(
             "medium",
             ("classic_thrift_profile_marker",),
         )
-    if (
-        CLASSIC_TEXT_MARKER_RE.search(effective)
-        or RAW_RUNTIME_NODE_RE.search(effective)
-        or FRAGMENT_SECTION_RE.search(effective)
-        or AVERAGED_FRAGMENT_RE.search(effective)
-    ):
+    if classic_text_profile_markers_observed(effective):
         return ProfileDialectDetection(
             ProfileDialect.CLASSIC_TEXT,
             "medium",
             ("classic_text_profile_marker",),
+        )
+    if classic_text_section_marker_count(effective) >= 2:
+        return ProfileDialectDetection(
+            ProfileDialect.CLASSIC_TEXT,
+            "medium",
+            ("classic_text_section_markers",),
         )
     return ProfileDialectDetection(ProfileDialect.UNKNOWN, "low", ("profile_markers_not_found",))
 
@@ -229,6 +240,19 @@ def parse_json_object(text: str) -> Any | None:
         return json.loads(text)
     except json.JSONDecodeError:
         return None
+
+
+def classic_text_profile_markers_observed(text: str) -> bool:
+    return bool(
+        CLASSIC_TEXT_MARKER_RE.search(text)
+        or RAW_RUNTIME_NODE_RE.search(text)
+        or FRAGMENT_SECTION_RE.search(text)
+        or AVERAGED_FRAGMENT_RE.search(text)
+    )
+
+
+def classic_text_section_marker_count(text: str) -> int:
+    return sum(1 for marker in CLASSIC_TEXT_SECTION_MARKERS if marker in text)
 
 
 def normalize_json_key(value: object) -> str:
@@ -252,7 +276,10 @@ def json_payload_wraps_classic_text_profile(value: Any) -> bool:
     for key, item in iter_json_items(value):
         if normalize_json_key(key) not in TEXT_PROFILE_FIELDS or not isinstance(item, str):
             continue
-        if CLASSIC_TEXT_MARKER_RE.search(item) or RAW_RUNTIME_NODE_RE.search(item):
+        if (
+            classic_text_profile_markers_observed(item)
+            or classic_text_section_marker_count(item) >= 2
+        ):
             return True
     return False
 
@@ -292,7 +319,26 @@ def profile_layout_name(features: dict[str, bool | int]) -> str:
         return "exec_summary_table"
     if features.get("summary"):
         return "summary_only"
+    if features.get("plan") and features.get("fragment_section_count"):
+        return "plan_fragment_sections"
+    if classic_text_resource_or_timing_features_observed(features):
+        return "resource_or_timing_sections"
     return "unknown"
+
+
+def classic_text_resource_or_timing_features_observed(features: dict[str, bool | int]) -> bool:
+    return bool(
+        features.get("query_timeline")
+        or features.get("admission")
+        or features.get("backend_startup_latencies")
+        or features.get("per_node_peak_memory")
+        or features.get("per_node_bytes_read")
+        or features.get("per_node_user_time")
+        or features.get("per_node_system_time")
+        or features.get("per_host_fragment_instances")
+        or features.get("fragment_instance_lifecycle")
+        or features.get("resource_trace")
+    )
 
 
 def build_profile_format_facts(
@@ -416,7 +462,7 @@ def profile_compatibility_status(
         return "partial" if layout != "unknown" else "unknown"
     if layout in {"raw_runtime_nodes_with_lifecycle", "raw_runtime_nodes", "exec_summary_table"}:
         return "supported"
-    if layout == "summary_only":
+    if layout in {"summary_only", "plan_fragment_sections", "resource_or_timing_sections"}:
         return "partial"
     return "unknown"
 

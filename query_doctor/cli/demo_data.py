@@ -33,6 +33,7 @@ from query_doctor.demo.specs import (
     stats_facts_text,
     stats_source_sql,
 )
+from query_doctor.demo.trino_cases import trino_demo_payload
 from query_doctor.report.trusted_text import validate_report_text
 from query_doctor.web.action_outcomes import (
     SCHEMA_VERSION,
@@ -54,6 +55,7 @@ DEFAULT_DEMO_OUT = Path(tempfile.gettempdir()) / "query-doctor-demo-pack"
 DEFAULT_DEMO_OUT_HELP = "system temp directory / query-doctor-demo-pack"
 SUMMARY_NAME = "batch_summary.json"
 ACTION_OUTCOMES_NAME = "action_outcomes.jsonl"
+TRINO_DEMO_NAME = "trino_demo.json"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -313,6 +315,7 @@ def generate_demo_pack(out_dir: Path, *, overwrite: bool) -> dict[str, Any]:
         write_demo_case(out_dir, spec)
     summary = build_summary(out_dir, specs)
     write_json(out_dir / SUMMARY_NAME, summary)
+    write_json(out_dir / TRINO_DEMO_NAME, trino_demo_payload())
     write_demo_action_outcomes(out_dir, summary)
     write_demo_notes(out_dir, summary_path=out_dir / SUMMARY_NAME)
     return summary
@@ -461,6 +464,7 @@ def write_demo_notes(out_dir: Path, *, summary_path: Path) -> None:
             "```",
             "",
             "Open Workloads first, then Optimization, Stats, or Frequent short tabs to show the demo workflow.",
+            "The web UI also renders read-only Trino Beta demo cases from trino_demo.json; no Trino coordinator, SQL execution, Details, reports, or optimizer path is used.",
             "",
         ]
     )
@@ -490,6 +494,7 @@ def render_success_message(out_dir: Path) -> str:
             f"Output: {out_dir}",
             f"Batch summary: {summary_path}",
             f"Action outcomes: {outcomes_path}",
+            f"Trino demo cases: {out_dir / TRINO_DEMO_NAME}",
             "",
             "Launch:",
             f"  {demo_launch_command(summary_path, outcomes_path)}",
