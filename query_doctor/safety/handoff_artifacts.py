@@ -23,6 +23,17 @@ def path_overlaps_any(path: Path | None, candidates: Iterable[Path | None]) -> b
     return any(candidate is not None and same_path(path, candidate) for candidate in candidates)
 
 
+def output_overlaps_inputs_error(
+    output: Path | None,
+    inputs: Iterable[Path | None],
+    *,
+    message: str,
+) -> str | None:
+    if path_overlaps_any(output, inputs):
+        return message
+    return None
+
+
 def distinct_paths_error(paths: Iterable[Path | None], *, message: str) -> str | None:
     seen: list[Path] = []
     for path in paths:

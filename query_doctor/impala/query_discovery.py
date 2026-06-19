@@ -61,7 +61,8 @@ def fetch_impala_query_summaries(
     max_query_list_bytes: int = DEFAULT_MAX_QUERY_LIST_BYTES,
     opener: UrlOpener = configured_diagnostic_urlopen,
 ) -> ImpalaQueryDiscoveryResult:
-    urls = impala_query_list_urls(hosts, port=port, scheme=scheme)
+    normalized_hosts = normalize_impala_profile_hosts(tuple(hosts))
+    urls = impala_query_list_urls(normalized_hosts, port=port, scheme=scheme)
     if not urls:
         raise CMAdapterError("Impala query discovery requires at least one impalad host.")
 
@@ -81,6 +82,12 @@ def fetch_impala_query_summaries(
         except CMClientError:
             continue
         successful += 1
+        for warning in query_list_payload_warnings(
+            payload,
+            configured_profile_host_count=len(normalized_hosts),
+        ):
+            if warning not in warnings:
+                warnings.append(warning)
         for summary in parse_impala_query_list_payload(payload):
             summaries_by_query_id.setdefault(summary.query_id, summary)
     if successful == 0:
@@ -95,6 +102,51 @@ def fetch_impala_query_summaries(
         warnings=warnings,
         attempted_endpoints=attempted,
     )
+
+
+def query_list_payload_warnings(
+    payload: Any,
+    *,
+    configured_profile_host_count: int,
+) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    warnings: list[str] = []
+    completed_queries = payload.get("completed_queries")
+    completed_query_count = len(completed_queries) if isinstance(completed_queries, list) else 0
+    completed_log_size = safe_positive_int(payload.get("completed_log_size"))
+    if completed_log_size is not None and completed_query_count >= completed_log_size:
+        warnings.append(
+            "Impala daemon completed query list is at its retained log size; direct Recent "
+            "scans cannot inspect older daemon entries. Run a fresh table-backed query or "
+            "narrow the validation flow to a fresh Known Query ID."
+        )
+    query_location_count = top_level_query_location_count(payload)
+    if configured_profile_host_count == 1 and query_location_count > configured_profile_host_count:
+        warnings.append(
+            "Impala daemon query list exposes multiple query location hints while one "
+            "profile host is configured; load-balanced or ingress profile collection may "
+            "miss the daemon that owns a Known Query ID. Configure explicit daemon profile "
+            "hosts when available, or validate with a fresh retained Query ID."
+        )
+    return warnings
+
+
+def top_level_query_location_count(payload: dict[str, Any]) -> int:
+    count = 0
+    for key, value in payload.items():
+        normalized = str(key).lower()
+        if "query" in normalized and "location" in normalized and isinstance(value, list):
+            count += len(value)
+    return count
+
+
+def safe_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def fetch_impala_query_list_url(

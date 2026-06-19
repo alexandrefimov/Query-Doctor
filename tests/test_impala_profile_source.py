@@ -343,12 +343,50 @@ def test_fetch_impala_query_summaries_parses_completed_and_running_queries():
         "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
         "cccccccccccccccc:dddddddddddddddd",
     ]
+    assert any("multiple query location hints" in warning for warning in result.warnings)
     assert result.summaries[0].status == "finished"
     assert result.summaries[0].duration_ms == 120000
     assert result.summaries[0].end_time == "2026-05-12T10:15:00Z"
     assert result.summaries[1].status == "running"
     assert result.summaries[1].query_state == "running"
     assert result.summaries[1].duration_ms == 30000
+
+
+def test_fetch_impala_query_summaries_warns_when_completed_log_is_full():
+    def fake_opener(request, timeout):
+        assert request.full_url in {
+            "http://impalad-1.example.com:25000/queries?json",
+            "http://impalad-1.example.com:25000/queries?json=true",
+        }
+        return FakeResponse(
+            json.dumps(
+                {
+                    "completed_log_size": 2,
+                    "completed_queries": [
+                        {
+                            "query_id": "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                            "stmt": "SELECT 1",
+                        },
+                        {
+                            "query_id": "cccccccccccccccc:dddddddddddddddd",
+                            "stmt": "SELECT 2",
+                        },
+                    ],
+                }
+            )
+        )
+
+    result = fetch_impala_query_summaries(
+        hosts=["impalad-1.example.com"],
+        max_query_list_bytes=4096,
+        opener=fake_opener,
+    )
+
+    assert [summary.query_id for summary in result.summaries] == [
+        "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+        "cccccccccccccccc:dddddddddddddddd",
+    ]
+    assert any("retained log size" in warning for warning in result.warnings)
 
 
 def test_fetch_impala_profile_text_tries_hosts_until_profile_is_found():

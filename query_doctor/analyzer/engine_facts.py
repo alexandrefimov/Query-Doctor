@@ -498,6 +498,7 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
             "trino_peak_memory_bytes",
             "trino_queued_time_ms",
             "trino_stage_count",
+            "trino_state",
             "trino_statement_execution",
             "trino_task_count",
             "trino_version_family",

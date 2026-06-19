@@ -120,6 +120,47 @@ def test_detects_json_wrapped_classic_text_as_effective_text_profile():
     assert facts["source_capabilities"]["text_profile_payload"] == "wrapped_text_observed"
 
 
+def test_json_wrapped_classic_text_plan_fragments_are_limited_not_unsupported():
+    raw_profile = """
+{
+  "details": "Plan:\\nF00:\\n  00:SCAN HDFS\\nAdmission result: Admitted immediately\\n"
+}
+"""
+    normalized_profile = "Plan:\nF00:\n  00:SCAN HDFS\nAdmission result: Admitted immediately\n"
+
+    facts = build_profile_format_facts(normalized_profile, raw_text=raw_profile)
+
+    assert facts["profile_dialect"] == "classic_text_profile"
+    assert facts["dialect_reasons"] == ["json_wrapped_classic_text_profile"]
+    assert facts["layout"] == "plan_fragment_sections"
+    assert facts["compatibility"] == "partial"
+    assert facts["analysis_support"] == "limited"
+    assert facts["primary_bottleneck_policy"] == "supported"
+    assert facts["per_instance_evidence"] == "not_observed"
+
+
+def test_classic_text_resource_sections_are_limited_not_unknown():
+    profile = """
+Admission result: Admitted immediately
+Backend startup latencies:
+Per Node Peak Memory Usage:
+Per Node Bytes Read:
+Per Node User Time:
+Per Node System Time:
+Fragment Instance Lifecycle:
+"""
+
+    facts = build_profile_format_facts(profile)
+
+    assert facts["profile_dialect"] == "classic_text_profile"
+    assert facts["dialect_reasons"] == ["classic_text_section_markers"]
+    assert facts["layout"] == "resource_or_timing_sections"
+    assert facts["compatibility"] == "partial"
+    assert facts["analysis_support"] == "limited"
+    assert facts["primary_bottleneck_policy"] == "supported"
+    assert facts["per_instance_evidence"] == "supported"
+
+
 def test_detects_experimental_profile_v2_as_limited():
     profile = """
 {

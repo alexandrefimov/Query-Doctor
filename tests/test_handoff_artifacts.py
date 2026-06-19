@@ -6,6 +6,7 @@ from pathlib import Path
 from query_doctor.safety.handoff_artifacts import (
     ascii_json_artifact_text,
     distinct_paths_error,
+    output_overlaps_inputs_error,
     path_overlaps_any,
     same_path,
     write_ascii_json_artifact,
@@ -33,6 +34,19 @@ def test_handoff_artifact_path_overlap_uses_normalized_paths(tmp_path: Path) -> 
     assert same_path(path, alias)
     assert path_overlaps_any(alias, (None, path))
     assert not path_overlaps_any(None, (path,))
+
+
+def test_handoff_artifact_output_overlap_error_reuses_message(tmp_path: Path) -> None:
+    output = tmp_path / "summary.json"
+    alias = tmp_path / "nested" / ".." / "summary.json"
+    other = tmp_path / "input.json"
+
+    assert (
+        output_overlaps_inputs_error(output, (other, alias), message="summary must differ")
+        == "summary must differ"
+    )
+    assert output_overlaps_inputs_error(None, (alias,), message="summary must differ") is None
+    assert output_overlaps_inputs_error(output, (other,), message="summary must differ") is None
 
 
 def test_handoff_artifact_distinct_paths_error_reports_first_duplicate(

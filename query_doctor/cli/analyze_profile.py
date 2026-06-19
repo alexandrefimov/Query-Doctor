@@ -366,7 +366,6 @@ def main(argv: list[str] | None = None) -> int:
         build_memory_pressure_facts(analysis, counter_registry=profile_counter_registry),
         profile_format,
     )
-    analysis["case_primary_bottleneck"] = classify_case_primary_bottleneck(analysis).to_dict()
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["default_database"] = extract_default_database(text)
     metrics_correlation = build_cm_metrics_correlation(analysis)
@@ -375,6 +374,7 @@ def main(argv: list[str] | None = None) -> int:
     analysis["cluster_runtime_context"] = build_cluster_runtime_context(analysis)
     analysis["source_provenance"] = build_source_provenance(analysis)
     analysis["runtime_diagnosis"] = build_runtime_diagnosis(analysis)
+    analysis["case_primary_bottleneck"] = classify_case_primary_bottleneck(analysis).to_dict()
     analysis["action_cards"] = build_action_cards(analysis)
     analysis["evidence_quality"] = build_evidence_quality(analysis)
 

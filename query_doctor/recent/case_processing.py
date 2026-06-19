@@ -7,8 +7,9 @@ import re
 import shutil
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import replace
+from collections.abc import Iterable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
+from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -44,7 +45,80 @@ RUNTIME_METRICS_REFRESH_TIMEOUT_SEC = 300
 DEFAULT_SUBPROCESS_TIMEOUT_SEC = 900
 SUBPROCESS_TIMEOUT_RETURN_CODE = 124
 MAX_CM_TIMESERIES_REFRESH_JOBS = 5
+PROFILE_COLLECTION_MAX_ATTEMPTS = 2
+CM_PROFILE_FAILURE_BREAKER_MIN_FAILURES = 5
+CM_PROFILE_FAILURE_BREAKER_CONSECUTIVE_FAILURES = 5
+CM_PROFILE_FAILURE_BREAKER_MIN_COMPLETED = 10
+CM_PROFILE_FAILURE_BREAKER_FAILURE_RATIO = 0.5
+CM_PROFILE_FAILURE_BREAKER_REASON = (
+    "Cloudera Manager profile collection was stopped after repeated HTTP 5xx "
+    "responses; reduce --cm-jobs or wait for Service Monitor to recover before "
+    "rerunning the batch."
+)
 HTTP_STATUS_RE = re.compile(r"\bHTTP(?:\s+Error)?\s+([1-5][0-9][0-9])\b", re.IGNORECASE)
+
+
+@dataclass
+class CmProfileCollectionCircuitBreaker:
+    total_completed: int = 0
+    http_5xx_failures: int = 0
+    consecutive_http_5xx_failures: int = 0
+    tripped: bool = False
+
+    def record(self, case: CaseResult) -> bool:
+        self.total_completed += 1
+        if case_is_cm_http_5xx_collection_failure(case):
+            self.http_5xx_failures += 1
+            self.consecutive_http_5xx_failures += 1
+        else:
+            self.consecutive_http_5xx_failures = 0
+        self.tripped = self.tripped or self.should_trip()
+        return self.tripped
+
+    def should_trip(self) -> bool:
+        if self.http_5xx_failures < CM_PROFILE_FAILURE_BREAKER_MIN_FAILURES:
+            return False
+        if self.consecutive_http_5xx_failures >= CM_PROFILE_FAILURE_BREAKER_CONSECUTIVE_FAILURES:
+            return True
+        if self.total_completed < CM_PROFILE_FAILURE_BREAKER_MIN_COMPLETED:
+            return False
+        return (
+            self.http_5xx_failures / self.total_completed
+            >= CM_PROFILE_FAILURE_BREAKER_FAILURE_RATIO
+        )
+
+    def warning(self) -> str:
+        return (
+            f"{CM_PROFILE_FAILURE_BREAKER_REASON} "
+            f"HTTP 5xx failures: {self.http_5xx_failures}/{self.total_completed} "
+            "completed profile collection tasks."
+        )
+
+
+def cm_profile_collection_circuit_breaker(
+    config: BatchConfig,
+) -> CmProfileCollectionCircuitBreaker | None:
+    if config.query_profile_source != "cm":
+        return None
+    return CmProfileCollectionCircuitBreaker()
+
+
+def case_is_cm_http_5xx_collection_failure(case: CaseResult) -> bool:
+    if case.failure_category != "profile_collection_failed":
+        return False
+    if not case.failure_reason:
+        return False
+    match = HTTP_STATUS_RE.search(case.failure_reason)
+    return bool(match and match.group(1).startswith("5"))
+
+
+def mark_unsubmitted_profile_collection_cases(cases: Iterable[CaseResult]) -> None:
+    for case in cases:
+        if case.collection_status != "not_started":
+            continue
+        case.collection_status = "skipped"
+        case.failure_category = "profile_collection_skipped"
+        case.failure_reason = CM_PROFILE_FAILURE_BREAKER_REASON
 
 
 def collect_scan_cm_events(
@@ -212,7 +286,7 @@ def collect_case_profile(
             else:
                 cmd.append("--no-collect-cm-timeseries")
             append_cm_config_args(cmd, config)
-        result = run_subprocess(cmd, cwd=repo_root, env=env)
+        result = run_profile_collection_subprocess(cmd, cwd=repo_root, env=env)
         if result.returncode != 0:
             if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
                 case.collection_status = "timeout"
@@ -265,12 +339,24 @@ def process_cases(
     env: dict[str, str],
     repo_root: Path,
     progress: ProgressWriter,
-) -> None:
+) -> list[str]:
     collection_started = time.monotonic()
     progress.emit(
         stage="profile_collection", status="started", total=len(cases), cm_jobs=config.cm_jobs
     )
-    collect_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
+    if streaming_case_processing_enabled(config, cases):
+        warnings = process_cases_streaming(
+            config,
+            cases,
+            env=env,
+            repo_root=repo_root,
+            progress=progress,
+            collection_started=collection_started,
+        )
+        refresh_top_cm_timeseries(config, cases, env=env, repo_root=repo_root, progress=progress)
+        return warnings
+
+    warnings = collect_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
     progress.emit(
         stage="profile_collection",
         status="done",
@@ -287,6 +373,99 @@ def process_cases(
         seconds=elapsed_seconds(analysis_started),
     )
     refresh_top_cm_timeseries(config, cases, env=env, repo_root=repo_root, progress=progress)
+    return warnings
+
+
+def streaming_case_processing_enabled(config: BatchConfig, cases: list[CaseResult]) -> bool:
+    return len(cases) > 1 and config.cm_jobs > 1 and config.jobs > 1
+
+
+def process_cases_streaming(
+    config: BatchConfig,
+    cases: list[CaseResult],
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+    collection_started: float,
+) -> list[str]:
+    analysis_started = time.monotonic()
+    progress.emit(stage="analyzer_scoring", status="started", total=len(cases), jobs=config.jobs)
+    analysis_futures = []
+    breaker = cm_profile_collection_circuit_breaker(config)
+    warning: str | None = None
+    with ThreadPoolExecutor(max_workers=config.cm_jobs) as collection_executor:
+        with ThreadPoolExecutor(max_workers=config.jobs) as analysis_executor:
+            pending_cases = iter(cases)
+            collection_futures: dict[Future[CaseResult], CaseResult] = {}
+
+            def submit_next() -> bool:
+                if breaker is not None and breaker.tripped:
+                    return False
+                try:
+                    case = next(pending_cases)
+                except StopIteration:
+                    return False
+                future = collection_executor.submit(
+                    collect_case_for_batch,
+                    config,
+                    case,
+                    env=env,
+                    repo_root=repo_root,
+                    progress=progress,
+                )
+                collection_futures[future] = case
+                return True
+
+            for _ in range(config.cm_jobs):
+                if not submit_next():
+                    break
+
+            while collection_futures:
+                done, _pending = wait(collection_futures, return_when=FIRST_COMPLETED)
+                for future in done:
+                    collection_futures.pop(future)
+                    case = future.result()
+                    if breaker is not None and breaker.record(case) and warning is None:
+                        warning = breaker.warning()
+                        progress.emit(
+                            stage="profile_collection",
+                            status="stopped",
+                            reason="cm_http_5xx_circuit_breaker",
+                            completed=breaker.total_completed,
+                            http_5xx_failures=breaker.http_5xx_failures,
+                        )
+                        mark_unsubmitted_profile_collection_cases(pending_cases)
+                    else:
+                        submit_next()
+                    if case.collection_status == "ok":
+                        analysis_futures.append(
+                            analysis_executor.submit(
+                                analyze_case_for_batch,
+                                config,
+                                case,
+                                env=env,
+                                repo_root=repo_root,
+                                progress=progress,
+                            )
+                        )
+                    else:
+                        print_case_progress(case)
+            progress.emit(
+                stage="profile_collection",
+                status="done",
+                total=len(cases),
+                seconds=elapsed_seconds(collection_started),
+            )
+            for future in as_completed(analysis_futures):
+                print_case_progress(future.result())
+    progress.emit(
+        stage="analyzer_scoring",
+        status="done",
+        total=len(cases),
+        seconds=elapsed_seconds(analysis_started),
+    )
+    return [warning] if warning else []
 
 
 def collect_cases(
@@ -296,15 +475,26 @@ def collect_cases(
     env: dict[str, str],
     repo_root: Path,
     progress: ProgressWriter,
-) -> None:
+) -> list[str]:
     if config.cm_jobs == 1:
         for case in cases:
             collect_case_for_batch(config, case, env=env, repo_root=repo_root, progress=progress)
-        return
+        return []
 
+    breaker = cm_profile_collection_circuit_breaker(config)
+    warning: str | None = None
     with ThreadPoolExecutor(max_workers=config.cm_jobs) as executor:
-        futures = [
-            executor.submit(
+        pending_cases = iter(cases)
+        futures: dict[Future[CaseResult], CaseResult] = {}
+
+        def submit_next() -> bool:
+            if breaker is not None and breaker.tripped:
+                return False
+            try:
+                case = next(pending_cases)
+            except StopIteration:
+                return False
+            future = executor.submit(
                 collect_case_for_batch,
                 config,
                 case,
@@ -312,10 +502,31 @@ def collect_cases(
                 repo_root=repo_root,
                 progress=progress,
             )
-            for case in cases
-        ]
-        for future in as_completed(futures):
-            future.result()
+            futures[future] = case
+            return True
+
+        for _ in range(config.cm_jobs):
+            if not submit_next():
+                break
+
+        while futures:
+            done, _pending = wait(futures, return_when=FIRST_COMPLETED)
+            for future in done:
+                futures.pop(future)
+                case = future.result()
+                if breaker is not None and breaker.record(case) and warning is None:
+                    warning = breaker.warning()
+                    progress.emit(
+                        stage="profile_collection",
+                        status="stopped",
+                        reason="cm_http_5xx_circuit_breaker",
+                        completed=breaker.total_completed,
+                        http_5xx_failures=breaker.http_5xx_failures,
+                    )
+                    mark_unsubmitted_profile_collection_cases(pending_cases)
+                else:
+                    submit_next()
+    return [warning] if warning else []
 
 
 def analyze_cases(
@@ -863,6 +1074,30 @@ def run_subprocess(
         )
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, SUBPROCESS_TIMEOUT_RETURN_CODE)
+
+
+def run_profile_collection_subprocess(
+    cmd: list[str], *, cwd: Path, env: dict[str, str]
+) -> subprocess.CompletedProcess:
+    result = run_subprocess(cmd, cwd=cwd, env=env)
+    attempts = 1
+    while (
+        result.returncode != 0
+        and attempts < PROFILE_COLLECTION_MAX_ATTEMPTS
+        and profile_collection_failure_is_retryable(result)
+    ):
+        attempts += 1
+        result = run_subprocess(cmd, cwd=cwd, env=env)
+    return result
+
+
+def profile_collection_failure_is_retryable(result: subprocess.CompletedProcess) -> bool:
+    if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
+        return True
+    http_status = subprocess_http_status(result)
+    if http_status is None:
+        return True
+    return http_status.startswith("5")
 
 
 def profile_collection_failure_reason(

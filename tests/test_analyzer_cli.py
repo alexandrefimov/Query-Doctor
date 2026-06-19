@@ -4204,6 +4204,25 @@ def test_storage_finding_uses_candidate_signal_title(tmp_path):
     assert_no_banned_or_unsupported_claims(text)
 
 
+def test_analyzer_builds_runtime_diagnosis_before_primary_classification(tmp_path, monkeypatch):
+    from query_doctor.analyzer.case_bottleneck import CasePrimaryBottleneck
+    from query_doctor.cli import analyze_profile
+
+    case_dir = copy_minimal_case(tmp_path)
+    runtime_seen_by_classifier = []
+
+    def fake_classify(analysis):
+        runtime_seen_by_classifier.append("runtime_diagnosis" in analysis)
+        return CasePrimaryBottleneck("unknown", "low", ("test_classifier_order",))
+
+    monkeypatch.setattr(analyze_profile, "classify_case_primary_bottleneck", fake_classify)
+
+    result = analyze_profile.main([str(case_dir)])
+
+    assert result == 0
+    assert runtime_seen_by_classifier == [True]
+
+
 def test_host_disk_io_pressure_correlates_with_storage_evidence(tmp_path):
     case_dir = write_case(
         tmp_path,
