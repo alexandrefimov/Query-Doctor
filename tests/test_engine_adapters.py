@@ -63,8 +63,8 @@ def test_trino_adapter_is_registered_for_bounded_raw_free_support_surfaces():
 
     assert adapter.engine_name == "trino"
     assert adapter.display_name == "Trino"
-    assert adapter.supports_recent_scan is False
-    assert adapter.supports_query_id_mode is False
+    assert adapter.supports_recent_scan is True
+    assert adapter.supports_query_id_mode is True
     assert adapter.supports_metadata_collection is False
     assert adapter.supports_validated_reports is False
     assert adapter.supports_history_server_compact_intake is False

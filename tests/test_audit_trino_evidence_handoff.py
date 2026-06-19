@@ -307,6 +307,25 @@ def test_trino_evidence_handoff_suite_audits_retained_summaries_without_path_ech
     assert "boundaries=46" in captured.out
     assert "Diagnostic lane fact states:" in captured.out
     assert "Issues: none" in captured.out
+    assert set(summary) == {
+        "boundary",
+        "counts",
+        "diagnostic_lane",
+        "issues",
+        "lifecycles",
+        "mode",
+        "package_source_types",
+        "parser_coverage",
+        "pipeline",
+        "requirements",
+        "source_contracts",
+        "source_granularity",
+        "source_schemas",
+        "source_version_states",
+        "status",
+        "summary_kind",
+        "support_statuses",
+    }
     assert summary["summary_kind"] == "trino_evidence_handoff_suite_summary_v1"
     assert summary["mode"] == "trino_evidence_handoff_suite"
     assert summary["status"] == "ok"
@@ -323,6 +342,16 @@ def test_trino_evidence_handoff_suite_audits_retained_summaries_without_path_ech
         "require_single_handoff_status": "ok",
         "require_single_package_cases": True,
         "require_support_boundary": True,
+    }
+    assert set(summary["counts"]) == {
+        "attention_area_count",
+        "boundary_count",
+        "fact_count",
+        "failed_count",
+        "handoff_summary_count",
+        "ok_count",
+        "package_sample_count",
+        "supported_attention_area_count",
     }
     assert summary["counts"]["handoff_summary_count"] == 2
     assert summary["counts"]["package_sample_count"] == 46
@@ -343,6 +372,12 @@ def test_trino_evidence_handoff_suite_audits_retained_summaries_without_path_ech
         "comparable_one_query_rerun": 38,
         "representative_query_selection": 4,
         "source_contract_review": 4,
+    }
+    assert set(summary["diagnostic_lane"]) == {
+        "evidence_readiness",
+        "fact_states",
+        "source_granularity",
+        "verification_scope",
     }
     assert summary["diagnostic_lane"]["fact_states"]["supported"] > 0
     assert summary["issues"] == {"counts": {}, "items": []}
@@ -799,6 +834,97 @@ def test_trino_evidence_handoff_suite_rejects_alias_duplicate_summary_reference(
             assert fragment not in text
 
 
+def test_trino_evidence_handoff_suite_rejects_unsafe_manifest_references_without_path_echo(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    unsafe_references = (
+        "../secret-trino-handoff-summary.json",
+        "/tmp/secret-trino-handoff-summary.json",
+        "nested\\secret-trino-handoff-summary.json",
+        "secret-trino-handoff-summary.txt",
+    )
+
+    for reference in unsafe_references:
+        handoff_summary = _write_handoff_summary(tmp_path, "secret-trino-package.json")
+        manifest_path = _write_handoff_suite_manifest(tmp_path, handoff_summary)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["entries"] = [{"handoff_summary_json": reference}]
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        capsys.readouterr()
+
+        exit_code = audit_trino_evidence_handoff.main(
+            [
+                "--handoff-suite-manifest",
+                str(manifest_path),
+                "--require-min-inputs",
+                "1",
+            ]
+        )
+
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert captured.out == ""
+        assert "handoff suite manifest is not accepted" in captured.err
+        for text in (captured.out, captured.err):
+            for fragment in _protected_fragments(tmp_path):
+                assert fragment not in text
+            assert reference not in text
+
+
+def test_trino_evidence_handoff_suite_rejects_manifest_metadata_drift_without_path_echo(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    drift_cases = (
+        (
+            "builder_kind",
+            "other_builder_v1",
+            "handoff suite manifest is not accepted",
+        ),
+        (
+            "path_reference",
+            "absolute_paths",
+            "handoff suite manifest is not accepted",
+        ),
+        (
+            "redaction_reviewed",
+            False,
+            "handoff suite manifest is not accepted",
+        ),
+        (
+            "limitations",
+            ["local_handoff_summary_metadata_only"],
+            "handoff suite manifest is not accepted",
+        ),
+    )
+
+    for metadata_key, metadata_value, expected_error in drift_cases:
+        handoff_summary = _write_handoff_summary(tmp_path, "secret-trino-package.json")
+        manifest_path = _write_handoff_suite_manifest(tmp_path, handoff_summary)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["metadata"][metadata_key] = metadata_value
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        capsys.readouterr()
+
+        exit_code = audit_trino_evidence_handoff.main(
+            [
+                "--handoff-suite-manifest",
+                str(manifest_path),
+                "--require-min-inputs",
+                "1",
+            ]
+        )
+
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert captured.out == ""
+        assert expected_error in captured.err
+        for text in (captured.out, captured.err):
+            for fragment in _protected_fragments(tmp_path):
+                assert fragment not in text
+
+
 def test_trino_evidence_handoff_suite_flags_failed_single_summary_without_path_echo(
     tmp_path: Path,
     capsys,
@@ -835,6 +961,43 @@ def test_trino_evidence_handoff_suite_flags_failed_single_summary_without_path_e
         "handoff_summary_readiness_gap": 1,
     }
     for text in (captured.out, captured.err, json.dumps(summary, sort_keys=True)):
+        for fragment in _protected_fragments(tmp_path):
+            assert fragment not in text
+
+
+def test_trino_evidence_handoff_suite_flags_raw_like_retained_summary_without_echo(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    handoff_summary = _write_handoff_summary(tmp_path, "secret-trino-package.json")
+    payload = json.loads(handoff_summary.read_text(encoding="utf-8"))
+    payload["unsafe_debug_url"] = "https://coordinator.invalid/v1/query/secret-query-id"
+    handoff_summary.write_text(json.dumps(payload), encoding="utf-8")
+    manifest_path = _write_handoff_suite_manifest(tmp_path, handoff_summary)
+    suite_summary_path = tmp_path / "secret-trino-handoff-suite-summary.json"
+    capsys.readouterr()
+
+    exit_code = audit_trino_evidence_handoff.main(
+        [
+            "--handoff-suite-manifest",
+            str(manifest_path),
+            "--require-min-inputs",
+            "1",
+            "--summary-json",
+            str(suite_summary_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    summary = json.loads(suite_summary_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert "Trino evidence handoff suite: failed" in captured.out
+    assert "handoff_summary_raw_boundary" in captured.out
+    assert summary["status"] == "failed"
+    assert summary["issues"]["counts"] == {"handoff_summary_raw_boundary": 1}
+    for text in (captured.out, captured.err, json.dumps(summary, sort_keys=True)):
+        assert "coordinator.invalid" not in text
+        assert "secret-query-id" not in text
         for fragment in _protected_fragments(tmp_path):
             assert fragment not in text
 
@@ -973,6 +1136,33 @@ def test_trino_evidence_handoff_suite_rejects_summary_output_overlap(
     assert exit_code == 2
     assert captured.out == ""
     assert "summary JSON output must differ from every input artifact" in captured.err
+    for fragment in _protected_fragments(tmp_path):
+        assert fragment not in captured.err
+
+
+def test_trino_evidence_handoff_suite_rejects_summary_output_manifest_overlap(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    handoff_summary = _write_handoff_summary(tmp_path, "secret-trino-package.json")
+    manifest_path = _write_handoff_suite_manifest(tmp_path, handoff_summary)
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+    capsys.readouterr()
+
+    exit_code = audit_trino_evidence_handoff.main(
+        [
+            "--handoff-suite-manifest",
+            str(manifest_path),
+            "--summary-json",
+            str(manifest_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert "summary JSON output must differ from every input artifact" in captured.err
+    assert manifest_path.read_text(encoding="utf-8") == original_manifest
     for fragment in _protected_fragments(tmp_path):
         assert fragment not in captured.err
 

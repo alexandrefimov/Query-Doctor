@@ -78,6 +78,26 @@ def test_build_trino_evidence_handoff_suite_manifest_requires_redaction_review(
         assert fragment not in captured.err
 
 
+def test_build_trino_evidence_handoff_suite_manifest_requires_input_summary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    manifest = tmp_path / "secret-trino-suite-manifest.json"
+
+    rc = build_trino_evidence_handoff_suite_manifest.main(
+        ["--redaction-reviewed", "--out", str(manifest)]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert "at least one handoff summary is required" in captured.err
+    assert not manifest.exists()
+    for fragment in _protected_fragments(tmp_path):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def test_build_trino_evidence_handoff_suite_manifest_rejects_output_overlap_without_paths(
     tmp_path: Path,
     capsys,
@@ -103,6 +123,34 @@ def test_build_trino_evidence_handoff_suite_manifest_rejects_output_overlap_with
     for fragment in _protected_fragments(tmp_path):
         assert fragment not in captured.out
         assert fragment not in captured.err
+
+
+def test_build_trino_evidence_handoff_suite_manifest_rejects_missing_artifact_without_paths(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    missing_summary = tmp_path / "missing-secret-trino-handoff-summary.json"
+    manifest = tmp_path / "secret-trino-suite-manifest.json"
+
+    rc = build_trino_evidence_handoff_suite_manifest.main(
+        [
+            "--redaction-reviewed",
+            "--handoff-summary-json",
+            str(missing_summary),
+            "--out",
+            str(manifest),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert "referenced artifact is unavailable" in captured.err
+    assert not manifest.exists()
+    for fragment in _protected_fragments(tmp_path):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+    assert "missing-secret-trino-handoff-summary.json" not in captured.err
 
 
 def test_build_trino_evidence_handoff_suite_manifest_rejects_unsafe_relative_reference(

@@ -1,0 +1,20 @@
+{
+  "state": "FINISHED",
+  "queryStats": {
+    "elapsedTime": "2.50s",
+    "queuedTime": "100ms",
+    "planningTime": "200ms",
+    "executionTime": "2s",
+    "totalCpuTime": "1.25s",
+    "wallTime": "2.75s",
+    "processedInputPositions": 123,
+    "processedInputDataSize": "1MB",
+    "outputPositions": 7,
+    "outputDataSize": "2kB",
+    "peakTotalMemoryReservation": "3MB",
+    "spilledDataSize": "0B",
+    "fullyBlocked": false,
+    "totalTasks": 4,
+    "failedTasks": 0
+  }
+}

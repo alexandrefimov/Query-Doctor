@@ -25,6 +25,9 @@ from query_doctor.analyzer.trino_fixture_facts import (
     build_trino_query_detail_fixture_engine_facts,
     build_trino_query_list_contract_probe_engine_facts,
 )
+from query_doctor.trino.coordinator_query_info_pruned_import import (
+    build_trino_coordinator_query_info_pruned_engine_facts,
+)
 
 
 TRINO_STATEMENT_STATS_FIXTURE = (
@@ -132,6 +135,18 @@ TRINO_QUERY_DETAIL_UNKNOWN_SOURCE_CONTRACT_FIXTURE = (
     / "engine_facts"
     / "trino_query_detail_unknown_source_contract.json"
 )
+TRINO_QUERY_INFO_PRUNED_ZERO_ABSENCE_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_query_info_pruned_zero_absence.json"
+)
+TRINO_QUERY_INFO_PRUNED_INVALID_VALUES_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_query_info_pruned_invalid_values.json"
+)
 SPARK_HISTORY_COMPACT_FIXTURE = (
     Path(__file__).parent / "fixtures" / "engine_facts" / "spark_history_eventlog_compact.json"
 )
@@ -212,6 +227,8 @@ def trino_golden_cases() -> tuple[EngineFactContractCase, ...]:
         trino_query_detail_task_failure_fixture_golden_case(),
         trino_query_detail_missing_fields_fixture_golden_case(),
         trino_query_detail_unknown_source_contract_fixture_golden_case(),
+        trino_query_info_pruned_zero_absence_fixture_golden_case(),
+        trino_query_info_pruned_invalid_values_fixture_golden_case(),
     )
 
 
@@ -2197,6 +2214,128 @@ def trino_query_detail_missing_fields_fixture_golden_case() -> EngineFactContrac
             "stageId",
             "taskId",
         ),
+    )
+
+
+def trino_query_info_pruned_zero_absence_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_query_info_pruned_zero_absence_fixture",
+        bundle=build_trino_coordinator_query_info_pruned_engine_facts(
+            _load_trino_fixture(TRINO_QUERY_INFO_PRUNED_ZERO_ABSENCE_FIXTURE),
+            source_version="trino_query_info_pruned_fixture_v1",
+            trino_version_family="477",
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        expected_lifecycle="finished",
+        expected_blocked="not_observed",
+        expected_failure="not_observed",
+        required_fact_states={
+            "trino_state": "supported",
+            "trino_elapsed_time_ms": "supported",
+            "trino_queued_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "trino_execution_time_ms": "supported",
+            "trino_cpu_time_ms": "supported",
+            "trino_wall_time_ms": "supported",
+            "trino_input_rows": "supported",
+            "trino_input_bytes": "supported",
+            "trino_output_rows": "supported",
+            "trino_output_bytes": "supported",
+            "trino_peak_memory_bytes": "supported",
+            "trino_spilled_bytes": "not_observed",
+            "trino_blocked_signal": "not_observed",
+            "trino_task_count": "supported",
+            "trino_failed_task_count": "not_observed",
+            "trino_version_family": "supported",
+            "trino_connector_metric_signal": "unknown",
+        },
+        required_fact_values={
+            "trino_elapsed_time_ms": 2500,
+            "trino_queued_time_ms": 100,
+            "planning_time_ms": 200,
+            "trino_execution_time_ms": 2000,
+            "trino_cpu_time_ms": 1250,
+            "trino_wall_time_ms": 2750,
+            "trino_input_rows": 123,
+            "trino_input_bytes": 1048576,
+            "trino_output_rows": 7,
+            "trino_output_bytes": 2048,
+            "trino_peak_memory_bytes": 3145728,
+            "trino_spilled_bytes": 0,
+            "trino_blocked_signal": False,
+            "trino_task_count": 4,
+            "trino_failed_task_count": 0,
+            "trino_version_family": "477",
+        },
+        forbidden_tokens=(
+            "queryId",
+            "SELECT",
+            "session",
+            "operator_user",
+            "sensitive_table",
+            "stageId",
+            "taskId",
+            "worker",
+            "http://",
+            "https://",
+            "/Users/",
+        ),
+        forbidden_public_substrings=("queryStats",),
+    )
+
+
+def trino_query_info_pruned_invalid_values_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_query_info_pruned_invalid_values_fixture",
+        bundle=build_trino_coordinator_query_info_pruned_engine_facts(
+            _load_trino_fixture(TRINO_QUERY_INFO_PRUNED_INVALID_VALUES_FIXTURE),
+            source_version="trino_query_info_pruned_fixture_v1",
+            trino_version_family="477",
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        expected_lifecycle="running",
+        expected_blocked="unknown",
+        expected_failure="not_observed",
+        required_fact_states={
+            "trino_state": "supported",
+            "trino_elapsed_time_ms": "unknown",
+            "trino_queued_time_ms": "unknown",
+            "planning_time_ms": "unknown",
+            "trino_execution_time_ms": "unknown",
+            "trino_cpu_time_ms": "unknown",
+            "trino_wall_time_ms": "unknown",
+            "trino_input_rows": "unknown",
+            "trino_input_bytes": "unknown",
+            "trino_output_rows": "unknown",
+            "trino_output_bytes": "unknown",
+            "trino_peak_memory_bytes": "unknown",
+            "trino_spilled_bytes": "unknown",
+            "trino_blocked_signal": "unknown",
+            "trino_task_count": "unknown",
+            "trino_failed_task_count": "unknown",
+            "trino_version_family": "supported",
+            "trino_connector_metric_signal": "unknown",
+        },
+        required_fact_values={
+            "trino_state": "RUNNING",
+            "trino_version_family": "477",
+        },
+        forbidden_tokens=(
+            "queryId",
+            "SELECT",
+            "session",
+            "operator_user",
+            "sensitive_table",
+            "stageId",
+            "taskId",
+            "worker",
+            "http://",
+            "https://",
+            "/Users/",
+        ),
+        forbidden_public_substrings=("queryStats",),
     )
 
 

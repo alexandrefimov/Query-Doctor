@@ -1,0 +1,676 @@
+#!/usr/bin/env python3
+"""Smoke-check Trino Beta Recent and One Query ID through the local web UI."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import http.client
+import json
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote, urlencode, urlsplit
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_WEB_WRAPPER = ROOT_DIR / "scripts" / "query-doctor-web-local"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_WINDOW_MINUTES = 1_000_000
+DEFAULT_LIMIT = 1
+DEFAULT_PARALLELISM = 1
+DEFAULT_TIMEOUT_SEC = 180.0
+DEFAULT_POLL_INTERVAL_SEC = 0.5
+
+JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+TRINO_QUERY_ID_RE = re.compile(r"\b[0-9]{8}_[0-9]{6}_[0-9]{5}_[a-z0-9]{5}\b")
+LOCAL_PATH_RE = re.compile(r"(?<!\w)/(?:Users|home|private|tmp|var|mnt|etc)/[^\s<>'\"]*")
+FORBIDDEN_UI_LINK_MARKERS = (
+    'href="/batch/case/',
+    "href='/batch/case/",
+    'href="/query/details/',
+    "href='/query/details/",
+    "/python-report",
+    "/llm-report",
+    "/optimized-query",
+    "/validate-rewrite",
+    "/case-actions",
+    "/llm-actions",
+)
+SENSITIVE_TRINO_CONFIG_KEYS = (
+    "trino_coordinator_url",
+    "trino_query_info_source_contract",
+    "trino_query_list_source_contract",
+    "trino_auth_header_file",
+    "trino_kerberos_principal",
+    "trino_krb5_ccname",
+    "trino_krb5_config",
+    "trino_kerberos_ca_cert",
+)
+
+
+class SmokeError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class HttpResponse:
+    status: int
+    headers: dict[str, str]
+    body: str
+
+
+@dataclass(frozen=True)
+class TrinoSourceSelection:
+    cluster_id: str | None
+    selected_by_default: bool
+    top_level_source: bool
+    sensitive_markers: tuple[str, ...]
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run a dev-only Trino Beta smoke through the local web UI. The smoke starts "
+            "the local web server, submits the Trino Beta Recent form, validates the "
+            "raw-free beta result, then optionally submits One Query ID with a selected "
+            "Query ID from the Recent result. It never submits SQL and never prints "
+            "Query IDs, coordinator URLs, auth references, local paths, or raw payloads."
+        )
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help=(
+            "Local Query Doctor config. Defaults to $QD_CONFIG, then "
+            "~/.qdcreds/query-doctor-config.json."
+        ),
+    )
+    parser.add_argument(
+        "--cluster",
+        "--config-cluster",
+        dest="cluster",
+        help="Cluster id from config clusters[]. Required when multiple Trino Beta sources exist.",
+    )
+    parser.add_argument(
+        "--web-wrapper",
+        type=Path,
+        default=DEFAULT_WEB_WRAPPER,
+        help="Local web wrapper to start. Default: scripts/query-doctor-web-local.",
+    )
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help="Local bind host. Default: %(default)s"
+    )
+    parser.add_argument(
+        "--port",
+        type=positive_int,
+        help="Local bind port. Defaults to a free ephemeral localhost port.",
+    )
+    parser.add_argument(
+        "--window-minutes",
+        type=positive_int,
+        default=DEFAULT_WINDOW_MINUTES,
+        help="Trino Beta Recent lookback window in minutes. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=positive_int,
+        default=DEFAULT_LIMIT,
+        help="Number of retained Trino queries to diagnose. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--parallelism",
+        type=positive_int,
+        default=DEFAULT_PARALLELISM,
+        help="Recent form parallelism value. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--order",
+        choices=(
+            "duration-desc",
+            "duration-asc",
+            "recent",
+            "recent-duration-desc",
+            "status-priority",
+        ),
+        default="recent",
+        help="Selection order for retained query-list rows. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--skip-query-id-check",
+        action="store_true",
+        help="Run only the Trino Beta Recent UI smoke.",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=positive_float,
+        default=DEFAULT_TIMEOUT_SEC,
+        help="Overall startup/job timeout in seconds. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--poll-interval-sec",
+        type=positive_float,
+        default=DEFAULT_POLL_INTERVAL_SEC,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate Trino Beta source selection and print a raw-free summary without starting web.",
+    )
+    return parser.parse_args(argv)
+
+
+def default_config_path() -> Path:
+    if os.environ.get("QD_CONFIG"):
+        return Path(os.environ["QD_CONFIG"])
+    creds_dir = Path(os.environ.get("QD_CREDS_DIR", str(Path.home() / ".qdcreds")))
+    for candidate in (
+        creds_dir / "query-doctor-config.json",
+        ROOT_DIR / "query-doctor-config.json",
+        ROOT_DIR / ".query-doctor-cm.local.json",
+    ):
+        if candidate.is_file():
+            return candidate
+    return creds_dir / "query-doctor-config.json"
+
+
+def load_json_config(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SmokeError("Config file was not found. Set --config or QD_CONFIG.") from exc
+    except json.JSONDecodeError as exc:
+        raise SmokeError("Config file is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise SmokeError("Config root must be a JSON object.")
+    return payload
+
+
+def merged_values(defaults: dict[str, Any], cluster: dict[str, Any] | None) -> dict[str, Any]:
+    values = dict(defaults)
+    if cluster is not None:
+        values.update(cluster)
+    return values
+
+
+def trino_recent_ready(values: dict[str, Any]) -> bool:
+    return (
+        values.get("trino_beta_enabled") is True
+        and bool(str(values.get("trino_coordinator_url") or "").strip())
+        and bool(str(values.get("trino_query_info_source_contract") or "").strip())
+        and bool(str(values.get("trino_query_list_source_contract") or "").strip())
+    )
+
+
+def config_clusters(config: dict[str, Any]) -> list[dict[str, Any]]:
+    clusters = config.get("clusters")
+    if not isinstance(clusters, list):
+        return []
+    return [cluster for cluster in clusters if isinstance(cluster, dict)]
+
+
+def select_trino_source(config: dict[str, Any], requested: str | None) -> TrinoSourceSelection:
+    clusters = config_clusters(config)
+    defaults = {key: value for key, value in config.items() if key != "clusters"}
+    if requested:
+        matches = [cluster for cluster in clusters if str(cluster.get("id") or "") == requested]
+        if not matches:
+            raise SmokeError("Requested cluster id was not found.")
+        values = merged_values(defaults, matches[0])
+        if not trino_recent_ready(values):
+            raise SmokeError("Requested cluster is not configured for Trino Beta Recent.")
+        return TrinoSourceSelection(
+            cluster_id=requested,
+            selected_by_default=False,
+            top_level_source=False,
+            sensitive_markers=sensitive_markers_from_values(values),
+        )
+
+    ready_clusters = [
+        cluster for cluster in clusters if trino_recent_ready(merged_values(defaults, cluster))
+    ]
+    if len(ready_clusters) > 1:
+        raise SmokeError("Multiple Trino Beta sources are configured; choose one with --cluster.")
+    if len(ready_clusters) == 1:
+        cluster_id = str(ready_clusters[0].get("id") or "").strip()
+        if not cluster_id:
+            raise SmokeError("The only Trino Beta source is missing a cluster id.")
+        values = merged_values(defaults, ready_clusters[0])
+        return TrinoSourceSelection(
+            cluster_id=cluster_id,
+            selected_by_default=True,
+            top_level_source=False,
+            sensitive_markers=sensitive_markers_from_values(values),
+        )
+    if trino_recent_ready(defaults):
+        return TrinoSourceSelection(
+            cluster_id=None,
+            selected_by_default=True,
+            top_level_source=True,
+            sensitive_markers=sensitive_markers_from_values(defaults),
+        )
+    raise SmokeError(
+        "No Trino Beta Recent source is configured. Run the local-config readiness audit first."
+    )
+
+
+def sensitive_markers_from_values(values: dict[str, Any]) -> tuple[str, ...]:
+    markers: list[str] = []
+    for key in SENSITIVE_TRINO_CONFIG_KEYS:
+        value = values.get(key)
+        if not isinstance(value, str):
+            continue
+        marker = value.strip()
+        if len(marker) >= 3:
+            markers.append(marker)
+    return tuple(dict.fromkeys(markers))
+
+
+def free_local_port(host: str) -> int:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, 0))
+            return int(sock.getsockname()[1])
+    except OSError as exc:
+        raise SmokeError("Could not allocate a local web port.") from exc
+
+
+def request(
+    host: str,
+    port: int,
+    method: str,
+    path: str,
+    *,
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> HttpResponse:
+    connection = http.client.HTTPConnection(host, port, timeout=timeout_sec)
+    try:
+        connection.request(method, path, body=body, headers=headers or {})
+        response = connection.getresponse()
+        text = response.read().decode("utf-8", errors="replace")
+        return HttpResponse(
+            status=response.status,
+            headers={name.lower(): value for name, value in response.getheaders()},
+            body=text,
+        )
+    finally:
+        connection.close()
+
+
+def start_web(
+    args: argparse.Namespace,
+    *,
+    config_path: Path,
+    port: int,
+) -> subprocess.Popen[str]:
+    wrapper = args.web_wrapper.expanduser()
+    if not wrapper.is_file():
+        raise SmokeError("Local web wrapper was not found.")
+    env = dict(os.environ)
+    env["QD_CONFIG"] = str(config_path)
+    command = [
+        str(wrapper),
+        "--host",
+        args.host,
+        "--port",
+        str(port),
+        "--no-llm",
+    ]
+    try:
+        return subprocess.Popen(
+            command,
+            cwd=ROOT_DIR,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            start_new_session=os.name == "posix",
+        )
+    except OSError as exc:
+        raise SmokeError("Local web server could not be started.") from exc
+
+
+def stop_web(process: subprocess.Popen[str] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
+        process.wait(timeout=5)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        if process.poll() is None:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+            process.wait(timeout=5)
+
+
+def wait_for_web_ready(
+    process: subprocess.Popen[str],
+    *,
+    host: str,
+    port: int,
+    deadline: float,
+    poll_interval_sec: float,
+) -> None:
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise SmokeError(
+                "Local web server exited before becoming ready. Check local Trino Beta config, "
+                "credentials, Kerberos, and port settings."
+            )
+        try:
+            response = request(host, port, "GET", "/", timeout_sec=2.0)
+        except OSError:
+            time.sleep(poll_interval_sec)
+            continue
+        if response.status == 200:
+            return
+        time.sleep(poll_interval_sec)
+    raise SmokeError(
+        "Local web server did not become ready before timeout. Check local Trino Beta config, "
+        "credentials, Kerberos, and port settings."
+    )
+
+
+def recent_form(args: argparse.Namespace, cluster_id: str | None) -> dict[str, str]:
+    return {
+        "cluster_key": cluster_id or "",
+        "engine": "trino",
+        "scan_target": "finished",
+        "recent_window_minutes": str(args.window_minutes),
+        "triage_profile_limit": str(args.limit),
+        "metadata_top_limit": "0",
+        "parallelism": str(args.parallelism),
+        "order": str(args.order),
+    }
+
+
+def start_recent_scan(
+    args: argparse.Namespace,
+    *,
+    selection: TrinoSourceSelection,
+    port: int,
+) -> str:
+    payload = urlencode(recent_form(args, selection.cluster_id)).encode("utf-8")
+    try:
+        response = request(
+            args.host,
+            port,
+            "POST",
+            "/batch/run",
+            body=payload,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": str(len(payload)),
+            },
+        )
+    except OSError as exc:
+        raise SmokeError("Trino Beta Recent web submit could not reach local web.") from exc
+    if response.status != 303:
+        raise SmokeError("Trino Beta Recent web submit did not start.")
+    return job_id_from_redirect(response, "Trino Beta Recent web submit")
+
+
+def analyze_form(query_id: str, cluster_id: str | None) -> dict[str, str]:
+    form = {"engine": "trino", "query_id": query_id}
+    if cluster_id is not None:
+        form["cluster_key"] = cluster_id
+    return form
+
+
+def start_query_id_scan(
+    args: argparse.Namespace,
+    *,
+    query_id: str,
+    selection: TrinoSourceSelection,
+    port: int,
+) -> str:
+    payload = urlencode(analyze_form(query_id, selection.cluster_id)).encode("utf-8")
+    try:
+        response = request(
+            args.host,
+            port,
+            "POST",
+            "/analyze",
+            body=payload,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": str(len(payload)),
+            },
+        )
+    except OSError as exc:
+        raise SmokeError("Trino Beta One Query ID web submit could not reach local web.") from exc
+    if response.status != 303:
+        raise SmokeError("Trino Beta One Query ID web submit did not start.")
+    return job_id_from_redirect(response, "Trino Beta One Query ID web submit")
+
+
+def job_id_from_redirect(response: HttpResponse, label: str) -> str:
+    location = response.headers.get("location", "")
+    path = urlsplit(location).path
+    prefix = "/jobs/"
+    if not path.startswith(prefix):
+        raise SmokeError(f"{label} returned an unexpected job redirect.")
+    job_id = path[len(prefix) :]
+    if not JOB_ID_RE.fullmatch(job_id):
+        raise SmokeError(f"{label} returned an invalid job id.")
+    return job_id
+
+
+def safe_error_snippet(value: object) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    text = TRINO_QUERY_ID_RE.sub("<query-id hidden>", text)
+    lower = text.lower()
+    unsafe_markers = (
+        "file:",
+        "http://",
+        "https://",
+        "case_dir",
+        "raw queryinfo",
+        "raw sql",
+        "auth",
+    )
+    if any(marker in lower for marker in unsafe_markers) or LOCAL_PATH_RE.search(text):
+        return ""
+    if "\\" in text:
+        return ""
+    return text[:240]
+
+
+def poll_job(
+    args: argparse.Namespace,
+    *,
+    job_id: str,
+    port: int,
+    deadline: float,
+    label: str,
+) -> dict[str, Any]:
+    status_path = f"/jobs/{job_id}/status"
+    while time.monotonic() < deadline:
+        try:
+            response = request(args.host, port, "GET", status_path, timeout_sec=5.0)
+        except OSError as exc:
+            raise SmokeError(f"{label} status endpoint could not be reached.") from exc
+        if response.status != 200:
+            raise SmokeError(f"{label} status endpoint returned an unexpected status.")
+        try:
+            payload = json.loads(response.body)
+        except json.JSONDecodeError as exc:
+            raise SmokeError(f"{label} status endpoint returned invalid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise SmokeError(f"{label} status payload is invalid.")
+        status = str(payload.get("status") or "")
+        if status == "ok":
+            return payload
+        if status in {"failed", "cancelled"}:
+            detail = safe_error_snippet(payload.get("error"))
+            suffix = f" Safe error: {detail}" if detail else ""
+            raise SmokeError(f"{label} web job failed or was cancelled.{suffix}")
+        time.sleep(args.poll_interval_sec)
+    raise SmokeError(f"{label} web job did not finish before timeout.")
+
+
+def result_html_from_payload(payload: dict[str, Any], label: str) -> str:
+    result_html = payload.get("result_html")
+    if not isinstance(result_html, str) or not result_html:
+        raise SmokeError(f"{label} did not return result HTML.")
+    return result_html
+
+
+def check_result_html(
+    body: str,
+    *,
+    expected_heading: str,
+    sensitive_markers: tuple[str, ...],
+) -> None:
+    if expected_heading not in body:
+        raise SmokeError("Trino Beta result did not render the expected heading.")
+    lower = body.lower()
+    leaked_links = [marker for marker in FORBIDDEN_UI_LINK_MARKERS if marker.lower() in lower]
+    if leaked_links:
+        raise SmokeError("Trino Beta result exposed unsupported product action link(s).")
+    if LOCAL_PATH_RE.search(body):
+        raise SmokeError("Trino Beta result exposed a local path marker.")
+    for marker in sensitive_markers:
+        if marker and marker in body:
+            raise SmokeError("Trino Beta result exposed a local config or auth marker.")
+    required_boundary = (
+        "Running",
+        "query-history",
+        "metadata collection",
+        "Details",
+        "optimizer",
+        "SQL execution",
+    )
+    if any(fragment not in body for fragment in required_boundary):
+        raise SmokeError("Trino Beta result did not render the beta boundary wording.")
+
+
+def extract_recent_query_id(result_html: str) -> str:
+    text = html.unescape(result_html)
+    match = TRINO_QUERY_ID_RE.search(text)
+    if match is None:
+        raise SmokeError("Trino Beta Recent did not render a selected Query ID for follow-up.")
+    return match.group(0)
+
+
+def print_dry_run(args: argparse.Namespace, *, selection: TrinoSourceSelection) -> None:
+    source = (
+        "top-level configured Trino Beta source"
+        if selection.top_level_source
+        else "configured Trino Beta source"
+    )
+    print("[web-trino-beta-smoke] dry_run=ok")
+    print(f"[web-trino-beta-smoke] source={source}")
+    print(
+        "[web-trino-beta-smoke] "
+        f"recent=true one_query={'false' if args.skip_query_id_check else 'true'} "
+        f"window_minutes={args.window_minutes} limit={args.limit} order={args.order}"
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    config_path = (args.config or default_config_path()).expanduser()
+    process: subprocess.Popen[str] | None = None
+    try:
+        config = load_json_config(config_path)
+        selection = select_trino_source(config, args.cluster)
+        if args.dry_run:
+            print_dry_run(args, selection=selection)
+            return 0
+        port = args.port or free_local_port(args.host)
+        deadline = time.monotonic() + args.timeout_sec
+        process = start_web(args, config_path=config_path, port=port)
+        wait_for_web_ready(
+            process,
+            host=args.host,
+            port=port,
+            deadline=deadline,
+            poll_interval_sec=args.poll_interval_sec,
+        )
+        print("[web-trino-beta-smoke] web=ready", flush=True)
+        recent_job_id = start_recent_scan(args, selection=selection, port=port)
+        recent_payload = poll_job(
+            args,
+            job_id=recent_job_id,
+            port=port,
+            deadline=deadline,
+            label="Trino Beta Recent",
+        )
+        recent_html = result_html_from_payload(recent_payload, "Trino Beta Recent")
+        check_result_html(
+            recent_html,
+            expected_heading="Trino Beta Recent diagnosis",
+            sensitive_markers=selection.sensitive_markers,
+        )
+        selected_query_id = extract_recent_query_id(recent_html)
+        print("[web-trino-beta-smoke] recent=ok query_id_selected=hidden", flush=True)
+        if not args.skip_query_id_check:
+            query_job_id = start_query_id_scan(
+                args,
+                query_id=selected_query_id,
+                selection=selection,
+                port=port,
+            )
+            query_payload = poll_job(
+                args,
+                job_id=query_job_id,
+                port=port,
+                deadline=deadline,
+                label="Trino Beta One Query ID",
+            )
+            query_html = result_html_from_payload(query_payload, "Trino Beta One Query ID")
+            check_result_html(
+                query_html,
+                expected_heading="Trino Beta Query ID diagnosis",
+                sensitive_markers=selection.sensitive_markers,
+            )
+            print("[web-trino-beta-smoke] query_id=ok", flush=True)
+        print("[web-trino-beta-smoke] ok", flush=True)
+        return 0
+    except SmokeError as exc:
+        print(f"[web-trino-beta-smoke] {exc}", file=sys.stderr)
+        return 2
+    finally:
+        stop_web(process)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

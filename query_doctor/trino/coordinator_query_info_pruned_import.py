@@ -277,6 +277,7 @@ def build_trino_coordinator_query_info_pruned_engine_facts(
             _duration_ms_fact("trino_wall_time_ms", stats.get("wallTime")),
         ),
         resources=(
+            _trino_state_fact(payload.get("state")),
             _count_fact("trino_input_rows", stats.get("processedInputPositions"), unit="rows"),
             _data_size_fact("trino_input_bytes", stats.get("processedInputDataSize")),
             _count_fact("trino_output_rows", stats.get("outputPositions"), unit="rows"),
@@ -294,8 +295,7 @@ def build_trino_coordinator_query_info_pruned_engine_facts(
                 fact_id="trino_connector_metric_signal",
                 state="unknown",
                 summary=(
-                    "Pruned coordinator QueryInfo import does not expose a safe "
-                    "connector-metric summary."
+                    "Pruned QueryInfo import does not expose a safe connector-metric summary."
                 ),
             ),
         ),
@@ -304,43 +304,32 @@ def build_trino_coordinator_query_info_pruned_engine_facts(
                 fact_id="trino_stage_count",
                 state="unknown",
                 unit="stages",
-                summary=(
-                    "Pruned coordinator QueryInfo import does not map stage trees "
-                    "or stage identifiers."
-                ),
+                summary="Pruned QueryInfo import does not map stage trees or stage identifiers.",
             ),
             MetricFact(
                 fact_id="trino_completed_split_count",
                 state="unknown",
                 unit="splits",
-                summary=(
-                    "Pruned coordinator QueryInfo import does not map driver counts "
-                    "as split counts."
-                ),
+                summary="Pruned QueryInfo import does not map driver counts as split counts.",
             ),
             _blocked_signal_fact(stats),
             MetricFact(
                 fact_id="trino_stage_skew_candidate",
                 state="unknown",
-                summary=(
-                    "Pruned coordinator QueryInfo import does not expose a safe "
-                    "per-task skew summary."
-                ),
+                summary="Pruned QueryInfo import does not expose a safe per-task skew summary.",
             ),
             _task_count_fact("trino_task_count", stats.get("totalTasks")),
             _zero_aware_task_count_fact(
                 "trino_failed_task_count",
                 stats.get("failedTasks"),
-                observed_summary="Pruned coordinator QueryInfo reported failed tasks.",
-                absent_summary="Pruned coordinator QueryInfo reported no failed tasks.",
+                observed_summary="Pruned QueryInfo reported failed tasks.",
+                absent_summary="Pruned QueryInfo reported no failed tasks.",
             ),
             MetricFact(
                 fact_id="trino_retried_task_count",
                 state="unknown",
                 unit="tasks",
-                summary=(
-                    "Pruned coordinator QueryInfo import does not expose a safe task retry count."
-                ),
+                summary="Pruned QueryInfo import does not expose a safe task retry count.",
             ),
         ),
         limitations=_trino_query_info_pruned_limitations(),
@@ -585,27 +574,27 @@ def _blocked_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
         return MetricFact(
             fact_id="trino_blocked_signal",
             state="unknown",
-            summary="Pruned coordinator QueryInfo did not include fullyBlocked status.",
+            summary="Pruned QueryInfo did not include fullyBlocked status.",
         )
     fully_blocked = stats.get("fullyBlocked")
     if not isinstance(fully_blocked, bool):
         return MetricFact(
             fact_id="trino_blocked_signal",
             state="unknown",
-            summary="Pruned coordinator QueryInfo did not provide boolean fullyBlocked status.",
+            summary="Pruned QueryInfo did not provide boolean fullyBlocked status.",
         )
     if fully_blocked:
         return MetricFact(
             fact_id="trino_blocked_signal",
             state="supported",
             value=True,
-            summary="Pruned coordinator QueryInfo marked the query as fully blocked.",
+            summary="Pruned QueryInfo marked the query as fully blocked.",
         )
     return MetricFact(
         fact_id="trino_blocked_signal",
         state="not_observed",
         value=False,
-        summary="Pruned coordinator QueryInfo did not mark the query as fully blocked.",
+        summary="Pruned QueryInfo did not mark the query as fully blocked.",
     )
 
 
@@ -648,20 +637,17 @@ def _trino_query_info_pruned_limitations() -> tuple[LimitationFact, ...]:
         LimitationFact(
             fact_id="source_contract",
             state="supported",
-            summary=(
-                "Trino coordinator query-info source contract allowed one bounded "
-                "pruned QueryInfo read."
-            ),
+            summary="Trino query-info source contract allowed one bounded pruned QueryInfo read.",
         ),
         LimitationFact(
             fact_id="trino_statement_execution",
             state="not_observed",
-            summary="Trino coordinator query-info import did not submit SQL statements.",
+            summary="Trino query-info import did not submit SQL statements.",
         ),
         LimitationFact(
             fact_id="query_detail_fetch",
             state="not_observed",
-            summary="Trino coordinator query-info import did not fetch query-detail payloads.",
+            summary="Trino query-info import did not fetch query-detail payloads.",
         ),
         LimitationFact(
             fact_id="cluster_events",
@@ -700,6 +686,21 @@ def _trino_version_family_fact(value: str | None) -> MetricFact:
             summary="Trino version family was not provided by the source contract.",
         )
     return MetricFact(fact_id="trino_version_family", state="supported", value=value)
+
+
+def _trino_state_fact(value: Any) -> MetricFact:
+    lifecycle = _normalize_lifecycle(_text_or_none(value))
+    if lifecycle == "unknown":
+        return MetricFact(
+            fact_id="trino_state",
+            state="unknown",
+            summary="Trino QueryInfo state was absent or outside the supported state set.",
+        )
+    return MetricFact(
+        fact_id="trino_state",
+        state="supported",
+        value=lifecycle.upper(),
+    )
 
 
 def _read_local_pruned_query_info_payload(

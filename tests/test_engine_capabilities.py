@@ -20,6 +20,11 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 def test_capability_manifest_matches_adapter_flags():
+    expected_product_flags = {
+        "impala": product_adapter_flags(),
+        "spark": frozenset(),
+        "trino": frozenset({"supports_query_id_mode", "supports_recent_scan"}),
+    }
     for engine in ("impala", "spark", "trino"):
         adapter = get_engine_adapter(engine)
         manifest_flags = adapter_flags_for_engine(engine)
@@ -33,13 +38,13 @@ def test_capability_manifest_matches_adapter_flags():
             assert capability.adapter_flag is not None
             assert getattr(adapter, capability.adapter_flag) is True
         for flag in product_adapter_flags():
-            assert getattr(adapter, flag) is (engine == "impala")
+            assert getattr(adapter, flag) is (flag in expected_product_flags[engine])
         for flag in manifest_flags:
             assert getattr(adapter, flag) is True
 
 
-def test_second_engine_capabilities_do_not_claim_product_surfaces():
-    for engine in ("spark", "trino"):
+def test_second_engine_capabilities_do_not_claim_production_surfaces():
+    for engine in ("spark",):
         assert unsupported_product_capabilities(engine) == ()
         assert all(
             not capability.product_surface_allowed for capability in engine_capabilities(engine)
@@ -47,6 +52,53 @@ def test_second_engine_capabilities_do_not_claim_product_surfaces():
         assert all(
             capability.support_level != "production" for capability in engine_capabilities(engine)
         )
+    trino_product = [
+        capability
+        for capability in engine_capabilities("trino")
+        if capability.product_surface_allowed
+    ]
+    assert [(capability.surface_id, capability.support_level) for capability in trino_product] == [
+        ("recent_scan", "product_beta"),
+        ("query_id_mode", "product_beta"),
+    ]
+    assert unsupported_product_capabilities("trino") == ()
+    assert all(
+        capability.support_level != "production" for capability in engine_capabilities("trino")
+    )
+
+
+def test_trino_product_beta_capabilities_stay_web_only():
+    trino_product = [
+        capability
+        for capability in engine_capabilities("trino")
+        if capability.product_surface_allowed
+    ]
+
+    expected = {
+        "recent_scan": (
+            "bounded_trino_retained_query_list_pruned_query_info",
+            "supports_recent_scan",
+            "trino_beta_recent_retained_query_list_contract",
+        ),
+        "query_id_mode": (
+            "one_known_trino_query_id_pruned_query_info",
+            "supports_query_id_mode",
+            "trino_beta_one_query_pruned_query_info_contract",
+        ),
+    }
+    assert {capability.surface_id for capability in trino_product} == set(expected)
+    for capability in trino_product:
+        input_kind, adapter_flag, promotion_gate = expected[capability.surface_id]
+        assert capability.support_level == "product_beta"
+        assert capability.surface_class == "product_web"
+        assert capability.input_kind == input_kind
+        assert capability.raw_policy == "raw_free_summary_only"
+        assert capability.adapter_flag == adapter_flag
+        assert capability.cli_role is None
+        assert capability.script_path is None
+        assert capability.route_path is None
+        assert capability.dev_only is False
+        assert capability.promotion_gate == promotion_gate
 
 
 def test_second_engine_cli_roles_are_classified_by_manifest():

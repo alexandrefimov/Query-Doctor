@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from dataclasses import dataclass
@@ -15,7 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from query_doctor.cli.trino_diagnosis_output import same_path  # noqa: E402
+from query_doctor.safety.handoff_artifacts import (  # noqa: E402
+    output_overlaps_inputs_error,
+    same_path,
+    write_ascii_json_artifact,
+)
 from query_doctor.safety.manifest_references import (  # noqa: E402
     is_safe_relative_json_reference,
 )
@@ -235,6 +238,7 @@ def entry_specs(
         if not artifact.is_file():
             raise TrinoHandoffSuiteManifestBuilderError("referenced artifact is unavailable")
     ensure_unique_entry_artifacts(entries)
+    ensure_smoke_artifacts_do_not_overlap_suite_artifacts(entries)
     return tuple(entries)
 
 
@@ -244,11 +248,13 @@ def validate_output_path(
     *,
     replace: bool,
 ) -> None:
-    for artifact in entry_artifacts(entries):
-        if same_path(out_path, artifact):
-            raise TrinoHandoffSuiteManifestBuilderError(
-                "manifest output must differ from every input artifact"
-            )
+    overlap_error = output_overlaps_inputs_error(
+        out_path,
+        entry_artifacts(entries),
+        message="manifest output must differ from every input artifact",
+    )
+    if overlap_error is not None:
+        raise TrinoHandoffSuiteManifestBuilderError(overlap_error)
     if out_path.exists() and not replace:
         raise TrinoHandoffSuiteManifestBuilderError(
             "manifest output already exists; pass --replace to overwrite"
@@ -378,6 +384,19 @@ def ensure_unique_entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> N
         seen_paths.append(artifact)
 
 
+def ensure_smoke_artifacts_do_not_overlap_suite_artifacts(
+    entries: Sequence[HandoffSuiteEntrySpec],
+) -> None:
+    suite_artifacts = suite_width_entry_artifacts(entries)
+    for entry in entries:
+        if entry.smoke_summary is None:
+            continue
+        if any(same_path(entry.smoke_summary, artifact) for artifact in suite_artifacts):
+            raise TrinoHandoffSuiteManifestBuilderError(
+                "smoke summary artifacts must differ from boundary, diagnosis, readiness summary, handoff summary, and product-surface summary artifacts"
+            )
+
+
 def suite_width_entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> tuple[Path, ...]:
     artifacts: list[Path] = []
     for entry in entries:
@@ -411,11 +430,7 @@ def entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> tuple[Path, ...
 
 
 def write_manifest(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_ascii_json_artifact(path, payload)
 
 
 if __name__ == "__main__":

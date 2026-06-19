@@ -141,8 +141,8 @@ def assert_trino_adapter_has_bounded_raw_free_support_surfaces():
         "trino",
     ]
     adapter = get_engine_adapter("trino")
-    assert adapter.supports_recent_scan is False
-    assert adapter.supports_query_id_mode is False
+    assert adapter.supports_recent_scan is True
+    assert adapter.supports_query_id_mode is True
     assert adapter.supports_metadata_collection is False
     assert adapter.supports_validated_reports is False
     assert adapter.supports_offline_evidence_import is True

@@ -353,6 +353,18 @@ def test_supported_keys_are_accepted(tmp_path):
         "krb5ccname": "FILE:/tmp/krb5cc_query_doctor",
         "web_advanced_settings_enabled": True,
         "web_advanced_filters": ["pool", "query_type", "user", "pool"],
+        "engine": "trino",
+        "trino_beta_enabled": True,
+        "trino_coordinator_url": "https://coordinator.example.com:8443",
+        "trino_query_info_source_contract": "trino-query-info-contract.json",
+        "trino_query_list_source_contract": "trino-query-list-contract.json",
+        "trino_auth_header_file": "trino-auth-header.txt",
+        "trino_kerberos_principal": "sa@LESTA.HADOOP",
+        "trino_kerberos_service_name": "HTTP",
+        "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
+        "trino_krb5_config": "krb5.conf",
+        "trino_kerberos_ca_cert": "trino-ca.pem",
+        "trino_kerberos_insecure_tls": True,
     }
     path = write_config(tmp_path / "config.json", payload)
 
@@ -373,6 +385,17 @@ def test_supported_keys_are_accepted(tmp_path):
     assert loaded["prometheus_url"] == "https://prometheus.example.com"
     assert loaded["recent_scan_timezone"] == "Europe/Berlin"
     assert loaded["language"] == "ru"
+    assert loaded["engine"] == "trino"
+    assert loaded["trino_beta_enabled"] is True
+    assert loaded["trino_query_info_source_contract"] == "trino-query-info-contract.json"
+    assert loaded["trino_query_list_source_contract"] == "trino-query-list-contract.json"
+    assert loaded["trino_auth_header_file"] == "trino-auth-header.txt"
+    assert loaded["trino_kerberos_principal"] == "sa@LESTA.HADOOP"
+    assert loaded["trino_kerberos_service_name"] == "HTTP"
+    assert loaded["trino_krb5_ccname"] == "FILE:/tmp/krb5cc_qd_trino"
+    assert loaded["trino_krb5_config"] == "krb5.conf"
+    assert loaded["trino_kerberos_ca_cert"] == "trino-ca.pem"
+    assert loaded["trino_kerberos_insecure_tls"] is True
 
 
 def test_recent_scan_timezone_config_is_validated(tmp_path):
@@ -384,6 +407,13 @@ def test_recent_scan_timezone_config_is_validated(tmp_path):
     loaded = config_contract.load_local_config(path, cwd=tmp_path)
 
     assert loaded["recent_scan_timezone"] == "UTC"
+
+
+def test_engine_config_rejects_unknown_value(tmp_path):
+    path = write_config(tmp_path / "config.json", minimal_config(engine="spark"))
+
+    with pytest.raises(config_contract.ConfigError, match="engine must be one of"):
+        config_contract.load_local_config(path, cwd=tmp_path)
 
 
 @pytest.mark.parametrize("value", ["", "UTC+offset", "not/a-zone"])
@@ -465,6 +495,16 @@ def test_clusters_config_is_accepted_and_normalized(tmp_path):
                     "recent_scan_timezone": "UTC",
                     "source_visibility": "owner_raw",
                     "source_owner_user": "analyst_one",
+                    "trino_beta_enabled": True,
+                    "trino_coordinator_url": "https://trino.example.com",
+                    "trino_query_info_source_contract": "trino-contract.json",
+                    "trino_auth_header_file": "trino-header.txt",
+                    "trino_kerberos_principal": "sa@LESTA.HADOOP",
+                    "trino_kerberos_service_name": "HTTP",
+                    "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
+                    "trino_krb5_config": "krb5.conf",
+                    "trino_kerberos_ca_cert": "trino-ca.pem",
+                    "trino_kerberos_insecure_tls": True,
                 }
             ]
         ),
@@ -491,6 +531,16 @@ def test_clusters_config_is_accepted_and_normalized(tmp_path):
             "recent_scan_timezone": "UTC",
             "source_visibility": "owner_raw",
             "source_owner_user": "analyst_one",
+            "trino_beta_enabled": True,
+            "trino_coordinator_url": "https://trino.example.com",
+            "trino_query_info_source_contract": "trino-contract.json",
+            "trino_auth_header_file": "trino-header.txt",
+            "trino_kerberos_principal": "sa@LESTA.HADOOP",
+            "trino_kerberos_service_name": "HTTP",
+            "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
+            "trino_krb5_config": "krb5.conf",
+            "trino_kerberos_ca_cert": "trino-ca.pem",
+            "trino_kerberos_insecure_tls": True,
         }
     ]
 

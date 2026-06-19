@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from dataclasses import dataclass
@@ -15,13 +14,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from query_doctor.safety.manifest_references import (  # noqa: E402
-    is_safe_relative_json_reference,
+from query_doctor.safety.handoff_artifacts import (  # noqa: E402
+    output_overlaps_inputs_error,
+    same_path,
+    write_ascii_json_artifact,
 )
+from query_doctor.safety.manifest_references import is_safe_relative_json_reference  # noqa: E402
 from scripts.audit_trino_evidence_handoff import (  # noqa: E402
     TRINO_EVIDENCE_HANDOFF_SUITE_MANIFEST_BUILDER_KIND,
     TRINO_EVIDENCE_HANDOFF_SUITE_MANIFEST_KIND,
-    same_path,
 )
 
 
@@ -125,11 +126,13 @@ def validate_output_path(
     *,
     replace: bool,
 ) -> None:
-    for artifact in entry_artifacts(entries):
-        if same_path(out_path, artifact):
-            raise TrinoEvidenceHandoffSuiteManifestBuilderError(
-                "manifest output must differ from every input artifact"
-            )
+    overlap_error = output_overlaps_inputs_error(
+        out_path,
+        entry_artifacts(entries),
+        message="manifest output must differ from every input artifact",
+    )
+    if overlap_error is not None:
+        raise TrinoEvidenceHandoffSuiteManifestBuilderError(overlap_error)
     if out_path.exists() and not replace:
         raise TrinoEvidenceHandoffSuiteManifestBuilderError(
             "manifest output already exists; pass --replace to overwrite"
@@ -211,11 +214,7 @@ def entry_artifacts(entries: Sequence[TrinoEvidenceHandoffSuiteEntrySpec]) -> tu
 
 
 def write_manifest(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_ascii_json_artifact(path, payload)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import json
 from copy import deepcopy
+from pathlib import Path
 
 from query_doctor.cli import trino_query_info_pruned_import
 from query_doctor.trino.coordinator_query_info_pruned_import import (
@@ -16,6 +17,11 @@ from query_doctor.trino.coordinator_query_info_target import (
 
 QUERY_ID = "20260603_120102_00001_abcde"
 COORDINATOR_URL = "https://coordinator.example.test:8443"
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "engine_facts"
+QUERY_INFO_PRUNED_ZERO_ABSENCE_FIXTURE = FIXTURE_DIR / "trino_query_info_pruned_zero_absence.json"
+QUERY_INFO_PRUNED_INVALID_VALUES_FIXTURE = (
+    FIXTURE_DIR / "trino_query_info_pruned_invalid_values.json"
+)
 
 
 def test_trino_local_query_info_pruned_import_maps_allowlisted_payload():
@@ -35,6 +41,54 @@ def test_trino_local_query_info_pruned_import_maps_allowlisted_payload():
     assert facts["trino_version_family"].value == "477"
     assert facts["trino_peak_memory_bytes"].value == 3145728
     assert facts["trino_failed_task_count"].state == "not_observed"
+
+
+def test_trino_local_query_info_pruned_import_maps_zero_absence_fixture():
+    payload = json.loads(QUERY_INFO_PRUNED_ZERO_ABSENCE_FIXTURE.read_text(encoding="utf-8"))
+
+    result = import_trino_local_query_info_pruned(_safe_contract(), payload)
+
+    facts = result.bundle.facts_by_id()
+    assert result.lifecycle == "finished"
+    assert result.bundle.lifecycle.blocked == "not_observed"
+    assert facts["trino_elapsed_time_ms"].value == 2500
+    assert facts["trino_wall_time_ms"].value == 2750
+    assert facts["trino_spilled_bytes"].state == "not_observed"
+    assert facts["trino_spilled_bytes"].value == 0
+    assert facts["trino_blocked_signal"].state == "not_observed"
+    assert facts["trino_blocked_signal"].value is False
+    assert facts["trino_failed_task_count"].state == "not_observed"
+    assert facts["trino_failed_task_count"].value == 0
+
+
+def test_trino_local_query_info_pruned_import_maps_invalid_values_fixture_to_unknowns():
+    payload = json.loads(QUERY_INFO_PRUNED_INVALID_VALUES_FIXTURE.read_text(encoding="utf-8"))
+
+    result = import_trino_local_query_info_pruned(_safe_contract(), payload)
+
+    facts = result.bundle.facts_by_id()
+    assert result.lifecycle == "running"
+    assert result.bundle.lifecycle.blocked == "unknown"
+    for fact_id in (
+        "trino_elapsed_time_ms",
+        "trino_queued_time_ms",
+        "planning_time_ms",
+        "trino_execution_time_ms",
+        "trino_cpu_time_ms",
+        "trino_wall_time_ms",
+        "trino_input_rows",
+        "trino_input_bytes",
+        "trino_output_rows",
+        "trino_output_bytes",
+        "trino_peak_memory_bytes",
+        "trino_spilled_bytes",
+        "trino_blocked_signal",
+        "trino_task_count",
+        "trino_failed_task_count",
+    ):
+        assert facts[fact_id].state == "unknown", fact_id
+    assert facts["trino_version_family"].state == "supported"
+    assert facts["trino_version_family"].value == "477"
 
 
 def test_trino_local_query_info_pruned_import_boundary_export_is_raw_free():

@@ -251,6 +251,203 @@ def test_trino_compact_readiness_main_rejects_unknown_smoke_status(
         assert fragment not in captured.err
 
 
+def test_trino_compact_readiness_main_rejects_smoke_statement_count_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "ok"))
+    bounds = smoke_payload["bounds"]
+    assert isinstance(bounds, dict)
+    bounds["statement_count"] = 1
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "ok: 2" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_unknown_safe_error_category(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "trino_error"))
+    smoke_payload["checks"][1]["safe_error_category"] = "connector_user_error"
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    assert "smoke_summary_failed_check" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_accepts_known_trino_error_type_category(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "trino_error"))
+    smoke_payload["checks"][1]["safe_error_category"] = "USER_ERROR"
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "smoke_summary_failed_check" in captured.out
+    assert "smoke_summary_check_not_ok" in captured.out
+    assert "smoke_summary_contract_invalid" not in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_successful_smoke_failure_category(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "ok"))
+    smoke_payload["checks"][0]["safe_error_category"] = "request_failed"
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "ok: 2" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_executed_smoke_check_counter_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "ok"))
+    smoke_payload["checks"][0]["rows_seen"] = -1
+    smoke_payload["checks"][0]["page_count"] = 0
+    smoke_payload["checks"][0]["response_bytes"] = "unknown"
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "ok: 2" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_planned_smoke_check_counter_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="dry_run", statuses=("planned", "planned"))
+    smoke_payload["checks"][0]["rows_seen"] = 1
+    smoke_payload["checks"][0]["result_field_count"] = 1
+    smoke_payload["checks"][0]["page_count"] = 1
+    smoke_payload["checks"][0]["protocol_state"] = "FINISHED"
+    smoke_payload["checks"][0]["response_bytes"] = 128
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke)])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=dry_run" in captured.out
+    assert "planned: 2" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_smoke_summary_redaction_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "ok"))
+    redaction_assertions = smoke_payload["redaction"]
+    assert isinstance(redaction_assertions, dict)
+    redaction_assertions.pop("query_identifiers")
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "ok: 2" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_smoke_summary_limitation_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke_payload = _smoke_summary(mode="execute", statuses=("ok", "ok"))
+    limitations = smoke_payload["limitations"]
+    assert isinstance(limitations, list)
+    limitations.remove("not_query_doctor_trino_product_support")
+    smoke = _write_boundary(tmp_path, "trino_smoke_summary.json", smoke_payload)
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "ok: 2" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def test_trino_compact_readiness_main_rejects_failed_raw_smoke_summary_without_echo(
     tmp_path: Path,
     capsys,
@@ -632,6 +829,61 @@ def test_trino_compact_readiness_handoff_manifest_suite_checks_pairs_without_pat
         assert fragment not in captured.err
 
 
+def test_trino_compact_readiness_handoff_manifest_rejects_smoke_overlap_with_diagnosis(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    payload = _boundary_with_trino_version_family(
+        _boundary_for_case("trino_query_detail_export_fixture"),
+        "477",
+    )
+    boundary = _write_boundary(tmp_path, "secret-boundary.json", payload)
+    diagnosis = _write_boundary(
+        tmp_path,
+        "secret-diagnosis.json",
+        build_trino_compact_diagnosis_from_boundary(payload),
+    )
+    manifest = _write_boundary(
+        tmp_path,
+        "operator-secret-handoff-manifest.json",
+        {
+            "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
+            "entries": [
+                {
+                    "boundary_json": boundary.name,
+                    "diagnosis_json": diagnosis.name,
+                    "smoke_summary": diagnosis.name,
+                }
+            ],
+        },
+    )
+
+    rc = main(
+        [
+            "--handoff-suite-manifest",
+            str(manifest),
+            "--require-diagnosis-json",
+            "--require-executed-smoke",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert (
+        "handoff manifest JSON input smoke summary artifacts must differ from boundary, diagnosis, readiness summary, handoff summary, and product-surface summary artifacts"
+        in captured.err
+    )
+    for fragment in (
+        str(tmp_path),
+        "secret-boundary.json",
+        "secret-diagnosis.json",
+        "operator-secret-handoff-manifest.json",
+    ):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def test_trino_compact_readiness_handoff_manifest_writes_raw_free_summary_json(
     tmp_path: Path,
     capsys,
@@ -715,6 +967,7 @@ def test_trino_compact_readiness_handoff_manifest_writes_raw_free_summary_json(
         "diagnostic_lane_checked": 2,
         "diagnosis_checked": 2,
         "handoff_summary_checked": 0,
+        "product_surface_summary_checked": 0,
         "readiness_summary_checked": 0,
         "smoke_checked": 2,
     }
@@ -1591,6 +1844,231 @@ def test_trino_compact_readiness_rejects_manifest_product_summary_overlap(
         assert fragment not in captured.err
 
 
+def test_trino_compact_readiness_handoff_manifest_can_require_product_surface_summary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path,
+        "secret-boundary.json",
+        _boundary_for_case("trino_query_detail_export_fixture"),
+    )
+    product_surface_summary = _write_boundary(
+        tmp_path,
+        "secret-surface-summary.json",
+        _product_surface_summary(),
+    )
+    manifest = _write_boundary(
+        tmp_path,
+        "secret-handoff-manifest.json",
+        {
+            "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
+            "entries": [
+                {
+                    "boundary_json": boundary.name,
+                    "product_surface_summary_json": product_surface_summary.name,
+                }
+            ],
+        },
+    )
+
+    rc = main(
+        [
+            "--handoff-suite-manifest",
+            str(manifest),
+            "--require-product-surface-summary-json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "Trino compact readiness suite: ok" in captured.out
+    assert "product_surface_summary_checked=1" in captured.out
+    assert "Issues: none" in captured.out
+    for fragment in (
+        str(tmp_path),
+        "secret-boundary.json",
+        "secret-surface-summary.json",
+        "secret-handoff-manifest.json",
+    ):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_handoff_manifest_can_require_missing_product_surface_summary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path,
+        "secret-boundary.json",
+        _boundary_for_case("trino_query_detail_export_fixture"),
+    )
+    manifest = _write_boundary(
+        tmp_path,
+        "secret-handoff-manifest.json",
+        {
+            "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
+            "entries": [{"boundary_json": boundary.name}],
+        },
+    )
+
+    rc = main(
+        [
+            "--handoff-suite-manifest",
+            str(manifest),
+            "--require-product-surface-summary-json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "handoff_product_surface_summary_missing" in captured.out
+    for fragment in (str(tmp_path), "secret-boundary.json", "secret-handoff-manifest.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_handoff_manifest_rejects_failed_product_surface_summary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path,
+        "secret-boundary.json",
+        _boundary_for_case("trino_query_detail_export_fixture"),
+    )
+    product_surface_summary = _write_boundary(
+        tmp_path,
+        "secret-surface-summary.json",
+        _product_surface_summary(status="failed"),
+    )
+    manifest = _write_boundary(
+        tmp_path,
+        "secret-handoff-manifest.json",
+        {
+            "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
+            "entries": [
+                {
+                    "boundary_json": boundary.name,
+                    "product_surface_summary_json": product_surface_summary.name,
+                }
+            ],
+        },
+    )
+
+    rc = main(["--handoff-suite-manifest", str(manifest)])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "product_surface_summary_checked=1" in captured.out
+    assert "product_surface_summary_not_ok" in captured.out
+    for fragment in (
+        str(tmp_path),
+        "secret-boundary.json",
+        "secret-surface-summary.json",
+        "secret-handoff-manifest.json",
+    ):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_handoff_manifest_rejects_product_surface_summary_count_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path,
+        "secret-boundary.json",
+        _boundary_for_case("trino_query_detail_export_fixture"),
+    )
+    summary_payload = _product_surface_summary()
+    counts = summary_payload["counts"]
+    assert isinstance(counts, dict)
+    counts["supported_attention_area_count"] = 0
+    product_surface_summary = _write_boundary(
+        tmp_path,
+        "secret-surface-summary.json",
+        summary_payload,
+    )
+    manifest = _write_boundary(
+        tmp_path,
+        "secret-handoff-manifest.json",
+        {
+            "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
+            "entries": [
+                {
+                    "boundary_json": boundary.name,
+                    "product_surface_summary_json": product_surface_summary.name,
+                }
+            ],
+        },
+    )
+
+    rc = main(["--handoff-suite-manifest", str(manifest)])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "product_surface_summary_checked=1" in captured.out
+    assert "product_surface_summary_mismatch" in captured.out
+    for fragment in (
+        str(tmp_path),
+        "secret-boundary.json",
+        "secret-surface-summary.json",
+        "secret-handoff-manifest.json",
+    ):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_handoff_manifest_rejects_product_surface_summary_lane_drift(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path,
+        "secret-boundary.json",
+        _boundary_for_case("trino_query_detail_export_fixture"),
+    )
+    summary_payload = _product_surface_summary()
+    diagnostic_lane = summary_payload["diagnostic_lane"]
+    assert isinstance(diagnostic_lane, dict)
+    diagnostic_lane["verification_scope"] = {"source_contract_review": 1}
+    product_surface_summary = _write_boundary(
+        tmp_path,
+        "secret-surface-summary.json",
+        summary_payload,
+    )
+    manifest = _write_boundary(
+        tmp_path,
+        "secret-handoff-manifest.json",
+        {
+            "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
+            "entries": [
+                {
+                    "boundary_json": boundary.name,
+                    "product_surface_summary_json": product_surface_summary.name,
+                }
+            ],
+        },
+    )
+
+    rc = main(["--handoff-suite-manifest", str(manifest)])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "product_surface_summary_checked=1" in captured.out
+    assert "product_surface_summary_mismatch" in captured.out
+    for fragment in (
+        str(tmp_path),
+        "secret-boundary.json",
+        "secret-surface-summary.json",
+        "secret-handoff-manifest.json",
+    ):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def test_trino_compact_readiness_rejects_manifest_handoff_summary_overlap(
     tmp_path: Path,
     capsys,
@@ -1806,8 +2284,8 @@ def test_trino_compact_readiness_suite_accepts_all_golden_boundaries(
     assert f"boundary_json_count={len(boundaries)}" in captured.out
     assert f"ok={len(boundaries)}" in captured.out
     assert "failed=0" in captured.out
-    assert "engine_fact_boundary_v1: 26" in captured.out
-    assert "supported: 24" in captured.out
+    assert f"engine_fact_boundary_v1: {len(boundaries)}" in captured.out
+    assert "supported: 26" in captured.out
     assert "unknown: 2" in captured.out
     assert "engine_specific:" in captured.out
     assert "distributed_sql_family:" in captured.out
@@ -2144,6 +2622,47 @@ def _one_query_handoff_summary(
         ),
         readiness_summary_written=readiness_summary_written,
     )
+
+
+def _product_surface_summary(*, status: str = "ok") -> dict[str, object]:
+    return {
+        "summary_kind": "trino_product_surface_boundary_audit_v1",
+        "status": status,
+        "mode": "trino_product_surface_boundary",
+        "boundary": {
+            "product_surface": "query_id_beta",
+            "support_claim": "beta_only",
+            "details_trusted_report_surface": "not_wired",
+            "trusted_reports": "not_wired",
+            "optimizer_behavior": "not_wired",
+            "live_recent_scan": "not_wired",
+            "live_known_query_diagnosis": "one_query_pruned_query_info_beta",
+            "trino_sql_execution": "not_performed",
+        },
+        "counts": {
+            "boundary_json_count": 1,
+            "diagnosis_json_checked_count": 1,
+            "product_source_modules_checked_count": 1,
+            "attention_area_count": 3,
+            "supported_attention_area_count": 3,
+            "diagnostic_lane_checked_count": 1,
+            "limitation_count": 1,
+        },
+        "diagnostic_lane": {
+            "source_granularity": {"one_query_boundary": 1},
+            "evidence_readiness": {"one_query_attention_ready": 1},
+            "verification_scope": {"comparable_one_query_rerun": 1},
+            "fact_states": {"not_observed": 2, "supported": 18, "unknown": 5},
+        },
+        "registry": {
+            "trino_product_routes": "query_id_beta",
+            "trino_product_cli": "blocked",
+            "details_report_source_imports": "blocked",
+            "allowed_web_post_paths": ["/trino/compact-diagnosis"],
+            "allowed_cli_roles": ["diagnose_trino_compact"],
+        },
+        "issues": {"counts": {}, "items": []},
+    }
 
 
 def _metadata_source_contract() -> dict[str, object]:
