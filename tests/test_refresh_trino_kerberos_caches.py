@@ -84,6 +84,30 @@ def test_refresh_trino_kerberos_entries_uses_kinit_without_shell(tmp_path: Path)
     assert calls[0][1]["KRB5_CONFIG"] == str(tmp_path / "krb5.conf")
 
 
+def test_refresh_trino_kerberos_entries_redacts_missing_kinit(tmp_path: Path) -> None:
+    keytab = tmp_path / "query-doctor.keytab"
+    keytab.write_text("not a real keytab", encoding="utf-8")
+
+    def runner(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("kinit")
+
+    try:
+        refresher.refresh_trino_kerberos_entries(
+            (
+                refresher.TrinoKerberosEntry(
+                    principal="secret-principal@EXAMPLE.COM",
+                    krb5_ccname="FILE:/tmp/secret-cache",
+                ),
+            ),
+            keytab=keytab,
+            runner=runner,
+        )
+    except refresher.TrinoKerberosRefreshError as exc:
+        assert str(exc) == "Could not refresh Trino Kerberos ticket cache."
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected refresh error")
+
+
 def test_refresh_trino_kerberos_main_keeps_failure_message_safe(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

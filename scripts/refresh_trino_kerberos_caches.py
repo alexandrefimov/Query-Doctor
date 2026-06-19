@@ -112,13 +112,18 @@ def refresh_trino_kerberos_entries(
         env = os.environ.copy()
         if entry.krb5_config is not None:
             env["KRB5_CONFIG"] = str(entry.krb5_config)
-        result = runner(
-            ["kinit", "-c", entry.krb5_ccname, "-kt", str(keytab), entry.principal],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-        )
+        try:
+            result = runner(
+                ["kinit", "-c", entry.krb5_ccname, "-kt", str(keytab), entry.principal],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise TrinoKerberosRefreshError(
+                "Could not refresh Trino Kerberos ticket cache."
+            ) from exc
         if result.returncode != 0:
             raise TrinoKerberosRefreshError("Could not refresh Trino Kerberos ticket cache.")
         refreshed += 1
@@ -146,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         refreshed = refresh_trino_kerberos_entries(
             entries,
             keytab=args.keytab.expanduser(),
+            runner=subprocess.run,
         )
     except TrinoKerberosRefreshError as exc:
         print(f"Trino Kerberos cache refresh failed: {exc}", file=sys.stderr)
