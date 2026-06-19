@@ -43,6 +43,7 @@ from query_doctor.web.presenters.recent_scan_evidence_labels import (
     evidence_stats_label,
 )
 from query_doctor.web.ui.action_candidates import (
+    render_action_candidate_decision_findings,
     render_action_candidate_findings,
     render_action_candidate_findings_view,
 )
@@ -888,7 +889,7 @@ def test_recent_scan_case_detail_view_renderer_uses_typed_view_model():
     assert_no_forbidden_fragments(view_html)
 
 
-def test_recent_scan_case_detail_view_uses_russian_static_labels():
+def test_recent_scan_case_detail_view_keeps_static_labels_english_with_russian_body():
     case = {
         "query_id": "abc",
         "score": 8,
@@ -896,19 +897,132 @@ def test_recent_scan_case_detail_view_uses_russian_static_labels():
         "analysis_status": "ok",
         "metadata_status": "collected",
         "score_reasons": ["cardinality estimate anomalies: 2"],
+        "case_primary_bottleneck": {
+            "label": "sql_shape",
+            "confidence": "medium",
+            "reasons": ["cardinality_anomalies_2"],
+        },
+        "query_optimization_candidate": {
+            "tier": "medium",
+            "score": 67,
+            "impact": "medium",
+            "confidence": "medium",
+            "reasons": ["query-shape evidence"],
+            "suggested_review_areas": ["join order"],
+        },
     }
     view = present_recent_scan_case_detail("case-001", case)
 
     view_html = render_recent_scan_case_detail_view(view, language="ru")
 
-    assert "Детали завершенного запроса" in view_html
+    assert "Finished Queries details" in view_html
+    assert "Verdict" in view_html
+    assert "Recommended change" in view_html
+    assert "Diagnostics and evidence" in view_html
+    assert "Reports and optimizer" in view_html
+    assert "Детали завершенного запроса" not in view_html
     assert "Завершенные запросы детали" not in view_html
-    assert "Вердикт" in view_html
-    assert "Рекомендуемое изменение" in view_html
-    assert "Диагностика и доказательства" in view_html
-    assert "Отчеты и оптимизатор" in view_html
-    assert "cardinality estimate anomalies" in view_html
+    assert "Вердикт" not in view_html
+    assert "Рекомендуемое изменение" not in view_html
+    assert "Диагностика и доказательства" not in view_html
+    assert "Отчеты и оптимизатор" not in view_html
+    assert "Query-shape recommendation" in view_html
+    assert "Сила кандидата:" in view_html
+    assert "Проверьте join order" in view_html
+    assert "Сравните EXPLAIN до и после изменения" in view_html
+    assert "Runtime profile содержит" in view_html
+    assert "Review join order" not in view_html
+    assert "Compare EXPLAIN before and after the change" not in view_html
+    assert "Strong: analyzer findings with metadata context" in view_html
+    assert "Рекомендация по форме запроса" not in view_html
+    assert "Candidate strength:" not in view_html
     assert_no_forbidden_fragments(view_html)
+
+
+def test_recent_scan_results_table_keeps_header_english_and_localizes_finding_body():
+    summary = {
+        "selected_count": 1,
+        "summaries_inspected": 1,
+        "cases": [
+            {
+                "case_index": 1,
+                "query_id": "abc",
+                "user": "analyst",
+                "score": 40,
+                "duration_sec": 30,
+                "collection_status": "ok",
+                "analysis_status": "ok",
+                "metadata_status": "collected",
+                "score_reasons": ["cardinality estimate anomalies: 2"],
+                "case_primary_bottleneck": {
+                    "label": "sql_shape",
+                    "confidence": "medium",
+                    "reasons": ["cardinality_anomalies_2"],
+                },
+            }
+        ],
+    }
+
+    html = render_batch_summary(summary, query_group="bad", language="ru")
+
+    assert "<th>Finding</th>" in html
+    assert "<th>Сигнал</th>" not in html
+    assert "Основной сигнал:" in html
+    assert "аномалии оценки строк" in html
+    assert "Primary:" not in html
+    assert "cardinality estimate anomalies" not in html
+    assert_no_forbidden_fragments(html)
+
+
+def test_query_shape_recommendation_localizes_russian_body_copy_only():
+    view = present_recent_scan_case_detail(
+        "case-001",
+        {
+            "case_index": 1,
+            "query_id": "abc",
+            "score": 8,
+            "score_severity": "suspicious",
+            "_detail_optimization_rank": 1,
+            "query_optimization_candidate": {
+                "score": 88,
+                "tier": "high",
+                "confidence": "medium",
+                "impact": "high",
+                "reasons": ["join row expansion or cardinality mismatch with join evidence"],
+                "suggested_review_areas": ["join keys and join cardinality"],
+            },
+            "source_locators": {
+                "query_optimization": [
+                    {
+                        "id": "sql_final_select_filter",
+                        "coordinate": "line 18",
+                        "detail": "predicate near final SELECT",
+                    },
+                    {
+                        "id": "plan_cardinality_anomaly",
+                        "detail": "node 02 HASH JOIN",
+                    },
+                ]
+            },
+        },
+    )
+
+    html = render_action_candidate_decision_findings(view, language="ru")
+
+    assert "Query-shape recommendation" in html
+    assert "What to try" in html
+    assert "How to verify" in html
+    assert "Попробуйте уменьшить количество строк раньше" in html
+    assert "Используйте отмеченный estimate-mismatch operator" in html
+    assert "Сравните EXPLAIN до и после изменения" in html
+    assert "затем выполните сопоставимый повторный запуск" in html
+    assert "Сила кандидата: Высокое. Оценка: 88/100." in html
+    assert '<div class="action-candidate-meta"' in html
+    assert '<details class="analysis-subdetails action-candidate-meta"' not in html
+    assert "Try to reduce rows earlier" not in html
+    assert "after the change, check whether fewer rows" not in html
+    assert "Compare EXPLAIN before and after the change" not in html
+    assert_no_forbidden_fragments(html)
 
 
 def test_recent_scan_case_detail_view_without_trusted_artifacts_renders_no_artifact_blocks():
@@ -2874,7 +2988,7 @@ def test_optimized_query_action_view_labels_deterministic_draft_unavailable():
     assert_no_forbidden_fragments(html)
 
 
-def test_optimized_query_outcome_uses_russian_static_labels():
+def test_optimized_query_outcome_keeps_static_labels_english_with_russian_body():
     view = present_optimized_query_action(
         {
             "status": "generated",
@@ -2889,17 +3003,19 @@ def test_optimized_query_outcome_uses_russian_static_labels():
 
     html = render_optimized_query_outcome(view, language="ru")
 
-    assert "Только рекомендации" in html
-    assert "Результат: Только рекомендации" in html
-    assert "Источник: Read-only statement" in html
-    assert "Режим проверки: Только рекомендации" in html
-    assert "Ограничения: Эквивалентность CTE body" in html
-    assert "Причина: Рекомендации synthetic demo" in html
-    assert "Ручная проверка: Не требуется" in html
-    assert "Outcome:" not in html
-    assert "Risk mode:" not in html
-    assert "Guardrails:" not in html
-    assert "Manual validation:" not in html
+    assert "Recommendations only" in html
+    assert "Outcome: Recommendations only" in html
+    assert "Source scope: Read-only statement" in html
+    assert "Risk mode: Recommendations only" in html
+    assert "Guardrails: Эквивалентность CTE body" in html
+    assert "Reason: Synthetic demo recommendations" in html
+    assert "Manual validation: Not needed" in html
+    assert "Форма запроса недостаточно безопасна" in html
+    assert "Только рекомендации" not in html
+    assert "Результат:" not in html
+    assert "Режим проверки:" not in html
+    assert "Ограничения:" not in html
+    assert "Ручная проверка:" not in html
     assert_no_forbidden_fragments(html)
 
 
@@ -3277,8 +3393,8 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in html
     assert 'href="/batch/workload/wf_dddddddddddddddddddddddd"' in html
     assert 'href="/batch/workload/wf_eeeeeeeeeeeeeeeeeeeeeeee"' in html
-    assert 'href="?query_group=workloads#recent-results">Repeated workloads</a>' in html
-    assert 'href="?query_group=regressions#recent-results">Regressed workloads</a>' in html
+    assert 'href="/?query_group=workloads#recent-results">Repeated workloads</a>' in html
+    assert 'href="/?query_group=regressions#recent-results">Regressed workloads</a>' in html
     assert "Repeated workload details" not in html
     assert "Workload patterns" not in html
     assert "Top workload to review" not in html
@@ -4403,9 +4519,9 @@ def test_recent_scan_summary_filters_query_groups():
         in spilled_suspicious_html
     )
     assert "Clear the spill filter to see all rows in this group." in spilled_suspicious_html
-    assert 'href="?query_group=stats&only_with_spills=on#recent-results"' in stats_html
+    assert 'href="/?query_group=stats&only_with_spills=on#recent-results"' in stats_html
     assert 'class="batch-spill-toggle batch-spill-toggle--active"' in spilled_stats_html
-    assert 'href="?query_group=stats#recent-results"' in spilled_stats_html
+    assert 'href="/?query_group=stats#recent-results"' in spilled_stats_html
     assert "Worth reviewing <span>0</span>" in spilled_stats_html
     assert "Repeated workloads <span>1</span>" in spilled_stats_html
     assert "Frequent short <span>1</span>" in spilled_stats_html

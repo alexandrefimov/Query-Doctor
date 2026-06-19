@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.ui.errors import render_error_panel
 from query_doctor.web.ui.pages import render_page
 
 
@@ -159,13 +160,10 @@ def render_spark_history_scope_details() -> str:
 
 
 def render_spark_compact_error_panel(error: object) -> str:
-    safe_error = sanitize_browser_error_text(error, max_chars=None)
-    return (
-        '<section class="error-card" role="alert">'
-        "<strong>Safe Spark compact state</strong>"
-        f"{html.escape(safe_error)}<br>"
-        "Submitted compact JSON is not displayed back, and rejected input is hidden."
-        "</section>"
+    return render_error_panel(
+        error,
+        default_title="Safe Spark compact state",
+        footer="Submitted compact JSON is not displayed back, and rejected input is hidden.",
     )
 
 

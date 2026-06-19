@@ -9,6 +9,7 @@ from typing import Any
 from query_doctor.web.case_detail_context import (
     case_allows_llm_report,
     case_allows_query_optimizer,
+    case_score_allows_query_optimizer,
     optimizer_state_for_case,
 )
 from query_doctor.web.case_files import build_query_id_summary_case
@@ -60,6 +61,7 @@ class SpecificQueryDetailActionContext:
     analyzer_facts_available: bool
     report_allowed: bool
     source_sql_available: bool
+    optimizer_allowed: bool
     report_running: bool
     optimizer_running: bool
 
@@ -70,15 +72,20 @@ def build_specific_query_detail_action_context(
     job_store: WebJobStore,
 ) -> SpecificQueryDetailActionContext:
     case = build_query_id_summary_case(query_id, case_dir)
+    analyzer_facts_available = case_has_analyzer_facts(case_dir)
+    source_sql_available = (
+        case_score_allows_query_optimizer(case)
+        and case_has_safe_source_sql(case_dir)
+        and analyzer_facts_available
+    )
     return SpecificQueryDetailActionContext(
         query_id=query_id,
         case_dir=case_dir,
         case=case,
-        analyzer_facts_available=case_has_analyzer_facts(case_dir),
-        report_allowed=case_allows_llm_report(case) and case_has_analyzer_facts(case_dir),
-        source_sql_available=case_allows_query_optimizer(case)
-        and case_has_safe_source_sql(case_dir)
-        and case_has_analyzer_facts(case_dir),
+        analyzer_facts_available=analyzer_facts_available,
+        report_allowed=case_allows_llm_report(case) and analyzer_facts_available,
+        source_sql_available=source_sql_available,
+        optimizer_allowed=source_sql_available and case_allows_query_optimizer(case),
         report_running=job_store.running_query_report(query_id) is not None,
         optimizer_running=job_store.running_query_optimized_query(query_id) is not None,
     )

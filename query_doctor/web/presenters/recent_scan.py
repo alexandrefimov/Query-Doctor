@@ -20,6 +20,7 @@ from query_doctor.web.action_outcomes import (
     workload_outcome_summary_text,
 )
 from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.error_contract import safe_web_error_info_payload
 from query_doctor.web.presenters.recent_scan_models import (
     RecentScanActionCandidateCardView,
     RecentScanActionCandidatesView,
@@ -54,6 +55,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     ReportActionView,
 )
 from query_doctor.web.job_progress import JobProgressView
+from query_doctor.web.job_ids import route_safe_job_id
 from query_doctor.web.presenters.optimizer_facts import (
     optimizer_no_recipe_change_direction,
     optimizer_no_recipe_review_area,
@@ -1435,7 +1437,8 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         trusted=trusted,
         partial_untrusted=partial_untrusted,
         error=safe_display_text(sanitize_browser_error_text(state.get("error") or "")),
-        job_id=safe_display_text(state.get("job_id") or ""),
+        error_info=safe_web_error_info_payload(state.get("error_info")),
+        job_id=route_safe_job_id(state.get("job_id") or ""),
         stage_label=safe_display_text(state.get("stage_label") or ""),
         progress=clamped_progress(state.get("progress")),
         note=(

@@ -37,8 +37,11 @@ class UnreadableBody(io.BytesIO):
 
 @pytest.mark.parametrize("value", ["not-an-int", "-1"])
 def test_parse_post_content_length_rejects_invalid_values(value):
-    with pytest.raises(WebError, match="Invalid POST content length"):
+    with pytest.raises(WebError, match="Invalid POST content length") as exc:
         parse_post_content_length(value)
+
+    assert exc.value.reason_code == "web.post_content_length_invalid"
+    assert exc.value.stage == "Reading web request"
 
 
 def test_parse_post_content_length_defaults_missing_to_zero():
@@ -68,8 +71,11 @@ def test_read_bounded_post_form_allows_exact_limit():
 def test_read_bounded_post_form_rejects_over_limit():
     payload = b"x=" + (b"a" * MAX_WEB_POST_BODY_BYTES)
 
-    with pytest.raises(WebError, match="bounded web input limit"):
+    with pytest.raises(WebError, match="bounded web input limit") as exc:
         read_bounded_post_form(io.BytesIO(payload), str(len(payload)))
+
+    assert exc.value.reason_code == "web.post_body_too_large"
+    assert exc.value.stage == "Reading web request"
 
 
 @pytest.mark.parametrize(
@@ -415,6 +421,7 @@ def test_web_handler_rejects_untrusted_host_without_echoing_it():
 
     assert captured["status"] == 400
     assert "outside the local web allowlist" in captured["body"]
+    assert "web.host_not_allowed" in captured["body"]
     assert "external.example" not in captured["body"]
 
 
@@ -439,6 +446,7 @@ def test_web_handler_rejects_untrusted_post_origin_before_reading_body():
 
     assert captured["status"] == 403
     assert "POST Origin outside the local web allowlist" in captured["body"]
+    assert "web.origin_not_allowed" in captured["body"]
     assert "external.example" not in captured["body"]
 
 
@@ -641,3 +649,4 @@ def test_web_handler_rejects_invalid_post_content_length_before_reading_body(con
 
     assert captured["status"] == 400
     assert "Invalid POST content length" in captured["body"]
+    assert "web.post_content_length_invalid" in captured["body"]

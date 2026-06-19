@@ -53,7 +53,11 @@ def test_web_running_page_places_configured_source_before_live_scan():
 
     assert '<label for="running_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="running_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" selected>Staging</option>' in body
+    assert (
+        '<option value="stage" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Staging</option>' in body
+    )
     assert body.index('<label for="running_cluster_key">Source cluster</label>') < body.index(
         "Live scan"
     )

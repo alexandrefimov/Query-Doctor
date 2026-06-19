@@ -198,6 +198,7 @@ from query_doctor.web.subprocesses import (
     resolve_metadata_impala_shell,
     run_subprocess,
     subprocess_failure_message,
+    subprocess_failure_web_error,
 )
 from query_doctor.web.batch_scan import (
     BATCH_CM_JOBS_MAX,
@@ -554,6 +555,7 @@ _FACADE_EXPORT_GROUPS = (
             "resolve_metadata_impala_shell",
             "run_subprocess",
             "subprocess_failure_message",
+            "subprocess_failure_web_error",
         ),
     ),
     (

@@ -139,7 +139,13 @@ def remove_path(path: Path) -> None:
 def replace_case_dir_after_success(staged_case_dir: Path, expected_case_dir: Path) -> Path:
     ensure_complete_existing_case(staged_case_dir)
     if case_relative_file_path(staged_case_dir, "analysis_facts.md") is None:
-        raise WebError("Analyzer output was not created.")
+        raise WebError(
+            "Analyzer output was not created.",
+            title="Analyzer output is missing",
+            reason_code="impala.analyzer_output_missing",
+            stage="Checking analysis artifacts",
+            next_step="Rerun analysis for the selected query.",
+        )
 
     expected_case_dir.parent.mkdir(parents=True, exist_ok=True)
     backup_path: Path | None = None
@@ -163,13 +169,25 @@ def expected_case_dir_for_query(validated_query_id: str, settings: WebSettings) 
     try:
         slug = cm_collector.safe_case_slug(validated_query_id)
     except cm_collector.OutputError as exc:
-        raise WebError(str(exc)) from exc
+        raise WebError(
+            "Query ID could not be mapped to a safe case directory.",
+            title="Query ID case path was rejected",
+            reason_code="impala.query_id_case_path_rejected",
+            stage="Checking Impala Query ID",
+            next_step="Paste one explicit Impala Query ID in the expected CM-safe format.",
+        ) from exc
     corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
     case_dir = (corpus_dir / slug).resolve(strict=False)
     try:
         case_dir.relative_to(corpus_dir)
     except ValueError as exc:
-        raise WebError("Computed web case directory is outside the web corpus directory.") from exc
+        raise WebError(
+            "Computed web case directory is outside the web corpus directory.",
+            title="Case directory was rejected",
+            reason_code="web.case_dir_outside_corpus",
+            stage="Checking case artifacts",
+            next_step="Check the configured corpus directory and rerun analysis.",
+        ) from exc
     return case_dir
 
 
@@ -177,7 +195,11 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
     if not case_dir.is_dir():
         raise WebError(
             "Existing Query ID case is incomplete. "
-            "Re-run analysis to regenerate required artifacts."
+            "Re-run analysis to regenerate required artifacts.",
+            title="Existing Query ID case is incomplete",
+            reason_code="web.case_incomplete",
+            stage="Checking case artifacts",
+            next_step="Rerun analysis to regenerate required artifacts.",
         )
     missing = [
         name for name in COLLECTED_CASE_FILES if case_relative_file_path(case_dir, name) is None
@@ -185,7 +207,11 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
     if missing or query_metadata_file_path(case_dir) is None:
         raise WebError(
             "Existing Query ID case is incomplete. "
-            "Re-run analysis to regenerate required artifacts."
+            "Re-run analysis to regenerate required artifacts.",
+            title="Existing Query ID case is incomplete",
+            reason_code="web.case_incomplete",
+            stage="Checking case artifacts",
+            next_step="Rerun analysis to regenerate required artifacts.",
         )
 
 
@@ -216,7 +242,13 @@ def read_case_relative_text(case_dir: Path, name: str) -> str | None:
 def parse_output_case_dir(stdout: str) -> Path:
     match = OUTPUT_CASE_RE.search(stdout)
     if not match:
-        raise WebError("Collector output did not include a case directory.")
+        raise WebError(
+            "Collector output did not include a case directory.",
+            title="Collector case output is missing",
+            reason_code="impala.collector_case_dir_missing",
+            stage="Checking collection artifacts",
+            next_step="Retry collection and check terminal diagnostics if it fails again.",
+        )
     return Path(match.group("path").strip())
 
 

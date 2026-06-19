@@ -52,6 +52,8 @@ from query_doctor.web.models import (
     batch_progress_path,
 )
 from query_doctor.web.recent_scan_timezone import configured_recent_scan_timezone
+from query_doctor.web.trino_beta_query import ENGINE_TRINO, normalize_query_engine
+from query_doctor.web.trino_recent import validate_trino_recent_config_for_settings
 
 
 BATCH_ORDER_VALUES = {
@@ -106,20 +108,50 @@ def parse_recent_scan_window(
     scan_date = first_form_value(form, "scan_date") or default_date
     scan_hour_text = first_form_value(form, "scan_hour") or str(default_hour)
     if scan_date not in allowed_recent_scan_dates(scan_timezone=scan_timezone):
-        raise WebError("Scan date must be today or one of the previous two days.")
+        raise WebError(
+            "Scan date must be today or one of the previous two days.",
+            title="Scan date was rejected",
+            reason_code="web.scan_date_out_of_range",
+            stage="Checking Recent scan window",
+            next_step="Choose today or one of the previous two days.",
+        )
     try:
         parsed_date = date.fromisoformat(scan_date)
     except ValueError as exc:
-        raise WebError("Scan date must be formatted as YYYY-MM-DD.") from exc
+        raise WebError(
+            "Scan date must be formatted as YYYY-MM-DD.",
+            title="Scan date format is invalid",
+            reason_code="web.scan_date_invalid",
+            stage="Checking Recent scan window",
+            next_step="Use the YYYY-MM-DD date format.",
+        ) from exc
     try:
         scan_hour = int(scan_hour_text)
     except ValueError as exc:
-        raise WebError("Scan hour must be an integer from 0 to 23.") from exc
+        raise WebError(
+            "Scan hour must be an integer from 0 to 23.",
+            title="Scan hour was rejected",
+            reason_code="web.scan_hour_invalid",
+            stage="Checking Recent scan window",
+            next_step="Choose an hour from 0 to 23.",
+        ) from exc
     if scan_hour < 0 or scan_hour > 23:
-        raise WebError("Scan hour must be an integer from 0 to 23.")
+        raise WebError(
+            "Scan hour must be an integer from 0 to 23.",
+            title="Scan hour was rejected",
+            reason_code="web.scan_hour_invalid",
+            stage="Checking Recent scan window",
+            next_step="Choose an hour from 0 to 23.",
+        )
     latest_date, latest_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
     if scan_date > latest_date or (scan_date == latest_date and scan_hour > latest_hour):
-        raise WebError("Scan hour must not be in the future.")
+        raise WebError(
+            "Scan hour must not be in the future.",
+            title="Scan hour is in the future",
+            reason_code="web.scan_window_future",
+            stage="Checking Recent scan window",
+            next_step="Choose a completed Recent scan hour.",
+        )
     start_local = datetime.combine(parsed_date, datetime_time(scan_hour), tzinfo=scan_timezone)
     end_local = start_local + timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
     from_time = start_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -179,11 +211,21 @@ def parse_batch_run_config(
     if max_duration_text:
         max_duration_sec = parse_non_negative_form_float(form, "max_duration_sec", default=0.0)
         if min_duration_sec is not None and max_duration_sec < min_duration_sec:
-            raise WebError("max_duration_sec must be greater than or equal to min_duration_sec.")
+            raise WebError(
+                "max_duration_sec must be greater than or equal to min_duration_sec.",
+                title="Duration filter was rejected",
+                reason_code="web.duration_filter_invalid",
+                stage="Checking Recent scan filters",
+                next_step="Set max_duration_sec greater than or equal to min_duration_sec.",
+            )
     order = first_form_value(form, "order") or "duration-desc"
     if order not in BATCH_ORDER_VALUES:
         raise WebError(
-            "Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority."
+            "Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority.",
+            title="Sort order was rejected",
+            reason_code="web.scan_order_invalid",
+            stage="Checking Recent scan filters",
+            next_step="Choose one of the supported Recent scan sort orders.",
         )
     if scan_preset == SCAN_PRESET_FREQUENT_SHORT:
         min_duration_sec = None
@@ -259,6 +301,7 @@ def parse_batch_run_config(
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
     return BatchRunConfig(
+        engine=normalize_query_engine(first_form_value(form, "engine")),
         scan_preset=scan_preset,
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
@@ -359,6 +402,7 @@ def parse_running_run_config(
     )
     query_type = parse_query_type_filter(form, local_config)
     return BatchRunConfig(
+        engine=normalize_query_engine(first_form_value(form, "engine")),
         recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
         cluster_key=cluster_key or "",
         from_time=None,
@@ -442,7 +486,13 @@ def parse_query_type_filter(form: dict[str, list[str]], config_values: dict[str,
     if not normalized:
         return ""
     if QUERY_TYPE_FILTER_RE.fullmatch(normalized) is None:
-        raise WebError("Query type filter must be a short identifier such as QUERY, DML, or DDL.")
+        raise WebError(
+            "Query type filter must be a short identifier such as QUERY, DML, or DDL.",
+            title="Query type filter was rejected",
+            reason_code="web.query_type_filter_invalid",
+            stage="Checking Recent scan filters",
+            next_step="Use a short query type identifier such as QUERY, DML, or DDL.",
+        )
     return normalized
 
 
@@ -470,6 +520,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "user",
         "pool",
         "query_type",
+        "engine",
     ):
         values[name] = first_form_value(form, name)
     if not values.get("parallelism"):
@@ -504,15 +555,23 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "user": config.user,
         "pool": config.pool,
         "query_type": config.query_type,
+        "engine": config.engine,
     }
 
 
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
     settings = settings_for_cluster_key(settings, config.cluster_key)
+    if config.engine == ENGINE_TRINO:
+        validate_trino_recent_config_for_settings(config, settings)
+        return
     if settings.query_profile_source == "impala":
         if not impala_profile_source_configured(settings):
             raise WebError(
-                "Selected cluster is missing impalad host settings for direct Impala discovery."
+                "Selected cluster is missing impalad host settings for direct Impala discovery.",
+                title="Direct Impala profile host is not configured",
+                reason_code="impala.direct_profile_host_missing",
+                stage="Checking scan source",
+                next_step="Select or fix a direct-Impala source with impala_profile_hosts.",
             )
     elif settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
         require_cm_cluster_settings(settings)
@@ -520,19 +579,43 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
         owner_users = source_owner_user_choices(settings)
         if config.user and config.user not in owner_users:
             raise WebError(
-                "Owner source visibility requires the User filter to match a configured source owner."
+                "Owner source visibility requires the User filter to match a configured source owner.",
+                title="Owner source user does not match",
+                reason_code="owner_raw.user_mismatch",
+                stage="Checking owner source visibility",
+                next_step="Choose a configured source owner in the User filter or switch source visibility.",
             )
         if not owner_users:
             raise WebError(
-                "Owner source visibility requires source_owner_user, a keytab Username selection, or a simple Kerberos principal in the web environment."
+                "Owner source visibility requires source_owner_user, a keytab Username selection, or a simple Kerberos principal in the web environment.",
+                title="Owner source user is not configured",
+                reason_code="owner_raw.owner_not_configured",
+                stage="Checking owner source visibility",
+                next_step=(
+                    "Configure source_owner_user, select a keytab Username, "
+                    "or use safe source visibility."
+                ),
             )
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
             raise WebError(
-                "Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config."
+                "Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config.",
+                title="Metadata collection is not configured",
+                reason_code="impala.metadata_not_configured",
+                stage="Checking metadata request",
+                next_step=(
+                    "Restart with metadata coordinator and impala-shell settings, "
+                    "or run in fast mode with metadata disabled."
+                ),
             )
         if settings.metadata_ca_cert and not settings.metadata_ssl:
-            raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
+            raise WebError(
+                "--metadata-ca-cert requires --metadata-ssl for web batch metadata.",
+                title="Metadata TLS settings are inconsistent",
+                reason_code="impala.metadata_tls_rejected",
+                stage="Checking metadata request",
+                next_step="Enable metadata_ssl when metadata_ca_cert is configured, or remove the CA setting.",
+            )
 
 
 def source_owner_user_choices(settings: WebSettings) -> tuple[str, ...]:
@@ -553,6 +636,10 @@ def build_batch_command(
 ) -> tuple[list[str], Path]:
     settings = settings_for_cluster_key(settings, config.cluster_key)
     validate_batch_config_for_settings(config, settings)
+    if config.engine == ENGINE_TRINO:
+        raise WebError(
+            "Trino Beta Recent uses the local web beta job and has no Impala batch command."
+        )
     source_owner_users = effective_source_owner_users(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)

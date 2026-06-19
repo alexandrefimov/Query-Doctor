@@ -48,15 +48,22 @@ from query_doctor.web.job_workers import (
     REPORT_VALIDATION_FAILURE_MESSAGE,
     generate_validated_report_artifact,
 )
-from query_doctor.web.models import WebError, WebQueryAnalysisResult, WebResult, WebSettings
+from query_doctor.web.models import (
+    WebError,
+    WebQueryAnalysisResult,
+    WebResult,
+    WebSettings,
+    WebTrinoQueryAnalysisResult,
+)
 from query_doctor.web.subprocesses import (
     CancelCheck,
     Runner,
     effective_subprocess_env,
     has_cm_credentials,
     run_subprocess,
-    subprocess_failure_message,
+    subprocess_failure_web_error,
 )
+from query_doctor.web.trino_beta_query import ENGINE_TRINO, run_trino_query_id_analysis
 
 
 MISSING_CM_CREDENTIALS_MESSAGE = (
@@ -80,7 +87,13 @@ def validate_query_id(query_id: str) -> str:
     try:
         return cm_collector.validate_cm_query_id_path_segment(query_id)
     except cm_collector.CMAdapterError as exc:
-        raise WebError(str(exc)) from exc
+        raise WebError(
+            str(exc),
+            title="Impala Query ID rejected",
+            reason_code="impala.query_id_invalid",
+            stage="Checking Impala Query ID",
+            next_step="Paste one explicit Impala Query ID in the expected CM-safe format.",
+        ) from exc
 
 
 def run_web_analysis(
@@ -96,7 +109,13 @@ def run_web_analysis(
     update_progress(progress, 0)
     validated_query_id = validate_query_id(query_id)
     if report_mode not in {"admin", "user"}:
-        raise WebError("Report mode must be admin or user.")
+        raise WebError(
+            "Report mode must be admin or user.",
+            title="Report mode was rejected",
+            reason_code="web.report_mode_invalid",
+            stage="Checking report request",
+            next_step="Choose a supported report mode and retry.",
+        )
     subprocess_env = effective_subprocess_env(settings)
 
     update_progress(progress, 1)
@@ -130,7 +149,7 @@ def run_web_analysis(
     if cancel_check is not None and cancel_check():
         raise WebError("Analysis was stopped by the user.")
     if analyzed.returncode != 0:
-        raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+        raise subprocess_failure_web_error("Query Doctor analyzer", analyzed)
 
     update_progress(progress, 3)
     reported = run_subprocess(
@@ -157,17 +176,29 @@ def run_web_analysis(
         if cancel_check is not None and cancel_check():
             raise WebError("Analysis was stopped by the user.")
         if retried.returncode == REPORT_VALIDATION_EXIT_CODE:
-            raise WebError(REPORT_VALIDATION_FAILURE_MESSAGE)
+            raise WebError(
+                REPORT_VALIDATION_FAILURE_MESSAGE,
+                title="Report validation rejected output",
+                reason_code="web.report_validation_failed",
+                stage="Validating report output",
+                next_step="Retry report generation after reviewing terminal diagnostics.",
+            )
         if retried.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor report retry", retried))
+            raise subprocess_failure_web_error("Query Doctor report retry", retried)
         report_retry = True
     elif reported.returncode != 0:
-        raise WebError(subprocess_failure_message("Query Doctor report generation", reported))
+        raise subprocess_failure_web_error("Query Doctor report generation", reported)
 
     facts_path = case_relative_file_path(case_dir, "analysis_facts.md")
     report_path = case_relative_file_path(case_dir, report_name)
     if facts_path is None or report_path is None:
-        raise WebError("Analyzer/report output was not created.")
+        raise WebError(
+            "Analyzer/report output was not created.",
+            title="Analyzer or report output is missing",
+            reason_code="web.analysis_report_output_missing",
+            stage="Checking analysis artifacts",
+            next_step="Rerun analysis for the selected query.",
+        )
 
     facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
     report_text = report_path.read_text(encoding="utf-8", errors="replace")
@@ -195,8 +226,15 @@ def run_query_id_analysis(
     runner: Runner = subprocess.run,
     progress: ProgressFunc | None = None,
     cancel_check: CancelCheck | None = None,
-) -> WebQueryAnalysisResult:
+) -> WebQueryAnalysisResult | WebTrinoQueryAnalysisResult:
     del report_mode
+    if settings.selected_engine == ENGINE_TRINO:
+        return run_trino_query_id_analysis(
+            query_id,
+            settings,
+            progress=progress,
+            cancel_check=cancel_check,
+        )
     update_progress(progress, 0)
     validated_query_id = validate_query_id(query_id)
     subprocess_env = effective_subprocess_env(settings)
@@ -236,7 +274,13 @@ def run_query_id_analysis(
         try:
             ensure_complete_existing_case(expected_case_dir)
         except WebError as exc:
-            raise WebError(INCOMPLETE_MANUAL_PROFILE_CASE_MESSAGE) from exc
+            raise WebError(
+                INCOMPLETE_MANUAL_PROFILE_CASE_MESSAGE,
+                title="Manual profile case is incomplete",
+                reason_code="web.manual_profile_case_incomplete",
+                stage="Checking manual profile case",
+                next_step="Rerun manual profile analysis for the selected Query ID.",
+            ) from exc
         case_dir = analyze_existing_query_case(
             expected_case_dir,
             settings,
@@ -246,7 +290,16 @@ def run_query_id_analysis(
             cancel_check=cancel_check,
         )
     elif settings.manual_profile_dir is not None and not live_query_collection_configured(settings):
-        raise WebError(MISSING_MANUAL_PROFILE_MESSAGE)
+        raise WebError(
+            MISSING_MANUAL_PROFILE_MESSAGE,
+            title="Manual profile was not found",
+            reason_code="web.manual_profile_missing",
+            stage="Checking manual profile inbox",
+            next_step=(
+                "Place an exported Impala text profile in the manual profile directory "
+                "or enable live collection."
+            ),
+        )
     else:
         if expected_case_dir.exists():
             ensure_complete_existing_case(expected_case_dir)
@@ -310,7 +363,7 @@ def analyze_existing_query_case(
     if cancel_check is not None and cancel_check():
         raise WebError("Analysis was stopped by the user.")
     if analyzed.returncode != 0:
-        raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+        raise subprocess_failure_web_error("Query Doctor analyzer", analyzed)
     return case_dir
 
 
@@ -335,7 +388,13 @@ def collect_case(
     collection_out_dir = out_dir if out_dir is not None else settings.corpus_dir
     if settings.query_profile_source == "impala":
         if not settings.impala_profile_hosts:
-            raise WebError(MISSING_IMPALA_PROFILE_SOURCE_MESSAGE)
+            raise WebError(
+                MISSING_IMPALA_PROFILE_SOURCE_MESSAGE,
+                title="Direct Impala profile source is not configured",
+                reason_code="impala.direct_profile_host_missing",
+                stage="Checking direct Impala collection",
+                next_step="Add impala_profile_hosts to the selected source or switch back to CM.",
+            )
         collector_stage = "Impala daemon single-query profile collection"
         collector_cmd = command_prefix(settings.repo_dir, "collect_impala_profile") + [
             "--query-id",
@@ -365,7 +424,11 @@ def collect_case(
         if settings.collect_prometheus_timeseries or settings.prometheus_url:
             if not settings.prometheus_url:
                 raise WebError(
-                    "Prometheus runtime metrics are enabled but prometheus_url is not configured."
+                    "Prometheus runtime metrics are enabled but prometheus_url is not configured.",
+                    title="Prometheus metrics source is not configured",
+                    reason_code="impala.prometheus_url_missing",
+                    stage="Checking direct Impala collection",
+                    next_step="Configure prometheus_url for this source or disable Prometheus metrics.",
                 )
             collector_cmd.extend(
                 [
@@ -386,7 +449,15 @@ def collect_case(
             collector_cmd.append("--no-redact-hosts")
     else:
         if not has_cm_credentials(username=config_username):
-            raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
+            raise WebError(
+                MISSING_CM_CREDENTIALS_MESSAGE,
+                title="Cloudera Manager credentials are unavailable",
+                reason_code="impala.cm_credentials_missing",
+                stage="Checking CM profile collection",
+                next_step=(
+                    "Start the web server with CM credentials, or select a direct-Impala source."
+                ),
+            )
         collector_stage = "CM single-query collection"
         collector_cmd = command_prefix(settings.repo_dir, "collect_cm") + [
             "--config",
@@ -420,7 +491,7 @@ def collect_case(
     if cancel_check is not None and cancel_check():
         raise WebError("Analysis was stopped by the user.")
     if collected.returncode != 0:
-        raise WebError(subprocess_failure_message(collector_stage, collected))
+        raise subprocess_failure_web_error(collector_stage, collected)
 
     case_dir = parse_output_case_dir(collected.stdout)
     if not case_dir.is_absolute():
@@ -430,14 +501,28 @@ def collect_case(
         case_dir.relative_to(expected_corpus_dir)
     except ValueError as exc:
         raise WebError(
-            "Collector returned a case directory outside the web corpus directory."
+            "Collector returned a case directory outside the web corpus directory.",
+            title="Collector case output was rejected",
+            reason_code="web.case_dir_outside_corpus",
+            stage="Checking collection artifacts",
+            next_step="Check the configured corpus directory and retry collection.",
         ) from exc
     if case_dir != expected_case_dir:
         raise WebError(
-            "Collector returned a case directory that does not match the requested query id."
+            "Collector returned a case directory that does not match the requested query id.",
+            title="Collector case output was rejected",
+            reason_code="impala.collector_case_dir_unexpected",
+            stage="Checking collection artifacts",
+            next_step="Retry collection and check terminal diagnostics if it fails again.",
         )
     if not case_dir.exists():
-        raise WebError("Collector did not create the expected case directory.")
+        raise WebError(
+            "Collector did not create the expected case directory.",
+            title="Collector case output is missing",
+            reason_code="impala.collector_case_dir_missing",
+            stage="Checking collection artifacts",
+            next_step="Retry collection and check terminal diagnostics if it fails again.",
+        )
     return case_dir
 
 
@@ -483,7 +568,7 @@ def collect_analyze_and_replace_query_case(
         if cancel_check is not None and cancel_check():
             raise WebError("Analysis was stopped by the user.")
         if analyzed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+            raise subprocess_failure_web_error("Query Doctor analyzer", analyzed)
         if post_analyze is not None:
             post_analyze(case_dir)
         return replace_case_dir_after_success(case_dir, expected_case_dir)

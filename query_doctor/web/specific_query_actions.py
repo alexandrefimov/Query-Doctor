@@ -22,6 +22,7 @@ from query_doctor.web.query_analysis import validate_query_id
 from query_doctor.web.specific_query_pages import (
     render_specific_query_detail_for_request,
     render_specific_query_detail_page,
+    specific_query_details_unavailable_error,
 )
 from query_doctor.web.specific_query_state import build_specific_query_detail_action_context
 from query_doctor.web.subprocesses import Runner
@@ -52,7 +53,7 @@ def start_specific_query_report_job(
     try:
         ensure_complete_existing_case(case_dir)
     except WebError:
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     context = build_specific_query_detail_action_context(validated_query_id, case_dir, job_store)
     if report_variant == REPORT_VARIANT_LLM and getattr(settings, "no_llm", False):
@@ -61,7 +62,7 @@ def start_specific_query_report_job(
         )
         return 400, body
     if not context.analyzer_facts_available:
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     if not context.report_allowed:
         body = render_specific_query_detail_page(
@@ -107,10 +108,10 @@ def start_specific_query_optimized_query_job(
     try:
         ensure_complete_existing_case(case_dir)
     except WebError:
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     context = build_specific_query_detail_action_context(validated_query_id, case_dir, job_store)
-    if not context.source_sql_available:
+    if not context.optimizer_allowed:
         body = render_specific_query_detail_page(
             settings, validated_query_id, context.case, case_dir, job_store
         )
@@ -142,10 +143,10 @@ def start_specific_query_llm_actions_job(
     try:
         ensure_complete_existing_case(case_dir)
     except WebError:
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     context = build_specific_query_detail_action_context(validated_query_id, case_dir, job_store)
-    if not context.report_allowed or not context.source_sql_available:
+    if not context.report_allowed or not context.optimizer_allowed:
         return render_specific_query_detail_for_request(settings, validated_query_id, job_store)
     if context.report_running or context.optimizer_running:
         return render_specific_query_detail_for_request(settings, validated_query_id, job_store)

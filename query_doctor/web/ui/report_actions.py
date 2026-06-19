@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import html
 
+from query_doctor.web.job_ids import web_job_url
 from query_doctor.web.job_progress import JobProgressView
 from query_doctor.web.presenters.recent_scan import ReportActionView
-from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
+from query_doctor.web.ui.html_helpers import SafeHtml
+from query_doctor.web.ui.errors import render_error_info_body
 from query_doctor.web.ui.i18n import text as ui_text
 
 REPORT_ACTION_JOB_KINDS = {"batch_report", "query_report", "batch_llm_report", "query_llm_report"}
@@ -27,18 +29,10 @@ def render_llm_report_status(
         status_html = render_llm_report_failure(view, llm_enabled=llm_enabled, language=language)
     else:
         status_html = ""
-    result_label = ui_text(
-        language,
-        "LLM report" if llm_enabled else "Python report",
-        "LLM-отчет" if llm_enabled else "Python-отчет",
-    )
+    result_label = "LLM report" if llm_enabled else "Python report"
     if result_label_override:
         result_label = result_label_override
-    result_title = ui_text(
-        language,
-        "LLM Report" if llm_enabled else "Python Report",
-        "LLM-отчет" if llm_enabled else "Python-отчет",
-    )
+    result_title = "LLM Report" if llm_enabled else "Python Report"
     if report_title_override:
         result_title = report_title_override
     report_html = ""
@@ -73,30 +67,24 @@ def render_llm_report_progress(
         return ""
     current_stage = progress_view.current_stage
     status_attrs = ""
-    if view.job_id:
-        escaped_job_id = html.escape(view.job_id, quote=True)
+    job_url = web_job_url(view.job_id)
+    if job_url:
+        escaped_job_url = html.escape(job_url, quote=True)
         status_attrs = (
-            f' data-report-job-status-url="/jobs/{escaped_job_id}/status"'
-            f' data-report-job-url="/jobs/{escaped_job_id}"'
+            f' data-report-job-status-url="{escaped_job_url}/status"'
+            f' data-report-job-url="{escaped_job_url}"'
         )
         cancel_html = (
-            f'<form method="post" action="/jobs/{escaped_job_id}/cancel">'
-            f'<button class="button danger" type="submit">{html.escape(ui_text(language, "Stop job", "Остановить задание"))}</button>'
+            f'<form method="post" action="{escaped_job_url}/cancel">'
+            '<button class="button danger" type="submit">Stop job</button>'
             "</form>"
         )
     else:
         cancel_html = ""
     step_html = render_progress_steps(progress_view)
-    progress_label = ui_text(
-        language,
-        "LLM report" if llm_enabled else "Python report",
-        "LLM-отчет" if llm_enabled else "Python-отчет",
-    )
-    progress_title = ui_text(
-        language,
-        "Generating LLM report" if llm_enabled else "Generating Python report",
-        "Генерируется LLM-отчет" if llm_enabled else "Генерируется Python-отчет",
-    )
+    del language
+    progress_label = "LLM report" if llm_enabled else "Python report"
+    progress_title = "Generating LLM report" if llm_enabled else "Generating Python report"
     return (
         f'<div class="report-progress" aria-label="{progress_label} progress"{status_attrs}>'
         f'<div class="progress-head"><span class="progress-title">{progress_title}</span>'
@@ -126,11 +114,7 @@ def render_llm_report_failure(
     view: ReportActionView, *, llm_enabled: bool = True, language: str = "en"
 ) -> str:
     cancelled = view.status == "cancelled"
-    report_label = ui_text(
-        language,
-        "LLM report" if llm_enabled else "Python report",
-        "LLM-отчет" if llm_enabled else "Python-отчет",
-    )
+    report_label = "LLM report" if llm_enabled else "Python report"
     message = (
         view.error
         if view.error not in {None, "", "unknown"}
@@ -140,17 +124,14 @@ def render_llm_report_failure(
             f"{report_label} не сгенерирован. Unsafe output скрыт.",
         )
     )
-    title = (
-        ui_text(language, f"{report_label} stopped", f"{report_label} остановлен")
-        if cancelled
-        else ui_text(language, f"{report_label} failed", f"{report_label} завершился ошибкой")
-    )
-    label = ui_text(language, "Stopped", "Остановлено") if cancelled else "Error"
+    title = f"{report_label} stopped" if cancelled else f"{report_label} failed"
+    label = "Stopped" if cancelled else "Error"
     detail = (
-        ui_text(language, "Stopped by user", "Остановлено пользователем")
+        "Stopped by user"
         if cancelled
         else ui_text(language, "Unsafe output is hidden", "Unsafe output скрыт")
     )
+    error_body = render_error_info_body(view.error_info or message)
     return (
         f'<div class="report-progress" aria-label="{report_label} progress">'
         f'<div class="progress-head"><span class="progress-title">{title}</span>'
@@ -162,6 +143,6 @@ def render_llm_report_failure(
         '<div class="batch-progress-step batch-progress-step--failed">'
         f"<strong>! {label}</strong><span>{detail}</span></div>"
         "</div></div>"
-        f'<div class="error-card" role="alert">{escape_value(message)}</div>'
+        f'<div class="error-card" role="alert">{error_body}</div>'
         "</div>"
     )

@@ -23,6 +23,20 @@ from query_doctor.web.trusted_artifacts import load_case_analyzer_facts_text
 
 EXTERNAL_REWRITE_SQL_FIELD = "rewritten_sql"
 MAX_EXTERNAL_REWRITE_SQL_BYTES = 256 * 1024
+EXTERNAL_REWRITE_VALIDATION_STAGE = "External rewrite validation"
+EXTERNAL_REWRITE_VALIDATION_FAILED_REASON = "web.optimizer_external_validation_failed"
+EXTERNAL_REWRITE_VALIDATION_UNAVAILABLE_REASON = "web.optimizer_external_validation_unavailable"
+EXTERNAL_REWRITE_VALIDATION_FAILED_NEXT_STEP = (
+    "Revise the rewritten SQL so it preserves the source tables, filters, joins, "
+    "projection, and result shape, then validate again."
+)
+EXTERNAL_REWRITE_VALIDATION_UNAVAILABLE_NEXT_STEP = (
+    "Re-run analysis for this case or use a case with available read-only source SQL "
+    "and analyzer facts."
+)
+EXTERNAL_REWRITE_VALIDATION_PASSED_NEXT_STEP = (
+    "Run EXPLAIN comparison and rerun under comparable load before using it."
+)
 
 
 def read_analysis_facts_text(case_dir: Path) -> str:
@@ -79,23 +93,29 @@ def validate_external_optimizer_rewrite(
 ) -> dict[str, object]:
     draft_sql = first_form_value(form, EXTERNAL_REWRITE_SQL_FIELD)
     if not draft_sql:
-        return {
-            "status": "not_ok",
-            "title": "External rewrite validation failed",
-            "items": ["Pasted rewrite is empty."],
-        }
+        return external_rewrite_validation_payload(
+            "not_ok",
+            "External rewrite validation failed",
+            ["Pasted rewrite is empty."],
+            reason_code=EXTERNAL_REWRITE_VALIDATION_FAILED_REASON,
+            next_step=EXTERNAL_REWRITE_VALIDATION_FAILED_NEXT_STEP,
+        )
     if len(draft_sql.encode("utf-8")) > MAX_EXTERNAL_REWRITE_SQL_BYTES:
-        return {
-            "status": "not_ok",
-            "title": "External rewrite validation failed",
-            "items": ["Pasted rewrite exceeds the bounded validation limit."],
-        }
+        return external_rewrite_validation_payload(
+            "not_ok",
+            "External rewrite validation failed",
+            ["Pasted rewrite exceeds the bounded validation limit."],
+            reason_code=EXTERNAL_REWRITE_VALIDATION_FAILED_REASON,
+            next_step=EXTERNAL_REWRITE_VALIDATION_FAILED_NEXT_STEP,
+        )
     if case_dir is None:
-        return {
-            "status": "unavailable",
-            "title": "External rewrite validation unavailable",
-            "items": ["Source case is unavailable."],
-        }
+        return external_rewrite_validation_payload(
+            "unavailable",
+            "External rewrite validation unavailable",
+            ["Source case is unavailable."],
+            reason_code=EXTERNAL_REWRITE_VALIDATION_UNAVAILABLE_REASON,
+            next_step=EXTERNAL_REWRITE_VALIDATION_UNAVAILABLE_NEXT_STEP,
+        )
     try:
         facts_text = read_analysis_facts_text(case_dir)
         source = extract_optimizable_source_sql(read_source_sql(case_dir))
@@ -104,26 +124,50 @@ def validate_external_optimizer_rewrite(
         if not errors and not draft_has_material_change(source.sql, draft_sql):
             errors = ["optimized draft does not materially change source SQL"]
     except (OSError, OptimizerSqlError, QueryOptimizationError):
-        return {
-            "status": "unavailable",
-            "title": "External rewrite validation unavailable",
-            "items": ["Source SQL is unavailable or outside optimizer validation scope."],
-        }
+        return external_rewrite_validation_payload(
+            "unavailable",
+            "External rewrite validation unavailable",
+            ["Source SQL is unavailable or outside optimizer validation scope."],
+            reason_code=EXTERNAL_REWRITE_VALIDATION_UNAVAILABLE_REASON,
+            next_step=EXTERNAL_REWRITE_VALIDATION_UNAVAILABLE_NEXT_STEP,
+        )
     if errors:
-        return {
-            "status": "not_ok",
-            "title": "External rewrite validation failed",
-            "items": safe_optimizer_validation_categories(errors),
-        }
-    return {
-        "status": "ok",
-        "title": "External rewrite validation passed",
-        "items": [
+        return external_rewrite_validation_payload(
+            "not_ok",
+            "External rewrite validation failed",
+            safe_optimizer_validation_categories(errors),
+            reason_code=EXTERNAL_REWRITE_VALIDATION_FAILED_REASON,
+            next_step=EXTERNAL_REWRITE_VALIDATION_FAILED_NEXT_STEP,
+        )
+    return external_rewrite_validation_payload(
+        "ok",
+        "External rewrite validation passed",
+        [
             "Read-only SQL scope passed.",
             "Physical table set was preserved.",
             "Filter, join, projection and result-shape checks passed.",
-            "Run EXPLAIN comparison and rerun under comparable load before using it.",
+            EXTERNAL_REWRITE_VALIDATION_PASSED_NEXT_STEP,
         ],
+        reason_code="web.optimizer_external_validation_passed",
+        next_step=EXTERNAL_REWRITE_VALIDATION_PASSED_NEXT_STEP,
+    )
+
+
+def external_rewrite_validation_payload(
+    status: str,
+    title: str,
+    items: list[str],
+    *,
+    reason_code: str,
+    next_step: str,
+) -> dict[str, object]:
+    return {
+        "status": status,
+        "title": title,
+        "items": items,
+        "reason_code": reason_code,
+        "stage": EXTERNAL_REWRITE_VALIDATION_STAGE,
+        "next_step": next_step,
     }
 
 

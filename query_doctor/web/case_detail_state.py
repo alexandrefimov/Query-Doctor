@@ -10,6 +10,7 @@ from query_doctor.web.case_detail_context import (
     ACTION_TERMINAL_OR_VISIBLE_STATUSES,
     case_allows_llm_report,
     case_allows_query_optimizer,
+    case_score_allows_query_optimizer,
     optimizer_state_for_case,
     resolve_case_detail_settings,
     resolve_running_case_detail_settings,
@@ -62,6 +63,7 @@ class BatchCaseDetailActionContext:
     case_dir: Path | None
     report_allowed: bool
     source_sql_available: bool
+    optimizer_allowed: bool
     report_running: bool
     optimizer_running: bool
     job_source: str
@@ -101,6 +103,15 @@ def build_batch_case_detail_action_context(
         effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
         detail_kwargs = {}
     case_dir = resolve_batch_case_report_dir(effective_settings, case) if case else None
+    source_sql_available = (
+        bool(case)
+        and case_score_allows_query_optimizer(case)
+        and case_has_safe_source_sql(case_dir)
+        and case_has_analyzer_facts(case_dir)
+        if case_dir
+        else False
+    )
+    optimizer_allowed = bool(case) and source_sql_available and case_allows_query_optimizer(case)
     return BatchCaseDetailActionContext(
         settings=effective_settings,
         case=case,
@@ -111,14 +122,8 @@ def build_batch_case_detail_action_context(
             and case_allows_llm_report(case)
             and case_has_analyzer_facts(case_dir)
         ),
-        source_sql_available=(
-            bool(case)
-            and case_allows_query_optimizer(case)
-            and case_has_safe_source_sql(case_dir)
-            and case_has_analyzer_facts(case_dir)
-            if case_dir
-            else False
-        ),
+        source_sql_available=source_sql_available,
+        optimizer_allowed=optimizer_allowed,
         report_running=job_store.running_batch_report(case_id) is not None,
         optimizer_running=job_store.running_batch_optimized_query(case_id) is not None,
         job_source="running" if source == "running" else "batch",

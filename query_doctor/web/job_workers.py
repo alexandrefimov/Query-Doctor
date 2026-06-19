@@ -12,13 +12,14 @@ from query_doctor.web.command_builders import (
     build_optimized_query_command,
     build_selected_case_report_command,
 )
+from query_doctor.web.job_errors import unexpected_job_failure_error
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.subprocesses import (
     Runner,
     effective_subprocess_env,
     run_subprocess,
-    subprocess_failure_message,
+    subprocess_failure_web_error,
 )
 from query_doctor.web.trusted_artifacts import (
     case_has_batch_report_output,
@@ -60,19 +61,32 @@ def run_batch_case_report_job(
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
                 "Report generation completed but validation rejected the output. "
-                "The partial report is untrusted and hidden."
+                "The partial report is untrusted and hidden.",
+                title="Report validation rejected output",
+                reason_code="web.report_validation_failed",
+                stage="Validating report output",
+                next_step="Retry report generation after reviewing terminal diagnostics.",
             )
         if completed.returncode != 0:
-            raise WebError(
-                subprocess_failure_message("Query Doctor batch case report generation", completed)
+            raise subprocess_failure_web_error(
+                "Query Doctor batch case report generation", completed
             )
         if not case_has_batch_report_output(case_dir, report_variant=report_variant):
-            raise WebError("Report generation completed but the validated report was not created.")
+            raise WebError(
+                "Report generation completed but the validated report was not created.",
+                title="Validated report is missing",
+                reason_code="web.validated_report_missing",
+                stage="Checking report artifacts",
+                next_step="Retry report generation for the selected case.",
+            )
         write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
         label = "LLM narrative" if report_variant == REPORT_VARIANT_LLM else "Python report"
         job_store.complete_html(job_id, f"Validated {label} generated for {case_id}.")
     except WebError as exc:
         job_store.fail(job_id, exc)
+    except Exception:  # pragma: no cover - defensive UI sanitization.
+        kind = "batch_llm_report" if report_variant == REPORT_VARIANT_LLM else "batch_report"
+        job_store.fail(job_id, unexpected_job_failure_error(kind))
 
 
 def run_specific_query_report_job(
@@ -100,16 +114,24 @@ def run_specific_query_report_job(
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
                 "Report generation completed but validation rejected the output. "
-                "The partial report is untrusted and hidden."
+                "The partial report is untrusted and hidden.",
+                title="Report validation rejected output",
+                reason_code="web.report_validation_failed",
+                stage="Validating report output",
+                next_step="Retry report generation after reviewing terminal diagnostics.",
             )
         if completed.returncode != 0:
-            raise WebError(
-                subprocess_failure_message(
-                    "Query Doctor specific query report generation", completed
-                )
+            raise subprocess_failure_web_error(
+                "Query Doctor specific query report generation", completed
             )
         if not case_has_batch_report_output(case_dir, report_variant=report_variant):
-            raise WebError("Report generation completed but the validated report was not created.")
+            raise WebError(
+                "Report generation completed but the validated report was not created.",
+                title="Validated report is missing",
+                reason_code="web.validated_report_missing",
+                stage="Checking report artifacts",
+                next_step="Retry report generation for the selected query.",
+            )
         write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
         label = "LLM narrative" if report_variant == REPORT_VARIANT_LLM else "Python report"
         job_store.complete_html(
@@ -119,10 +141,8 @@ def run_specific_query_report_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(
-            job_id,
-            "Unexpected report generation failure. Details are hidden because they may contain sensitive data.",
-        )
+        kind = "query_llm_report" if report_variant == REPORT_VARIANT_LLM else "query_report"
+        job_store.fail(job_id, unexpected_job_failure_error(kind))
 
 
 def generate_validated_report_artifact(
@@ -147,12 +167,22 @@ def generate_validated_report_artifact(
     if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
         raise WebError(
             "Report generation completed but validation rejected the output. "
-            "The partial report is untrusted and hidden."
+            "The partial report is untrusted and hidden.",
+            title="Report validation rejected output",
+            reason_code="web.report_validation_failed",
+            stage="Validating report output",
+            next_step="Retry report generation after reviewing terminal diagnostics.",
         )
     if completed.returncode != 0:
-        raise WebError(subprocess_failure_message(label, completed))
+        raise subprocess_failure_web_error(label, completed)
     if not case_has_batch_report_output(case_dir, report_variant=report_variant):
-        raise WebError("Report generation completed but the validated report was not created.")
+        raise WebError(
+            "Report generation completed but the validated report was not created.",
+            title="Validated report is missing",
+            reason_code="web.validated_report_missing",
+            stage="Checking report artifacts",
+            next_step="Retry report generation for the selected case.",
+        )
     write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
 
 
@@ -176,14 +206,22 @@ def generate_validated_optimizer_artifact(
     if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
         raise WebError(
             "Optimized query draft was generated but failed deterministic validation. "
-            "The partial draft is untrusted and hidden."
+            "The partial draft is untrusted and hidden.",
+            title="Optimizer validation rejected output",
+            reason_code="web.optimizer_validation_failed",
+            stage="Validating optimizer output",
+            next_step="Retry optimizer generation after reviewing terminal diagnostics.",
         )
     if completed.returncode != 0:
-        raise WebError(
-            subprocess_failure_message("Query Doctor optimized query generation", completed)
-        )
+        raise subprocess_failure_web_error("Query Doctor optimized query generation", completed)
     if not optimized_query_validated_exists(case_dir):
-        raise WebError("Optimizer generation completed but the trusted outcome was not created.")
+        raise WebError(
+            "Optimizer generation completed but the trusted outcome was not created.",
+            title="Trusted optimizer outcome is missing",
+            reason_code="web.optimizer_outcome_missing",
+            stage="Checking optimizer artifacts",
+            next_step="Retry optimizer generation for the selected case.",
+        )
 
 
 def run_llm_actions_job(
@@ -223,10 +261,10 @@ def run_llm_actions_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        action_label = "case action"
+        job = job_store.get(job_id)
         job_store.fail(
             job_id,
-            f"Unexpected {action_label} failure. Details are hidden because they may contain sensitive data.",
+            unexpected_job_failure_error(job.kind if job is not None else "job"),
         )
 
 
@@ -254,15 +292,21 @@ def run_optimized_query_job(
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
                 "Optimized query draft was generated but failed deterministic validation. "
-                "The partial draft is untrusted and hidden."
+                "The partial draft is untrusted and hidden.",
+                title="Optimizer validation rejected output",
+                reason_code="web.optimizer_validation_failed",
+                stage="Validating optimizer output",
+                next_step="Retry optimizer generation after reviewing terminal diagnostics.",
             )
         if completed.returncode != 0:
-            raise WebError(
-                subprocess_failure_message("Query Doctor optimized query generation", completed)
-            )
+            raise subprocess_failure_web_error("Query Doctor optimized query generation", completed)
         if not optimized_query_validated_exists(case_dir):
             raise WebError(
-                "Optimizer generation completed but the trusted outcome was not created."
+                "Optimizer generation completed but the trusted outcome was not created.",
+                title="Trusted optimizer outcome is missing",
+                reason_code="web.optimizer_outcome_missing",
+                stage="Checking optimizer artifacts",
+                next_step="Retry optimizer generation for the selected case.",
             )
         job_store.complete_html(
             job_id, f"Optimizer outcome generated for {redact_browser_display_text(label)}."
@@ -270,7 +314,8 @@ def run_optimized_query_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
+        job = job_store.get(job_id)
         job_store.fail(
             job_id,
-            "Unexpected optimized query generation failure. Details are hidden because they may contain sensitive data.",
+            unexpected_job_failure_error(job.kind if job is not None else "job"),
         )

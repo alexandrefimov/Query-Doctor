@@ -20,7 +20,7 @@ from query_doctor.web.subprocesses import (
     CancelCheck,
     Runner,
     run_subprocess,
-    subprocess_failure_message,
+    subprocess_failure_web_error,
 )
 
 
@@ -41,7 +41,13 @@ def manual_profile_file_for_query(validated_query_id: str, settings: WebSettings
     try:
         slug = cm_collector.safe_case_slug(validated_query_id)
     except cm_collector.OutputError as exc:
-        raise WebError(str(exc)) from exc
+        raise WebError(
+            "Query ID could not be mapped to a safe manual profile filename.",
+            title="Manual profile Query ID was rejected",
+            reason_code="impala.query_id_manual_profile_path_rejected",
+            stage="Checking manual profile inbox",
+            next_step="Paste one explicit Impala Query ID in the expected CM-safe format.",
+        ) from exc
     seen: set[str] = set()
     for suffix in MANUAL_PROFILE_FILENAME_SUFFIXES:
         filename = f"{slug}{suffix}"
@@ -68,9 +74,21 @@ def resolve_manual_profile_dir(settings: WebSettings) -> Path | None:
     try:
         resolved = path.resolve(strict=True)
     except OSError as exc:
-        raise WebError("Configured manual profile directory is not available.") from exc
+        raise WebError(
+            "Configured manual profile directory is not available.",
+            title="Manual profile directory is not available",
+            reason_code="web.manual_profile_dir_unavailable",
+            stage="Checking manual profile inbox",
+            next_step="Fix manual_profile_dir or switch to live collection.",
+        ) from exc
     if not resolved.is_dir():
-        raise WebError("Configured manual profile directory is not available.")
+        raise WebError(
+            "Configured manual profile directory is not available.",
+            title="Manual profile directory is not available",
+            reason_code="web.manual_profile_dir_unavailable",
+            stage="Checking manual profile inbox",
+            next_step="Fix manual_profile_dir or switch to live collection.",
+        )
     return resolved
 
 
@@ -122,7 +140,7 @@ def analyze_manual_profile_from_directory(
         if cancel_check is not None and cancel_check():
             raise WebError("Analysis was stopped by the user.")
         if analyzed.returncode != 0:
-            raise WebError(subprocess_failure_message("Manual profile analysis", analyzed))
+            raise subprocess_failure_web_error("Manual profile analysis", analyzed)
         case_dir = parse_output_case_dir(analyzed.stdout)
         if not case_dir.is_absolute():
             case_dir = (settings.repo_dir / case_dir).resolve(strict=False)

@@ -102,7 +102,7 @@ def start_batch_case_optimized_query_job(
         return 400, render_batch_case_detail_for_request(
             context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    if not context.source_sql_available:
+    if not context.optimizer_allowed:
         return 400, render_batch_case_detail_for_request(
             context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
@@ -157,7 +157,7 @@ def start_batch_case_llm_actions_job(
         return 400, render_batch_case_detail_for_request(
             context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    if context.case_dir is None or not context.source_sql_available:
+    if context.case_dir is None or not context.optimizer_allowed:
         return 400, render_batch_case_detail_for_request(
             context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )

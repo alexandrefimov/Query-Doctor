@@ -181,6 +181,14 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert_css_contains(
         styles, ".segmented span{display:grid;place-items:center;width:100%;height:100%;"
     )
+    assert_css_contains(styles, ".engine-control{display:grid;align-items:start;")
+    assert_css_contains(
+        styles, ".engine-segmented,.workflow-segmented{gap:0;width:100%;min-height:44px;"
+    )
+    assert_css_contains(
+        styles,
+        ".engine-segmented span,.workflow-segmented span{align-content:center;justify-items:start;",
+    )
     assert_css_contains(styles, ".manual-inputs-hidden{display:none!important}")
     assert body.index('id="query_id"') < body.index(
         '<button class="run-button" type="submit">Run</button>'

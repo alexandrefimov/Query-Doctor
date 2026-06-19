@@ -43,17 +43,32 @@ def test_web_help_page_renders_curated_static_help():
     assert "On this page" in body
     assert 'class="help-card-grid"' in body
     assert 'class="help-topic-stack"' in body
-    assert '<details id="workflows" class="help-topic" open>' in body
+    assert '<details id="workflows" class="help-topic">' in body
     assert "Quick start" in body
     assert "Workflows" in body
     assert "Query Doctor is a local-first Big Data query diagnostics tool" in body
     assert "focused today on Apache Impala production triage" in body
     assert "The implemented production engine is Apache Impala." in body
+    assert (
+        "A local Trino Beta lane is available for configured retained-list Recent diagnosis" in body
+    )
+    assert "not production engine support" in body
     assert "validated raw-free reports" in body
     assert "Recent queries" in body
     assert "flagship production triage workflow" in body
     assert "Finished queries" in body
     assert "Known Query ID" in body
+    assert "Trino Beta Recent and One Query ID" in body
+    assert "one bounded retained pruned coordinator query list" in body
+    assert "bounded pruned coordinator QueryInfo payloads for selected rows" in body
+    assert "Configured Trino Beta sources are marked in the Source cluster selector" in body
+    assert (
+        "Engine control narrows that selector to Impala-capable sources or Trino Beta-ready sources"
+        in body
+    )
+    assert "Forged or stale Trino submits still fail closed before analysis" in body
+    assert "It does not support Trino Running scans" in body
+    assert "trusted reports, optimizer behavior, generated Trino SQL, or SQL execution" in body
     assert (
         "Runtime context is collected automatically when the selected source supports it." in body
     )
@@ -118,6 +133,10 @@ def test_web_help_page_renders_curated_static_help():
     assert "Where is future engine scope documented?" in body
     assert (
         "Recent and Running scans do not auto-run reports, LLM narratives, or optimizer drafts."
+        in body
+    )
+    assert (
+        "Trino Beta is intentionally limited to configured retained-list Recent diagnosis and One Query ID."
         in body
     )
     assert "prepares the deterministic Python report in the same submit job" in body
@@ -191,6 +210,18 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Big Data query diagnostics tool" in body
     assert "сфокусированный сегодня на Apache Impala production triage" in body
     assert "validated raw-free reports" in body
+    assert "Local Trino Beta lane доступен для configured retained-list Recent diagnosis" in body
+    assert "Trino Beta Recent и One Query ID" in body
+    assert "один bounded retained pruned coordinator query list" in body
+    assert "bounded pruned coordinator QueryInfo payloads для выбранных rows" in body
+    assert "Configured Trino Beta sources помечаются в Source cluster selector" in body
+    assert (
+        "Engine control сужает selector до Impala-capable sources или Trino Beta-ready sources"
+        in body
+    )
+    assert "Forged или stale Trino submits все равно fail closed до analysis" in body
+    assert "Trino Beta не поддерживает Running scans" in body
+    assert "trusted reports, optimizer behavior, generated Trino SQL или SQL execution" in body
     assert "Детали Known Query ID" not in body
     assert "manual_profile_dir" in body
     assert "local profile inbox" in body
@@ -212,6 +243,10 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Доказывает ли runtime metrics context root cause?" in body
     assert "Где описан future engine scope?" in body
     assert "Future engine и storage scope живут в roadmap и support matrix" in body
+    assert (
+        "Trino Beta намеренно ограничен configured retained-list Recent diagnosis и One Query ID."
+        in body
+    )
     assert "Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio" not in body
     assert "small-file risk или planning pressure" not in body
     assert "query-doctor-config" not in body

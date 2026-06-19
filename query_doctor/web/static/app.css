@@ -375,6 +375,63 @@ code,.technical,.mono {
   color:var(--text)
 }
 
+.trino-recent-query-action {
+  margin:0
+}
+
+.trino-recent-query-button {
+  display:inline-flex;
+  align-items:center;
+  max-width:100%;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--accent-strong);
+  cursor:pointer;
+  text-align:left
+}
+
+.trino-recent-query-button code {
+  color:inherit;
+  text-decoration:underline;
+  text-underline-offset:2px
+}
+
+.trino-recent-query-button:focus-visible {
+  outline:2px solid var(--focus);
+  outline-offset:3px
+}
+
+.trino-demo-query-link {
+  color:var(--accent-strong);
+  text-decoration:underline;
+  text-underline-offset:2px
+}
+
+.trino-demo-query-link:focus-visible {
+  outline:2px solid var(--focus-ring);
+  outline-offset:3px
+}
+
+.trino-demo-case {
+  scroll-margin-top:16px
+}
+
+.trino-row-error {
+  display:grid;
+  gap:4px;
+  min-width:0
+}
+
+.trino-row-error strong,.trino-row-error small {
+  overflow-wrap:anywhere
+}
+
+.trino-row-error .badge {
+  width:max-content;
+  max-width:100%
+}
+
 .button,.run-button {
   display:inline-flex;
   align-items:center;
@@ -785,6 +842,18 @@ html[data-theme=dark] select.input {
   margin-bottom:13px
 }
 
+.engine-control {
+  display:grid;
+  align-items:start;
+  gap:6px;
+  width:min(380px,100%);
+  margin-bottom:12px
+}
+
+.engine-control .label-row {
+  margin:0
+}
+
 .segmented {
   display:inline-grid;
   grid-template-columns:repeat(2,1fr);
@@ -835,6 +904,56 @@ html[data-theme=dark] select.input {
   padding:0 10px
 }
 
+.engine-segmented,.workflow-segmented {
+  gap:0;
+  width:100%;
+  min-height:44px;
+  padding:0;
+  background:var(--surface);
+  overflow:hidden
+}
+
+.engine-segmented label,.workflow-segmented label {
+  min-width:0;
+  border-radius:0
+}
+
+.engine-segmented label+label,.workflow-segmented label+label {
+  border-left:1px solid var(--border-strong)
+}
+
+.engine-segmented label:first-child,.workflow-segmented label:first-child {
+  border-radius:var(--radius-sm) 0 0 var(--radius-sm)
+}
+
+.engine-segmented label:last-child,.workflow-segmented label:last-child {
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0
+}
+
+.engine-segmented span,.workflow-segmented span {
+  align-content:center;
+  justify-items:start;
+  gap:1px;
+  border-radius:0;
+  background:var(--surface);
+  padding:7px 12px;
+  text-align:left
+}
+
+.engine-segmented strong,.workflow-segmented strong {
+  font-size:13px;
+  font-weight:700;
+  line-height:1.2
+}
+
+.engine-segmented small,.workflow-segmented small {
+  color:inherit;
+  font-size:11px;
+  font-weight:600;
+  line-height:1.2;
+  opacity:.78
+}
+
 .workflow-control {
   display:grid;
   align-items:start;
@@ -849,53 +968,6 @@ html[data-theme=dark] select.input {
 
 .workflow-segmented {
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:0;
-  width:100%;
-  min-height:44px;
-  padding:0;
-  background:var(--surface);
-  overflow:hidden
-}
-
-.workflow-segmented label {
-  min-width:0;
-  border-radius:0
-}
-
-.workflow-segmented label+label {
-  border-left:1px solid var(--border-strong)
-}
-
-.workflow-segmented label:first-child {
-  border-radius:var(--radius-sm) 0 0 var(--radius-sm)
-}
-
-.workflow-segmented label:last-child {
-  border-radius:0 var(--radius-sm) var(--radius-sm) 0
-}
-
-.workflow-segmented span {
-  align-content:center;
-  justify-items:start;
-  gap:1px;
-  border-radius:0;
-  background:var(--surface);
-  padding:7px 12px;
-  text-align:left
-}
-
-.workflow-segmented strong {
-  font-size:13px;
-  font-weight:700;
-  line-height:1.2
-}
-
-.workflow-segmented small {
-  color:inherit;
-  font-size:11px;
-  font-weight:600;
-  line-height:1.2;
-  opacity:.78
 }
 
 .workflow-state-inputs {
@@ -1260,6 +1332,65 @@ html[data-theme=dark] select.input {
   color:var(--red)
 }
 
+.error-summary {
+  margin:0 0 8px;
+  color:var(--red);
+  line-height:1.4;
+  overflow-wrap:anywhere
+}
+
+.error-meta {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin:8px 0;
+  color:var(--red)
+}
+
+.error-meta div {
+  border:1px solid rgba(153,27,27,.18);
+  border-radius:6px;
+  background:var(--panel);
+  padding:5px 7px;
+  min-width:0
+}
+
+.error-meta span {
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.2
+}
+
+.error-meta strong {
+  margin:1px 0 0;
+  font-size:12px;
+  overflow-wrap:anywhere
+}
+
+.error-detail-list {
+  margin:8px 0;
+  padding-left:18px;
+  color:var(--red);
+  overflow-wrap:anywhere
+}
+
+.error-next-step,.error-boundary-note {
+  margin:7px 0 0;
+  color:var(--red);
+  line-height:1.4;
+  overflow-wrap:anywhere
+}
+
+.error-next-step strong {
+  display:inline;
+  margin:0
+}
+
+.error-boundary-note {
+  color:var(--muted)
+}
+
 .success-card {
   border:1px solid rgba(22,101,52,.18);
   background:var(--green-bg);
@@ -1550,6 +1681,10 @@ html[data-theme=dark] select.input {
   padding:8px 10px;
   color:var(--muted);
   font-size:14px
+}
+
+.batch-notice-row--single {
+  grid-template-columns:minmax(0,1fr)
 }
 
 .batch-notice-row+.batch-notice-row {
@@ -2236,7 +2371,6 @@ html[data-theme=dark] select.input {
 
 .action-candidate-card--primary {
   border:1px solid var(--border);
-  border-left:3px solid var(--accent);
   background:var(--panel-muted)
 }
 
@@ -2598,6 +2732,8 @@ html[data-theme=dark] select.input {
 }
 
 .action-candidate-meta {
+  display:grid;
+  gap:4px;
   margin-top:0;
   padding-top:0;
   border-top:1px solid var(--border);
@@ -2606,7 +2742,7 @@ html[data-theme=dark] select.input {
 }
 
 .action-candidate-meta .helper {
-  margin-top:8px
+  margin:0
 }
 
 .action-plan-panel .report-body {
@@ -4478,15 +4614,24 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 }
 
 .batch-filter-tabs {
-  flex-wrap:nowrap;
-  overflow-x:auto;
-  padding-bottom:2px
+  flex-wrap:wrap;
+  overflow-x:visible;
+  padding-bottom:0
 }
 
 .batch-filter-link,.batch-spill-toggle {
-  min-height:34px;
-  padding:0 9px;
-  flex:0 0 auto
+  flex:1 1 calc(50% - 6px);
+  justify-content:space-between;
+  min-height:38px;
+  min-width:0;
+  padding:6px 9px;
+  line-height:1.2;
+  text-align:left;
+  white-space:normal
+}
+
+.batch-spill-toggle {
+  flex-basis:100%
 }
 
 .workload-decision-steps,.workload-snapshot-grid,.workload-action-card .action-candidate-sections {

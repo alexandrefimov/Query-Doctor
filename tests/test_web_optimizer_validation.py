@@ -25,4 +25,7 @@ def test_external_optimizer_validation_rejects_symlinked_facts_outside_case_dir(
     )
 
     assert result["status"] == "unavailable"
+    assert result["reason_code"] == "web.optimizer_external_validation_unavailable"
+    assert result["stage"] == "External rewrite validation"
+    assert "Re-run analysis" in str(result["next_step"])
     assert result["items"] == ["Source SQL is unavailable or outside optimizer validation scope."]

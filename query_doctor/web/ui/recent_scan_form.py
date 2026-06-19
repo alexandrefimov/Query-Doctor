@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo
 from query_doctor.source_visibility import collectable_owner_users
 from query_doctor.web.cluster_selection import (
     cluster_select_options,
+    cluster_trino_beta_query_ready,
+    cluster_trino_beta_recent_ready,
     default_cluster_key,
     settings_for_cluster_key,
 )
@@ -112,9 +114,22 @@ def render_batch_run_panel(
         "query_type": form_or_config_value(
             form_values, "query_type", config_values=local_config, config_key="query_type"
         ),
+        "engine": form_or_config_value(
+            form_values,
+            "engine",
+            config_values=local_config,
+            config_key="engine",
+            fallback="impala",
+        ),
     }
     if form_values:
         values.update(form_values)
+    selected_engine = normalize_engine_value(values.get("engine"))
+    values["cluster_key"] = cluster_key_for_engine(
+        settings,
+        values.get("cluster_key"),
+        selected_engine,
+    )
     try:
         selected_settings = settings_for_cluster_key(settings, str(values.get("cluster_key") or ""))
     except WebError:
@@ -130,8 +145,25 @@ def render_batch_run_panel(
     selected_diagnosis_target = str(values.get("diagnosis_target") or diagnosis_target or "recent")
     if selected_diagnosis_target not in {"recent", "query"}:
         selected_diagnosis_target = "recent"
+    selected_source_impala_ready = cluster_impala_ready(selected_settings)
+    impala_available = impala_any_source_ready(settings)
+    trino_beta_query_is_ready = trino_beta_query_ready(selected_settings)
+    trino_beta_recent_is_ready = trino_beta_recent_ready(selected_settings)
+    trino_beta_ready = trino_beta_query_is_ready or trino_beta_recent_is_ready
+    trino_beta_available = trino_beta_any_source_ready(settings)
+    if selected_engine == "impala" and not selected_source_impala_ready:
+        selected_engine = "trino" if trino_beta_ready and not impala_available else "impala"
+    if selected_engine == "trino" and not trino_beta_ready:
+        selected_engine = "impala"
+    if selected_engine == "trino":
+        if selected_diagnosis_target == "recent" and not trino_beta_recent_is_ready:
+            selected_diagnosis_target = "query"
+        if selected_diagnosis_target == "query" and not trino_beta_query_is_ready:
+            selected_diagnosis_target = "recent"
     scan_target = str(values.get("scan_target") or "finished")
     if scan_target not in {"finished", "running"}:
+        scan_target = "finished"
+    if selected_engine == "trino":
         scan_target = "finished"
     values["scan_target"] = scan_target
     owner_required = getattr(selected_settings, "source_visibility", "") == "owner_raw"
@@ -218,14 +250,22 @@ def render_batch_run_panel(
         if collapsed
         else f'<div class="section-heading"><div><h1 class="section-title">{html.escape(heading_title)}</h1></div></div>'
     )
+    engine_control_html = render_engine_control(
+        selected_engine,
+        impala_ready=impala_available,
+        trino_beta_ready=trino_beta_available,
+        selected_source_trino_beta_ready=trino_beta_ready,
+    )
     return (
         f'<{panel_tag} id="new-scan" class="panel batch-run-panel{" batch-run-panel--disclosure" if collapsed else ""}" aria-label="Run query diagnosis" data-diagnosis-target-root{panel_open}>'
         f"{panel_summary}"
         f"{panel_heading}"
+        f"{engine_control_html}"
         f"{render_source_settings(settings, value('cluster_key'))}"
         f"{render_workflow_control(selected_diagnosis_target, scan_target)}"
         f'<form id="batch-form" class="batch-form{recent_form_class}" method="post" action="{form_action}" data-scan-target-form data-active-scan-target="{html.escape(scan_target, quote=True)}" data-diagnosis-target-field="recent">'
         f"{render_hidden_cluster_input(value('cluster_key'))}"
+        f"{render_hidden_engine_input(selected_engine)}"
         f"{render_hidden_scan_target_input(scan_target)}"
         '<div class="batch-form-sections">'
         '<fieldset class="batch-form-section batch-form-section--primary"><legend>Basic scan</legend>'
@@ -242,10 +282,15 @@ def render_batch_run_panel(
         f"{advanced_panel_html}"
         "</form>"
         f'<div class="{query_form_class}" data-diagnosis-target-field="query">'
-        f"{render_known_query_form(settings, cluster_key=value('cluster_key'), query_id=query_id, run_disabled=run_disabled)}"
+        f"{render_known_query_form(settings, cluster_key=value('cluster_key'), engine=selected_engine, query_id=query_id, run_disabled=run_disabled)}"
         "</div>"
         f"</{panel_tag}>"
     )
+
+
+def normalize_engine_value(value: object) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {"impala", "trino"} else "impala"
 
 
 def configured_web_advanced_filters(config_values: dict[str, object]) -> tuple[str, ...]:
@@ -307,6 +352,129 @@ def render_configured_advanced_settings(
         "</fieldset>"
         "</div>"
         "</details>"
+    )
+
+
+def trino_beta_query_ready(settings: Any) -> bool:
+    return bool(
+        getattr(settings, "trino_beta_enabled", False)
+        and getattr(settings, "trino_coordinator_url", None)
+        and getattr(settings, "trino_query_info_source_contract", None)
+    )
+
+
+def trino_beta_recent_ready(settings: Any) -> bool:
+    return bool(
+        trino_beta_query_ready(settings)
+        and getattr(settings, "trino_query_list_source_contract", None)
+    )
+
+
+def trino_beta_any_source_ready(settings: Any) -> bool:
+    clusters = tuple(getattr(settings, "clusters", ()) or ())
+    if clusters:
+        return any(
+            cluster_trino_beta_query_ready(cluster) or cluster_trino_beta_recent_ready(cluster)
+            for cluster in clusters
+        )
+    return trino_beta_query_ready(settings) or trino_beta_recent_ready(settings)
+
+
+def cluster_impala_ready(cluster: Any) -> bool:
+    if not getattr(cluster, "clusters", None) and not hasattr(cluster, "key"):
+        return True
+    if any(
+        (
+            getattr(cluster, "cm_url", None),
+            getattr(cluster, "cm_cluster", None),
+            getattr(cluster, "cm_service", None),
+            getattr(cluster, "impala_profile_hosts", ()),
+            getattr(cluster, "manual_profile_dir", None),
+        )
+    ):
+        return True
+    return not trino_beta_query_ready(cluster)
+
+
+def impala_any_source_ready(settings: Any) -> bool:
+    clusters = tuple(getattr(settings, "clusters", ()) or ())
+    if clusters:
+        return any(cluster_impala_ready(cluster) for cluster in clusters)
+    return True
+
+
+def cluster_key_for_engine(settings: Any, selected_value: object, engine: str) -> str:
+    clusters = tuple(getattr(settings, "clusters", ()) or ())
+    selected_raw = html.unescape(str(selected_value or default_cluster_key(settings)))
+    if not clusters:
+        return selected_raw
+    for cluster in clusters:
+        if getattr(cluster, "key", "") == selected_raw and cluster_matches_engine(cluster, engine):
+            return selected_raw
+    for cluster in clusters:
+        if cluster_matches_engine(cluster, engine):
+            return str(getattr(cluster, "key", "") or selected_raw)
+    return selected_raw
+
+
+def cluster_matches_engine(cluster: Any, engine: str) -> bool:
+    if engine == "trino":
+        return cluster_trino_beta_query_ready(cluster) or cluster_trino_beta_recent_ready(cluster)
+    return cluster_impala_ready(cluster)
+
+
+def render_engine_control(
+    selected_value: str,
+    *,
+    impala_ready: bool = True,
+    trino_beta_ready: bool = False,
+    selected_source_trino_beta_ready: bool | None = None,
+) -> str:
+    selected = normalize_engine_value(selected_value)
+
+    def option(
+        value: str,
+        label: str,
+        help_text: str,
+        *,
+        disabled: bool = False,
+    ) -> str:
+        checked = " checked" if selected == value else ""
+        disabled_attr = ' disabled aria-disabled="true"' if disabled else ""
+        return (
+            "<label>"
+            f'<input type="radio" name="engine_choice" value="{html.escape(value, quote=True)}" '
+            f"data-engine-choice{checked}{disabled_attr}>"
+            f"<span><strong>{html.escape(label)}</strong><small>{html.escape(help_text)}</small></span>"
+            "</label>"
+        )
+
+    trino_help = "Configured locally" if trino_beta_ready else "Configure local Trino Beta first"
+    selected_source_ready = (
+        trino_beta_ready
+        if selected_source_trino_beta_ready is None
+        else selected_source_trino_beta_ready
+    )
+    if selected_source_ready:
+        readiness_note = "Trino Beta is configured for this selected source. It is limited to retained-list Recent Beta and/or one explicit Query ID."
+    elif trino_beta_ready:
+        readiness_note = "Trino Beta is configured for another local source. Selecting it narrows Source cluster to Trino Beta-ready sources."
+    else:
+        readiness_note = "Trino Beta requires local config keys for beta enablement, coordinator URL, and source contracts before the UI can select it."
+    return (
+        '<div class="mode-control engine-control" aria-label="Query engine">'
+        '<div class="label-row">'
+        '<span class="mode-label" id="engine_label">Engine</span>'
+        '<details class="info-popover">'
+        '<summary aria-label="Engine help">i</summary>'
+        '<div class="info-body">Impala is production triage. Trino Beta supports bounded retained-list Recent diagnosis when a query-list source contract is configured and one explicit Query ID through a local raw-free coordinator QueryInfo contract. Running scans, query-history crawling, metadata collection, Details/trusted reports, optimizer behavior, generated SQL, and SQL execution remain unavailable. '
+        f"{html.escape(readiness_note)}</div>"
+        "</details></div>"
+        '<div class="segmented engine-segmented" role="radiogroup" aria-labelledby="engine_label">'
+        f"{option('impala', 'Impala', 'Production', disabled=not impala_ready)}"
+        f"{option('trino', 'Trino Beta', trino_help, disabled=not trino_beta_ready)}"
+        "</div>"
+        "</div>"
     )
 
 
@@ -412,6 +580,13 @@ def render_hidden_cluster_input(value: str) -> str:
     return f'<input type="hidden" name="cluster_key" value="{html.escape(str(value or ""), quote=True)}">'
 
 
+def render_hidden_engine_input(value: str) -> str:
+    return (
+        '<input type="hidden" name="engine" '
+        f'value="{html.escape(normalize_engine_value(value), quote=True)}" data-engine-hidden>'
+    )
+
+
 def render_hidden_scan_target_input(value: str) -> str:
     normalized = "running" if value == "running" else "finished"
     return (
@@ -424,26 +599,43 @@ def render_known_query_form(
     settings: Any | None = None,
     *,
     cluster_key: str = "",
+    engine: str = "impala",
     query_id: str = "",
     run_disabled: bool = False,
 ) -> str:
     query_value = html.escape(query_id, quote=True)
     disabled_attr = " disabled" if run_disabled else ""
-    button_label = "Running" if run_disabled else "Run"
-    query_help_text = (
-        "One explicit Query ID. Query Doctor collects or reuses the profile, "
-        "runs deterministic analysis, adds metadata when configured, prepares the Python report, "
-        "and does not auto-run LLM or optimizer actions. "
-        "Recent-query filters stay hidden in this mode."
-    )
+    selected_engine = normalize_engine_value(engine)
+    if selected_engine == "trino":
+        button_label = "Running" if run_disabled else "Run Trino Beta"
+        label_text = "Trino Query ID"
+        placeholder = "20260603_120102_00001_abcde"
+        query_help_text = (
+            "One explicit Trino Query ID. Query Doctor reads one bounded, pruned "
+            "coordinator QueryInfo payload through local beta config and renders compact "
+            "raw-free diagnosis. Running scans, query-history crawling, metadata "
+            "collection, Details/trusted reports, optimizer behavior, generated SQL, and SQL "
+            "execution remain unavailable."
+        )
+    else:
+        button_label = "Running" if run_disabled else "Run"
+        label_text = "Query ID"
+        placeholder = "aaaaaaaaaaaaaaaa:0000000000000001"
+        query_help_text = (
+            "One explicit Query ID. Query Doctor collects or reuses the profile, "
+            "runs deterministic analysis, adds metadata when configured, prepares the Python report, "
+            "and does not auto-run LLM or optimizer actions. "
+            "Recent-query filters stay hidden in this mode."
+        )
     return (
         '<form id="analyze-form" class="run-form" method="post" action="/analyze">'
         f"{render_hidden_cluster_input(cluster_key) if settings is not None else ''}"
+        f"{render_hidden_engine_input(selected_engine)}"
         '<div class="run-main-row known-query-row">'
         '<div class="field">'
-        f"{render_label_with_info('query_id', 'Query ID', query_help_text)}"
+        f"{render_label_with_info('query_id', label_text, query_help_text)}"
         f'<input class="input" id="query_id" name="query_id" type="text" value="{query_value}" '
-        'autocomplete="off" required placeholder="aaaaaaaaaaaaaaaa:0000000000000001">'
+        f'autocomplete="off" required placeholder="{html.escape(placeholder, quote=True)}">'
         "</div>"
         f'<button class="run-button" type="submit"{disabled_attr}>{button_label}</button>'
         "</div>"
@@ -632,8 +824,24 @@ def render_cluster_select(
     option_values = {value for value, _label in options}
     if selected_raw not in option_values:
         selected_raw = default_cluster_key(settings)
+    trino_ready_by_key = {
+        getattr(cluster, "key", ""): cluster_trino_beta_query_ready(cluster)
+        for cluster in getattr(settings, "clusters", ())
+    }
+    trino_recent_ready_by_key = {
+        getattr(cluster, "key", ""): cluster_trino_beta_recent_ready(cluster)
+        for cluster in getattr(settings, "clusters", ())
+    }
+    impala_ready_by_key = {
+        getattr(cluster, "key", ""): cluster_impala_ready(cluster)
+        for cluster in getattr(settings, "clusters", ())
+    }
     rendered_options = "".join(
-        f'<option value="{html.escape(value, quote=True)}"{" selected" if value == selected_raw else ""}>'
+        f'<option value="{html.escape(value, quote=True)}"{" selected" if value == selected_raw else ""} '
+        f'data-engine-impala-ready="{"true" if impala_ready_by_key.get(value, True) else "false"}" '
+        f'data-engine-trino-ready="{"true" if trino_ready_by_key.get(value) or trino_recent_ready_by_key.get(value) else "false"}" '
+        f'data-trino-beta-query-ready="{"true" if trino_ready_by_key.get(value) else "false"}" '
+        f'data-trino-beta-recent-ready="{"true" if trino_recent_ready_by_key.get(value) else "false"}">'
         f"{html.escape(label)}</option>"
         for value, label in options
     )

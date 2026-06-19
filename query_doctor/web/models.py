@@ -55,6 +55,23 @@ def batch_progress_path(job_id: str) -> Path:
 class WebError(RuntimeError):
     """User-facing web error that must not contain secrets or raw profiles."""
 
+    def __init__(
+        self,
+        message: object,
+        *,
+        title: str | None = None,
+        reason_code: str | None = None,
+        stage: str | None = None,
+        next_step: str | None = None,
+        details: tuple[object, ...] | list[object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.title = title
+        self.reason_code = reason_code
+        self.stage = stage
+        self.next_step = next_step
+        self.details = tuple(details or ())
+
 
 @dataclass(frozen=True)
 class WebClusterConfig:
@@ -100,6 +117,17 @@ class WebClusterConfig:
     source_owner_user: str | None = None
     krb5ccname: str | None = None
     recent_scan_timezone: str = DEFAULT_RECENT_SCAN_TIMEZONE
+    trino_beta_enabled: bool = False
+    trino_coordinator_url: str | None = None
+    trino_query_info_source_contract: Path | None = None
+    trino_query_list_source_contract: Path | None = None
+    trino_auth_header_file: Path | None = None
+    trino_kerberos_principal: str | None = None
+    trino_kerberos_service_name: str = "HTTP"
+    trino_krb5_ccname: str | None = None
+    trino_krb5_config: Path | None = None
+    trino_kerberos_ca_cert: Path | None = None
+    trino_kerberos_insecure_tls: bool = False
 
 
 @dataclass(frozen=True)
@@ -172,6 +200,18 @@ class WebSettings:
     viewer_identity_header: str | None = None
     owner_raw_source_enabled: bool = True
     viewer_identity: ViewerIdentity = field(default_factory=unauthenticated_viewer_identity)
+    selected_engine: str = "impala"
+    trino_beta_enabled: bool = False
+    trino_coordinator_url: str | None = None
+    trino_query_info_source_contract: Path | None = None
+    trino_query_list_source_contract: Path | None = None
+    trino_auth_header_file: Path | None = None
+    trino_kerberos_principal: str | None = None
+    trino_kerberos_service_name: str = "HTTP"
+    trino_krb5_ccname: str | None = None
+    trino_krb5_config: Path | None = None
+    trino_kerberos_ca_cert: Path | None = None
+    trino_kerberos_insecure_tls: bool = False
 
 
 @dataclass(frozen=True)
@@ -194,7 +234,38 @@ class WebQueryAnalysisResult:
 
 
 @dataclass(frozen=True)
+class WebTrinoQueryAnalysisResult:
+    query_id: str
+    diagnosis: dict[str, object]
+
+
+@dataclass(frozen=True)
+class WebTrinoRecentScanRow:
+    query_id: str
+    status: str
+    lifecycle: str = "unknown"
+    parser_coverage: str = "unknown"
+    supported_attention_area_count: int = 0
+    attention_areas: tuple[str, ...] = ()
+    error: str = ""
+    error_reason_code: str = ""
+    error_next_step: str = ""
+
+
+@dataclass(frozen=True)
+class WebTrinoRecentScanResult:
+    rows: tuple[WebTrinoRecentScanRow, ...]
+    records_seen: int
+    records_selected: int
+    records_diagnosed: int
+    query_bound: int
+    cluster_key: str = ""
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class BatchRunConfig:
+    engine: str = "impala"
     scan_preset: str = "standard"
     recent_window_minutes: int = 30
     scan_date: str = ""
@@ -236,6 +307,7 @@ class WebJobSnapshot:
     kind: str = "query"
     result_html: str = ""
     error: str = ""
+    error_info: dict[str, object] | None = None
     batch_form_values: dict[str, object] | None = None
     batch_progress_path: Path | None = None
     batch_case_id: str | None = None
@@ -254,6 +326,7 @@ class WebJob:
     kind: str = "query"
     result_html: str = ""
     error: str = ""
+    error_info: dict[str, object] | None = None
     batch_form_values: dict[str, object] | None = None
     batch_progress_path: Path | None = None
     batch_case_id: str | None = None
@@ -273,6 +346,7 @@ class WebJob:
             kind=self.kind,
             result_html=self.result_html,
             error=self.error,
+            error_info=dict(self.error_info) if self.error_info is not None else None,
             batch_form_values=dict(self.batch_form_values)
             if self.batch_form_values is not None
             else None,

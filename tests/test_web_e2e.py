@@ -13,11 +13,40 @@ from typing import Iterator
 
 import pytest
 
-from query_doctor.web.models import WebClusterConfig
+from query_doctor.web.models import (
+    WebClusterConfig,
+    WebTrinoQueryAnalysisResult,
+    WebTrinoRecentScanResult,
+    WebTrinoRecentScanRow,
+)
 from web_server_test_support import REPO_DIR, load_web_module
 
 
 E2E_QUERY_ID = "aaaaaaaaaaaaaaaa:0000000000000001"
+TRINO_E2E_QUERY_ID = "20260603_120102_00001_abcde"
+DRAFT_ELIGIBLE_E2E_SQL = """WITH base AS (
+  SELECT user_id, bytes_sent
+  FROM example_events.fact_events
+), filtered AS (
+  SELECT user_id, bytes_sent
+  FROM base
+)
+SELECT user_id, bytes_sent
+FROM filtered
+WHERE bytes_sent > 0
+"""
+DRAFT_ELIGIBLE_E2E_FACTS = """# Query Doctor deterministic analysis facts
+
+## Summary
+- Cardinality anomalies: 2
+
+## Findings
+
+### Large intermediate or exchange traffic [high]
+
+- TotalBytesSent is large relative to the configured threshold.
+- join row expansion observed.
+"""
 
 
 def select_diagnosis_workflow(page, value: str) -> None:
@@ -35,6 +64,18 @@ def open_recent_results(page) -> None:
 def ensure_query_groups_visible(page) -> None:
     assert page.locator(".batch-query-groups").is_visible()
     assert page.get_by_text("Stats to check").is_visible()
+
+
+def assert_error_card_contains(
+    page, *, title: str, reason: str, stage: str, next_step: str
+) -> None:
+    page.wait_for_selector(".error-card", timeout=5000)
+    error_card = page.locator(".error-card").first
+    assert error_card.get_by_text(title).is_visible()
+    assert error_card.get_by_text(reason).is_visible()
+    assert error_card.get_by_text(stage).is_visible()
+    assert error_card.get_by_text("Next step:").is_visible()
+    assert error_card.get_by_text(next_step).is_visible()
 
 
 def synthetic_batch_summary(*, cases_root: Path | None = None) -> dict[str, object]:
@@ -186,23 +227,59 @@ def e2e_settings(
     )
 
 
-def write_known_query_case(module, settings, query_id: str) -> Path:
+def e2e_trino_switch_settings(tmp_path: Path):
+    module = load_web_module()
+    config = tmp_path / "query-doctor-e2e-trino-config.json"
+    config.write_text("{}", encoding="utf-8")
+    return module.WebSettings(
+        config=config,
+        repo_dir=REPO_DIR,
+        corpus_dir=tmp_path / "query-corpus",
+        clusters=(
+            WebClusterConfig(
+                key="cm",
+                label="CM prod",
+                cm_url="https://cm.example.invalid",
+                cm_cluster="prod",
+                cm_service="impala",
+            ),
+            WebClusterConfig(
+                key="trino",
+                label="Trino beta",
+                trino_beta_enabled=True,
+                trino_coordinator_url="https://trino.example.invalid",
+                trino_query_info_source_contract=tmp_path / "trino-query-info-contract.json",
+                trino_query_list_source_contract=tmp_path / "trino-query-list-contract.json",
+            ),
+        ),
+        active_cluster_key="cm",
+        no_llm=True,
+    )
+
+
+def write_known_query_case(
+    module, settings, query_id: str, *, optimizer_draft_eligible: bool = False
+) -> Path:
     case_dir = module.expected_case_dir_for_query(query_id, settings)
     case_dir.mkdir(parents=True, exist_ok=True)
     (case_dir / "profile_digest.md").write_text(
         "User: e2e-user\nPool: e2e-pool\n", encoding="utf-8"
     )
-    (case_dir / "analysis_facts.md").write_text(
-        "- Parsed operators: 4\n- Cardinality anomalies: 0\n- Memory anomalies: 2\n",
-        encoding="utf-8",
-    )
+    if optimizer_draft_eligible:
+        facts_text = DRAFT_ELIGIBLE_E2E_FACTS
+        statement = DRAFT_ELIGIBLE_E2E_SQL
+        (case_dir / "original_query.sql").write_text(statement, encoding="utf-8")
+    else:
+        facts_text = "- Parsed operators: 4\n- Cardinality anomalies: 0\n- Memory anomalies: 2\n"
+        statement = "SELECT a FROM db.source_table WHERE ds = 20260504"
+    (case_dir / "analysis_facts.md").write_text(facts_text, encoding="utf-8")
     (case_dir / "cm_metadata.json").write_text(
         json.dumps(
             {
                 "duration_sec": 42.0,
                 "user": "e2e-user",
                 "pool": "e2e-pool",
-                "statement": "SELECT a FROM db.source_table WHERE ds = 20260504",
+                "statement": statement,
             }
         ),
         encoding="utf-8",
@@ -254,7 +331,12 @@ def fake_detail_action_runner(
         return fake_batch_runner(cmd)
 
     if any("optimize_query" in value for value in cmd):
-        source_sql = "SELECT a FROM db.source_table WHERE ds = 20260504"
+        from query_doctor.cli.optimize_query import (
+            extract_optimizable_source_sql,
+            read_source_sql,
+        )
+
+        source_sql = extract_optimizable_source_sql(read_source_sql(case_dir)).sql
         facts_text = (case_dir / "analysis_facts.md").read_text(encoding="utf-8")
         recommendations_text = "- Collect table and column statistics.\n"
         recommendations_path = case_dir / "optimized_query_recommendations.md"
@@ -292,6 +374,74 @@ def fake_detail_action_runner(
 
     return subprocess.CompletedProcess(
         cmd, 0, stdout="raw stdout hidden", stderr="raw stderr hidden"
+    )
+
+
+def fake_trino_e2e_diagnosis() -> dict[str, object]:
+    return {
+        "schema_version": "trino_compact_diagnosis_v1",
+        "support_status": "preview",
+        "parser_coverage": "known",
+        "lifecycle": "finished",
+        "diagnostic_lane": {
+            "evidence_readiness": "one_query_attention_ready",
+            "source_granularity": "one_query_boundary",
+            "verification_scope": "comparable_one_query_rerun",
+            "supported_attention_area_count": 1,
+        },
+        "attention_areas": [
+            {
+                "id": "trino_spill_observed",
+                "state": "supported",
+                "summary": "Bounded compact facts show spill evidence.",
+                "change_direction": "Review spill-heavy stages with the Trino operator.",
+                "verification": "Compare a later bounded rerun against the same workload window.",
+            }
+        ],
+        "limitations": [
+            {
+                "id": "no_metadata_collection",
+                "state": "not_wired",
+                "summary": "Trino Beta did not collect metadata.",
+            }
+        ],
+        "diagnosis_boundary": {
+            "root_cause": "not_claimed",
+            "details_trusted_report_surface": "not_wired",
+            "optimizer_behavior": "not_wired",
+            "trino_sql_execution": "not_performed",
+            "live_recent_scan": "retained_query_list_beta",
+        },
+    }
+
+
+def fake_trino_analysis(
+    query_id: str, _report_mode: str, _redact_identifiers: bool, _settings: object
+) -> WebTrinoQueryAnalysisResult:
+    assert query_id == TRINO_E2E_QUERY_ID
+    return WebTrinoQueryAnalysisResult(
+        query_id=query_id,
+        diagnosis=fake_trino_e2e_diagnosis(),
+    )
+
+
+def fake_trino_recent_scan(*_args: object, **_kwargs: object) -> WebTrinoRecentScanResult:
+    return WebTrinoRecentScanResult(
+        rows=(
+            WebTrinoRecentScanRow(
+                query_id=TRINO_E2E_QUERY_ID,
+                status="diagnosed",
+                lifecycle="finished",
+                parser_coverage="known",
+                supported_attention_area_count=1,
+                attention_areas=("trino_spill_observed",),
+            ),
+        ),
+        records_seen=1,
+        records_selected=1,
+        records_diagnosed=1,
+        query_bound=50,
+        cluster_key="trino",
     )
 
 
@@ -348,8 +498,8 @@ def test_e2e_diagnose_controls_preserve_cluster_and_scan_target(tmp_path, page):
         page.locator("#diagnosis_cluster_key").select_option("ambari")
         batch_cluster = page.locator('#batch-form input[name="cluster_key"]')
         query_cluster = page.locator('#analyze-form input[name="cluster_key"]')
-        assert batch_cluster.get_attribute("value") == "ambari"
-        assert query_cluster.get_attribute("value") == "ambari"
+        assert batch_cluster.input_value() == "ambari"
+        assert query_cluster.input_value() == "ambari"
 
         select_diagnosis_workflow(page, "query")
         assert page.locator("#analyze-form").is_visible()
@@ -368,6 +518,146 @@ def test_e2e_diagnose_controls_preserve_cluster_and_scan_target(tmp_path, page):
         assert not page.locator("#scan_date").is_visible()
         assert not page.locator("#scan_hour").is_visible()
         assert page.locator("#recent_window_minutes").is_visible()
+
+
+def test_e2e_engine_switch_selects_trino_ready_source(tmp_path, page):
+    with run_test_server(e2e_trino_switch_settings(tmp_path)) as base_url:
+        page.goto(base_url)
+
+        source_select = page.locator("#diagnosis_cluster_key")
+        trino_choice = page.locator('input[name="engine_choice"][value="trino"]')
+        assert source_select.input_value() == "cm"
+        assert not trino_choice.is_disabled()
+        assert page.locator(".engine-control").evaluate(
+            """(engine) => Boolean(
+                engine.compareDocumentPosition(
+                    document.querySelector('[data-diagnosis-cluster-control]')
+                ) & Node.DOCUMENT_POSITION_FOLLOWING
+            )"""
+        )
+        assert source_select.evaluate(
+            """(select) => Array.from(select.options).map((option) => ({
+                value: option.value,
+                hidden: option.hidden,
+                disabled: option.disabled
+            }))"""
+        ) == [
+            {"value": "cm", "hidden": False, "disabled": False},
+            {"value": "trino", "hidden": True, "disabled": True},
+        ]
+
+        page.locator('label:has(input[name="engine_choice"][value="trino"])').click()
+
+        assert source_select.input_value() == "trino"
+        assert source_select.evaluate(
+            """(select) => Array.from(select.options).map((option) => ({
+                value: option.value,
+                hidden: option.hidden,
+                disabled: option.disabled
+            }))"""
+        ) == [
+            {"value": "cm", "hidden": True, "disabled": True},
+            {"value": "trino", "hidden": False, "disabled": False},
+        ]
+        assert trino_choice.is_checked()
+        assert page.locator('#batch-form input[name="engine"]').input_value() == "trino"
+        assert page.locator('#analyze-form input[name="engine"]').input_value() == "trino"
+        assert page.locator('input[name="diagnosis_workflow"][value="running"]').is_disabled()
+
+        page.locator('label:has(input[name="engine_choice"][value="impala"])').click()
+
+        assert source_select.input_value() == "cm"
+        assert source_select.evaluate(
+            """(select) => Array.from(select.options).map((option) => ({
+                value: option.value,
+                hidden: option.hidden,
+                disabled: option.disabled
+            }))"""
+        ) == [
+            {"value": "cm", "hidden": False, "disabled": False},
+            {"value": "trino", "hidden": True, "disabled": True},
+        ]
+        assert page.locator('#batch-form input[name="engine"]').input_value() == "impala"
+        assert page.locator('#analyze-form input[name="engine"]').input_value() == "impala"
+
+        page.locator('label:has(input[name="engine_choice"][value="trino"])').click()
+
+        select_diagnosis_workflow(page, "query")
+
+        assert page.locator("#analyze-form").is_visible()
+        assert page.locator('label[for="query_id"]').inner_text() == "Trino Query ID"
+        assert (
+            page.locator("#query_id").get_attribute("placeholder") == "20260603_120102_00001_abcde"
+        )
+        assert page.locator('#analyze-form button[type="submit"]').inner_text() == "Run Trino Beta"
+
+
+def test_e2e_trino_query_id_renders_beta_result(tmp_path, page):
+    with run_test_server(
+        e2e_trino_switch_settings(tmp_path), analysis_func=fake_trino_analysis
+    ) as base_url:
+        page.goto(base_url)
+
+        page.locator('label:has(input[name="engine_choice"][value="trino"])').click()
+        select_diagnosis_workflow(page, "query")
+        page.locator("#query_id").fill(TRINO_E2E_QUERY_ID)
+        page.locator('#analyze-form button[type="submit"]').click()
+
+        page.wait_for_url("**/jobs/*")
+        page.wait_for_selector('[aria-label="Trino Beta Query ID diagnosis"]', timeout=5000)
+
+        body = page.locator("body")
+        assert body.get_by_role("heading", name="Trino Beta Query ID diagnosis").is_visible()
+        assert body.get_by_text("Beta boundary").is_visible()
+        assert body.get_by_text("Trino spill observed").is_visible()
+        blocked = page.locator('[aria-label="Trino Beta blocked surfaces"]')
+        sql_execution = blocked.locator(".status-item", has_text="SQL execution")
+        assert sql_execution.get_by_text("not performed").is_visible()
+        assert page.locator('a[href^="/query/details/"]').count() == 0
+        assert page.locator('a[href*="/optimized-query"]').count() == 0
+        assert not body.get_by_text("Known Query ID analysis").is_visible()
+        assert not body.get_by_text("Generating Python report").is_visible()
+        assert not body.get_by_text("sensitive_table").is_visible()
+        assert not body.get_by_text(str(tmp_path)).is_visible()
+
+
+def test_e2e_trino_recent_result_opens_beta_query_id(
+    tmp_path, page, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("query_doctor.web.batch_jobs.run_trino_recent_scan", fake_trino_recent_scan)
+    with run_test_server(
+        e2e_trino_switch_settings(tmp_path), analysis_func=fake_trino_analysis
+    ) as base_url:
+        page.goto(base_url)
+
+        page.locator('label:has(input[name="engine_choice"][value="trino"])').click()
+        select_diagnosis_workflow(page, "finished")
+        page.locator("#batch-form button[type='submit']").click()
+
+        page.wait_for_url("**/jobs/*")
+        page.wait_for_selector('[aria-label="Trino Beta Recent diagnosis"]', timeout=5000)
+
+        recent_result = page.locator('[aria-label="Trino Beta Recent diagnosis"]')
+        assert recent_result.get_by_role("heading", name="Trino Beta Recent diagnosis").is_visible()
+        assert recent_result.get_by_text(TRINO_E2E_QUERY_ID).is_visible()
+        assert recent_result.get_by_text("Trino spill observed").is_visible()
+        assert page.locator('a[href^="/batch/case/"]').count() == 0
+        assert page.locator('a[href^="/query/details/"]').count() == 0
+        assert page.locator('a[href*="/optimized-query"]').count() == 0
+        assert not page.locator("body").get_by_text("sensitive_table").is_visible()
+        assert not page.locator("body").get_by_text(str(tmp_path)).is_visible()
+
+        recent_result.get_by_role("button", name="Open Trino Beta Query ID diagnosis").click()
+
+        page.wait_for_url("**/jobs/*")
+        page.wait_for_selector('[aria-label="Trino Beta Query ID diagnosis"]', timeout=5000)
+        body = page.locator("body")
+        assert body.get_by_role("heading", name="Trino Beta Query ID diagnosis").is_visible()
+        assert body.get_by_text("Beta boundary").is_visible()
+        assert body.get_by_text("Trino spill observed").is_visible()
+        assert not body.get_by_text("Known Query ID analysis").is_visible()
+        assert page.locator('a[href^="/query/details/"]').count() == 0
+        assert page.locator('a[href*="/optimized-query"]').count() == 0
 
 
 def test_e2e_optimizer_scope_guidance_is_secondary(tmp_path, page):
@@ -392,8 +682,12 @@ def test_e2e_help_page_shortcuts_and_topics_are_interactive(tmp_path, page):
         assert page.locator(".help-card-grid .help-card").count() == 5
         assert page.get_by_role("link", name="Workloads").is_visible()
         assert page.get_by_role("link", name="Trino compact").count() == 0
-        assert page.locator("#workflows[open]").count() == 1
+        assert page.locator("#workflows[open]").count() == 0
+        assert page.locator("#workflows .help-topic-body").is_visible() is False
         assert page.locator("#safety .help-topic-body").is_visible() is False
+
+        page.locator("#workflows > summary").click()
+        assert page.locator("#workflows .help-topic-body").is_visible()
 
         page.locator("#safety > summary").click()
 
@@ -426,7 +720,7 @@ def test_e2e_result_filters_preserve_group_and_open_details(tmp_path, page):
 
         open_recent_results(page)
         ensure_query_groups_visible(page)
-        page.locator('a.batch-filter-link[href="?query_group=stats#recent-results"]').click()
+        page.locator('a.batch-filter-link[href="/?query_group=stats#recent-results"]').click()
         page.wait_for_url("**/?query_group=stats#recent-results")
         active_filter = page.locator(
             ".batch-filter-link--active",
@@ -506,12 +800,62 @@ def test_e2e_recent_scan_failure_hides_subprocess_output(tmp_path, page):
         )
 
         assert error_slot.get_by_text("exit code 2").is_visible()
-        assert error_slot.get_by_text("Captured subprocess output is not shown").is_visible()
+        assert error_slot.get_by_text("Reason").is_visible()
+        assert error_slot.get_by_text("impala.recent_scan_failed").is_visible()
+        assert error_slot.get_by_text("Stage").is_visible()
+        assert "Query Doctor recent scan" in error_slot.inner_text()
+        assert error_slot.get_by_text("Next step:").is_visible()
+        assert error_slot.get_by_text("Review the selected local configuration").is_visible()
+        assert error_slot.locator(
+            "li", has_text="Captured subprocess output is not shown"
+        ).is_visible()
         body = page.locator("body")
         assert not body.get_by_text("SELECT secret_col").is_visible()
         assert not body.get_by_text("raw-secret").is_visible()
         assert not body.get_by_text("LEAKED_PROFILE_BODY").is_visible()
         assert not body.get_by_text("/private/tmp/query-doctor-sensitive-case").is_visible()
+
+
+def test_e2e_form_errors_render_structured_safe_details(tmp_path, page):
+    with run_test_server(e2e_settings(tmp_path)) as base_url:
+        page.goto(base_url)
+        select_diagnosis_workflow(page, "query")
+        page.locator("#analyze-form").evaluate("(form) => form.submit()")
+
+        assert_error_card_contains(
+            page,
+            title="Query ID is missing",
+            reason="web.query_id_required",
+            stage="Checking Query ID form",
+            next_step="Paste one explicit Query ID",
+        )
+
+        page.goto(f"{base_url}/optimizer")
+        page.locator(".optimizer-form").evaluate("(form) => form.submit()")
+
+        assert_error_card_contains(
+            page,
+            title="Optimizer SQL is missing",
+            reason="web.optimizer_sql_required",
+            stage="Checking Query Optimizer input",
+            next_step="Paste one read-only SELECT or WITH statement",
+        )
+
+        page.goto(base_url)
+        page.locator("#recent_window_minutes").evaluate("(node) => { node.value = '0'; }")
+        page.locator("#batch-form").evaluate("(form) => form.submit()")
+
+        assert_error_card_contains(
+            page,
+            title="Form input was rejected",
+            reason="web.form_positive_integer_required",
+            stage="Checking form field recent_window_minutes",
+            next_step="Correct the highlighted form value and retry.",
+        )
+
+        body = page.locator("body")
+        assert not body.get_by_text("SELECT secret_col").is_visible()
+        assert not body.get_by_text("/private/tmp").is_visible()
 
 
 def test_e2e_known_query_preserves_selected_cluster_after_submit(tmp_path, page):
@@ -627,8 +971,12 @@ def test_e2e_known_query_result_opens_details_without_auto_llm_actions(tmp_path,
         assert actions.get_by_role("heading", name="Reports and optimizer").is_visible()
         assert actions.get_by_role("button", name="Generate Python report", exact=True).is_visible()
         assert actions.get_by_role("button", name="Generate LLM narrative").is_visible()
-        assert actions.get_by_role("button", name="Run Query LLM optimizer").is_visible()
-        assert actions.get_by_role("button", name="Generate Python report + optimizer").is_visible()
+        assert not actions.get_by_role("button", name="Run Query LLM optimizer").is_visible()
+        assert not actions.get_by_role(
+            "button", name="Generate Python report + optimizer"
+        ).is_visible()
+        assert actions.get_by_text("Query LLM optimizer").is_visible()
+        assert actions.get_by_text("not eligible for an optimizer job").is_visible()
         assert not actions.locator(".report-progress").is_visible()
         assert not actions.get_by_text("Open full report").is_visible()
         assert not actions.get_by_text("Open Query LLM optimizer").is_visible()
@@ -775,7 +1123,12 @@ def test_e2e_known_query_no_llm_combined_action_renders_python_outputs(tmp_path,
     calls: list[list[str]] = []
 
     def fake_analysis(query_id_arg, _report_mode, _redact_identifiers, analysis_settings):
-        write_known_query_case(module, analysis_settings, query_id_arg)
+        write_known_query_case(
+            module,
+            analysis_settings,
+            query_id_arg,
+            optimizer_draft_eligible=True,
+        )
         return module.WebQueryAnalysisResult(
             query_id=query_id_arg,
             case={

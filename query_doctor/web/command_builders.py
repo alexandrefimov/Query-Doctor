@@ -39,7 +39,13 @@ def report_artifacts_for_variant(report_variant: str) -> tuple[str, str, str]:
         )
     if report_variant == REPORT_VARIANT_LLM:
         return (LLM_REPORT_NAME, LLM_REPORT_PARTIAL_NAME, LLM_REPORT_VALIDATION_MARKER)
-    raise WebError("Unknown report variant.")
+    raise WebError(
+        "Unknown report variant.",
+        title="Report variant was rejected",
+        reason_code="web.report_variant_invalid",
+        stage="Preparing report generation",
+        next_step="Choose a supported report variant and retry.",
+    )
 
 
 def display_float(value: float) -> str:
@@ -89,7 +95,13 @@ def append_web_cm_args(cmd: list[str], settings: WebSettings) -> None:
     if not settings.cm_service:
         missing.append("service")
     if missing:
-        raise WebError("Selected cluster is missing CM setting(s): " + ", ".join(missing) + ".")
+        raise WebError(
+            "Selected cluster is missing CM setting(s): " + ", ".join(missing) + ".",
+            title="Selected source is missing CM settings",
+            reason_code="impala.cm_settings_missing",
+            stage="Preparing CM request",
+            next_step="Add the missing CM settings to the selected source or choose another source.",
+        )
     cmd.extend(
         [
             "--cm-url",
@@ -130,7 +142,11 @@ def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> Non
     if settings.collect_prometheus_timeseries or settings.prometheus_url:
         if not settings.prometheus_url:
             raise WebError(
-                "Prometheus runtime metrics are enabled but prometheus_url is not configured."
+                "Prometheus runtime metrics are enabled but prometheus_url is not configured.",
+                title="Prometheus metrics source is not configured",
+                reason_code="impala.prometheus_url_missing",
+                stage="Preparing direct Impala request",
+                next_step="Configure prometheus_url for this source or disable Prometheus metrics.",
             )
         cmd.extend(
             [
@@ -212,7 +228,13 @@ def build_selected_case_report_command(
 ) -> list[str]:
     report_name, _partial_name, _marker_name = report_artifacts_for_variant(report_variant)
     if report_variant == REPORT_VARIANT_LLM and settings.no_llm:
-        raise WebError("LLM report generation is disabled for this web session.")
+        raise WebError(
+            "LLM report generation is disabled for this web session.",
+            title="LLM report generation is disabled",
+            reason_code="web.llm_report_disabled",
+            stage="Preparing report generation",
+            next_step="Use the deterministic Python report or restart the web session with LLM reports enabled.",
+        )
     return build_report_command(
         case_dir,
         "admin",

@@ -159,7 +159,9 @@ def test_optimizer_error_response_does_not_echo_sql_textarea():
     assert captured["status"] == 400
     assert optimizer_textarea_value(html) == ""
     assert "SQL query text is required." in html
-    assert "Safe optimizer state" in html
+    assert "Optimizer SQL is missing" in html
+    assert "web.optimizer_sql_required" in html
+    assert "Checking Query Optimizer input" in html
     assert "Submitted SQL is not displayed back" in html
     assert "unvalidated optimizer output is hidden" in html
     assert "partial report output" not in html

@@ -32,7 +32,13 @@ def run_optimizer_analysis(
     try:
         tables = extract_referenced_tables(sql)
     except OptimizerSqlError as exc:
-        raise WebError(str(exc)) from exc
+        raise WebError(
+            str(exc),
+            title="Optimizer SQL was rejected",
+            reason_code="web.optimizer_sql_rejected",
+            stage="Checking Query Optimizer input",
+            next_step="Submit one read-only SELECT or WITH query without additional statements.",
+        ) from exc
     metadata_context, metadata_status, metadata_message = collect_optimizer_metadata(
         tables, settings, runner=runner
     )

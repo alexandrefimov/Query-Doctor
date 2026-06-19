@@ -18,6 +18,7 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_action_candidates,
 )
 from query_doctor.web.presenters.recent_scan_models import RecentScanDiagnosticFactView
+from query_doctor.web.ui.diagnostic_i18n import localize_diagnostic_text
 from query_doctor.web.ui.html_helpers import escape_value
 from query_doctor.web.ui.i18n import text as ui_text
 from query_doctor.web.ui.source_locations import (
@@ -139,11 +140,6 @@ def render_additional_action_candidates(
         for card in cards
     )
     count = len(cards)
-    summary = ui_text(
-        language,
-        f"Additional supported actions ({count})",
-        f"Дополнительные поддержанные действия ({count})",
-    )
     note = ui_text(
         language,
         "Use these only after reviewing the primary recommendation above.",
@@ -151,7 +147,7 @@ def render_additional_action_candidates(
     )
     return (
         '<details class="analysis-subdetails additional-action-candidates">'
-        f"<summary>{html.escape(summary)}</summary>"
+        f"<summary>{html.escape(f'Additional supported actions ({count})')}</summary>"
         f'<p class="helper">{html.escape(note)}</p>'
         f'<ul class="reason-list action-candidate-list">{rendered}</ul>'
         "</details>"
@@ -188,16 +184,17 @@ def render_supporting_facts(
 ) -> str:
     if not facts:
         return ""
-    items = "".join(render_supporting_fact(fact) for fact in facts[:4])
+    items = "".join(render_supporting_fact(fact, language=language) for fact in facts[:4])
     return (
         '<div class="action-supporting-facts" aria-label="Evidence behind recommendation">'
-        f'<span class="source-locator-heading">{html.escape(ui_text(language, "Evidence behind this recommendation", "Доказательства для этой рекомендации"))}</span>'
+        '<span class="source-locator-heading">Evidence behind this recommendation</span>'
         f'<ul class="action-supporting-fact-list">{items}</ul>'
         "</div>"
     )
 
 
-def render_supporting_fact(fact: RecentScanDiagnosticFactView) -> str:
+def render_supporting_fact(fact: RecentScanDiagnosticFactView, *, language: str = "en") -> str:
+    del language
     label = html.escape(fact.label)
     if fact.source_anchor:
         anchor = html.escape(f"#{fact.source_anchor}", quote=True)
@@ -211,10 +208,12 @@ def render_supporting_fact(fact: RecentScanDiagnosticFactView) -> str:
     )
 
 
-def render_source_locators(locators: tuple[RecentScanSourceLocatorView, ...]) -> str:
+def render_source_locators(
+    locators: tuple[RecentScanSourceLocatorView, ...], *, language: str = "en"
+) -> str:
     if not locators:
         return ""
-    items = "".join(render_source_locator(locator) for locator in locators[:5])
+    items = "".join(render_source_locator(locator, language=language) for locator in locators[:5])
     source_map = render_redacted_sql_source_map(locators)
     return (
         '<div class="source-locator-block" aria-label="Safe review locations">'
@@ -224,7 +223,8 @@ def render_source_locators(locators: tuple[RecentScanSourceLocatorView, ...]) ->
     )
 
 
-def render_source_locator(locator: RecentScanSourceLocatorView) -> str:
+def render_source_locator(locator: RecentScanSourceLocatorView, *, language: str = "en") -> str:
+    del language
     coordinate = f" ({escape_value(locator.coordinate)})" if locator.coordinate else ""
     detail = f": {escape_value(locator.detail)}" if locator.detail else ""
     chips = render_source_location_chips((locator,), limit=1)
@@ -241,9 +241,10 @@ def render_action_candidate_sections(
     if primary:
         sections = (
             render_action_candidate_section(
-                ui_text(language, "Why this query matters", "Почему запрос важен"),
+                "Why this query matters",
                 card.why,
                 modifier_class="action-candidate-section--why",
+                language=language,
             ),
             render_action_candidate_location_section(
                 card.source_locators,
@@ -251,27 +252,31 @@ def render_action_candidate_sections(
                 language=language,
             ),
             render_action_candidate_section(
-                ui_text(language, "What to try", "Что попробовать"),
+                "What to try",
                 card.change_direction,
                 modifier_class="action-candidate-section--change",
+                language=language,
             ),
             render_action_candidate_section(
-                ui_text(language, "How to verify", "Как проверить"),
+                "How to verify",
                 card.verification,
                 modifier_class="action-candidate-section--verify",
+                language=language,
             ),
         )
     else:
         sections = (
             render_action_candidate_section(
-                ui_text(language, "What to change", "Что изменить"),
+                "What to change",
                 card.change_direction,
                 modifier_class="action-candidate-section--change",
+                language=language,
             ),
             render_action_candidate_section(
-                ui_text(language, "How to verify", "Как проверить"),
+                "How to verify",
                 card.verification,
                 modifier_class="action-candidate-section--verify",
+                language=language,
             ),
             render_action_candidate_location_section(
                 card.source_locators,
@@ -292,13 +297,15 @@ def render_action_candidate_guardrails(text: str, *, language: str = "en") -> st
     return (
         '<details class="analysis-subdetails action-guardrails" '
         'aria-label="Recommendation guardrails">'
-        f"<summary>{html.escape(ui_text(language, 'Technical guardrails', 'Технические ограничения'))}</summary>"
-        f'<p class="helper">{escape_value(text)}</p>'
+        "<summary>Technical guardrails</summary>"
+        f'<p class="helper">{escape_value(localize_diagnostic_text(text, language))}</p>'
         "</details>"
     )
 
 
-def render_action_candidate_section(label: str, text: str, *, modifier_class: str = "") -> str:
+def render_action_candidate_section(
+    label: str, text: str, *, modifier_class: str = "", language: str = "en"
+) -> str:
     if not text:
         return ""
     class_name = "action-candidate-section"
@@ -307,7 +314,7 @@ def render_action_candidate_section(label: str, text: str, *, modifier_class: st
     return (
         f'<section class="{class_name}">'
         f"<span>{html.escape(label)}</span>"
-        f"<p>{escape_value(text)}</p>"
+        f"<p>{escape_value(localize_diagnostic_text(text, language))}</p>"
         "</section>"
     )
 
@@ -318,8 +325,8 @@ def render_action_candidate_reason_section(text: str, *, language: str = "en") -
     return (
         '<details class="analysis-subdetails action-candidate-reason" '
         'aria-label="Why this deserves attention">'
-        f"<summary>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</summary>"
-        f'<p class="helper">{escape_value(text)}</p>'
+        "<summary>Why this deserves attention</summary>"
+        f'<p class="helper">{escape_value(localize_diagnostic_text(text, language))}</p>'
         "</details>"
     )
 
@@ -330,26 +337,28 @@ def render_action_candidate_location_section(
     *,
     language: str = "en",
 ) -> str:
-    locator_html = render_source_locators(locators)
+    locator_html = render_source_locators(locators, language=language)
     if not locator_html:
-        locator_html = render_fact_review_anchors(fallback_facts)
+        locator_html = render_fact_review_anchors(fallback_facts, language=language)
     if not locator_html:
         return ""
     return (
         '<section class="action-candidate-section action-candidate-section--locations">'
-        f"<span>{html.escape(ui_text(language, 'Where to inspect', 'Где проверить'))}</span>"
+        "<span>Where to inspect</span>"
         f"{locator_html}"
         "</section>"
     )
 
 
-def render_fact_review_anchors(facts: tuple[RecentScanDiagnosticFactView, ...]) -> str:
+def render_fact_review_anchors(
+    facts: tuple[RecentScanDiagnosticFactView, ...], *, language: str = "en"
+) -> str:
     anchor_facts = tuple(
         fact for fact in facts if fact.source_anchor and fact.source_anchor != "action-plan"
     )[:3]
     if not anchor_facts:
         return ""
-    items = "".join(render_fact_review_anchor(fact) for fact in anchor_facts)
+    items = "".join(render_fact_review_anchor(fact, language=language) for fact in anchor_facts)
     return (
         '<div class="source-locator-block" aria-label="Safe review locations">'
         f'<ul class="source-locator-list">{items}</ul>'
@@ -357,7 +366,8 @@ def render_fact_review_anchors(facts: tuple[RecentScanDiagnosticFactView, ...]) 
     )
 
 
-def render_fact_review_anchor(fact: RecentScanDiagnosticFactView) -> str:
+def render_fact_review_anchor(fact: RecentScanDiagnosticFactView, *, language: str = "en") -> str:
+    del language
     anchor = html.escape(f"#{fact.source_anchor}", quote=True)
     label = escape_value(fact.label)
     value = escape_value(fact.value)
@@ -373,11 +383,10 @@ def render_action_candidate_meta(text: str, *, language: str = "en") -> str:
     if not text:
         return ""
     return (
-        '<details class="analysis-subdetails action-candidate-meta" '
-        'aria-label="Recommendation candidate details">'
-        f"<summary>{html.escape(ui_text(language, 'Candidate details', 'Детали кандидата'))}</summary>"
-        f'<p class="helper">{escape_value(text)}</p>'
-        "</details>"
+        '<div class="action-candidate-meta" aria-label="Recommendation candidate details">'
+        '<span class="source-locator-heading">Candidate details</span>'
+        f'<p class="helper">{escape_value(localize_diagnostic_text(text, language))}</p>'
+        "</div>"
     )
 
 
@@ -400,25 +409,25 @@ def render_action_outcome_controls(
     metric_note = render_action_outcome_metric_note(outcome_metric)
     return (
         '<details class="action-outcome-control" data-action-outcome-card>'
-        f"<summary>{html.escape(ui_text(language, 'Record rerun outcome', 'Записать результат повтора'))}</summary>"
+        "<summary>Record rerun outcome</summary>"
         '<div class="action-outcome-body">'
         f'<p class="action-outcome-help">{html.escape(ui_text(language, "Record whether this recommendation was applied and what happened on a comparable rerun. This feeds workload confidence and next checks.", "Запишите, применялась ли рекомендация и что произошло на сопоставимом повторном запуске. Это повышает уверенность по workload и помогает выбрать следующие проверки."))}</p>'
-        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Recommendation", "Рекомендация"))}: {label}</span>'
+        f'<span class="action-outcome-label">Recommendation: {label}</span>'
         f"{metric_note}"
         f'<form method="post" action="{action_url}" class="action-outcome-form">'
-        f'<button type="button" class="button" data-action-outcome-show-result>{html.escape(ui_text(language, "Applied and rerun", "Применено и повторено"))}</button>'
-        f'<button type="submit" class="button" name="applied" value="no">{html.escape(ui_text(language, "Not applied", "Не применено"))}</button>'
-        f'<button type="submit" class="button" name="applied" value="skip">{html.escape(ui_text(language, "Not comparable / skip", "Не сопоставимо / пропустить"))}</button>'
+        '<button type="button" class="button" data-action-outcome-show-result>Applied and rerun</button>'
+        '<button type="submit" class="button" name="applied" value="no">Not applied</button>'
+        '<button type="submit" class="button" name="applied" value="skip">Not comparable / skip</button>'
         "</form>"
         '<div class="action-outcome-result" data-action-outcome-result-panel hidden>'
-        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Comparable rerun result", "Результат сопоставимого повтора"))}</span>'
+        '<span class="action-outcome-label">Comparable rerun result</span>'
         f'<form method="post" action="{action_url}" class="action-outcome-form">'
         '<input type="hidden" name="applied" value="yes">'
         '<input type="hidden" name="verification_status" value="comparable_rerun">'
-        f'<button type="submit" class="button primary" name="outcome" value="improved">{html.escape(ui_text(language, "Improved", "Стало лучше"))}</button>'
-        f'<button type="submit" class="button" name="outcome" value="no_change">{html.escape(ui_text(language, "No change", "Без изменений"))}</button>'
-        f'<button type="submit" class="button" name="outcome" value="worsened">{html.escape(ui_text(language, "Worsened", "Стало хуже"))}</button>'
-        f'<button type="submit" class="button" name="outcome" value="unsure">{html.escape(ui_text(language, "Unsure", "Неясно"))}</button>'
+        '<button type="submit" class="button primary" name="outcome" value="improved">Improved</button>'
+        '<button type="submit" class="button" name="outcome" value="no_change">No change</button>'
+        '<button type="submit" class="button" name="outcome" value="worsened">Worsened</button>'
+        '<button type="submit" class="button" name="outcome" value="unsure">Unsure</button>'
         "</form>"
         "</div>"
         "</div>"

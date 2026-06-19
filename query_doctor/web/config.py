@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_collector
@@ -83,7 +84,11 @@ def validate_bind_host(host: str, *, allow_nonlocal_web_bind: bool) -> None:
         return
     raise WebError(
         "Refusing non-local bind. Use --host 127.0.0.1 or pass "
-        "--allow-nonlocal-web-bind explicitly for a local web risk review."
+        "--allow-nonlocal-web-bind explicitly for a local web risk review.",
+        title="Non-local web bind was rejected",
+        reason_code="web.nonlocal_bind_rejected",
+        stage="Checking web startup security",
+        next_step="Bind to 127.0.0.1, or explicitly allow non-local bind after a local risk review.",
     )
 
 
@@ -123,7 +128,14 @@ def validate_owner_raw_nonlocal_bind(settings: WebSettings) -> None:
         "the request, strips inbound viewer headers, and sets exactly one "
         "normalized viewer_identity_header for Query Doctor's owner check. "
         "Configure viewer_identity_header behind that front door, bind to "
-        "127.0.0.1, or use source_visibility=safe."
+        "127.0.0.1, or use source_visibility=safe.",
+        title="Owner raw source visibility was rejected",
+        reason_code="owner_raw.nonlocal_auth_required",
+        stage="Checking owner source visibility",
+        next_step=(
+            "Configure a trusted viewer_identity_header front door, bind locally, "
+            "or switch source_visibility to safe."
+        ),
     )
 
 
@@ -255,8 +267,6 @@ def validate_web_startup_config(
     env: dict[str, str] | os._Environ[str] | None = None,
     require_cm: bool = True,
 ) -> list[str]:
-    if not require_cm:
-        return []
     env = os.environ if env is None else env
     config_values = load_web_local_config(config_path, cwd=cwd)
     clusters = build_web_cluster_configs(config_values)
@@ -288,24 +298,40 @@ def validate_web_startup_config(
     cm_clusters = [
         cluster
         for cluster in clusters_to_validate
-        if cluster.query_profile_source != "impala" and not cluster_is_manual_only(cluster)
+        if cluster.query_profile_source != "impala"
+        and not cluster_is_manual_only(cluster)
+        and not cluster_is_trino_beta_only(cluster)
     ]
     for cluster in clusters_to_validate:
         if cluster.manual_profile_dir is not None:
             validate_manual_profile_dir(
                 resolve_config_path_value(cluster.manual_profile_dir, base_dir=config_base_dir)
             )
-        if cluster_is_manual_only(cluster):
+        if cluster_has_trino_beta_config(cluster):
+            validate_trino_beta_startup_cluster(cluster, config_base_dir=config_base_dir)
+        if cluster_is_manual_only(cluster) or cluster_is_trino_beta_only(cluster):
+            continue
+        if not require_cm:
             continue
         if cluster.query_profile_source == "impala":
             if not cluster.impala_profile_hosts:
                 raise WebError(
                     "Missing required Impala startup setting(s): impala_profile_hosts. "
-                    "Provide one or more impalad web hosts in local config."
+                    "Provide one or more impalad web hosts in local config.",
+                    title="Direct Impala profile host is not configured",
+                    reason_code="impala.direct_profile_host_missing",
+                    stage="Checking web startup source config",
+                    next_step="Add impala_profile_hosts to the selected source or choose a CM source.",
                 )
             if cluster.collect_prometheus_timeseries and not cluster.prometheus_url:
                 raise WebError(
-                    "collect_prometheus_timeseries=true requires prometheus_url in local config."
+                    "collect_prometheus_timeseries=true requires prometheus_url in local config.",
+                    title="Prometheus metrics source is not configured",
+                    reason_code="impala.prometheus_url_missing",
+                    stage="Checking web startup source config",
+                    next_step=(
+                        "Configure prometheus_url for this source or disable Prometheus timeseries collection."
+                    ),
                 )
             continue
         if not first_string_value(cluster.cm_url, env.get("CM_URL")):
@@ -315,15 +341,18 @@ def validate_web_startup_config(
         if not cluster.cm_service:
             missing.append("service")
     if (
-        cm_clusters
+        require_cm
+        and cm_clusters
         and not first_string_value(
             optional_config_string(config_values, "username"), env.get("CM_USERNAME")
         )
         and not any(cluster.cm_username for cluster in cm_clusters)
     ):
         missing.append("username/cm_user")
-    if cm_clusters and not (
-        (env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()
+    if (
+        require_cm
+        and cm_clusters
+        and not ((env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip())
     ):
         missing.append("CM_PASSWORD/CM_TOKEN environment variable")
     missing = list(dict.fromkeys(missing))
@@ -333,7 +362,14 @@ def validate_web_startup_config(
             + ", ".join(missing)
             + ". Provide non-secret CM settings in local config and CM_PASSWORD or CM_TOKEN "
             "via environment variables. If you only have one exported Impala text profile, "
-            "configure manual_profile_dir as a local profile inbox instead of CM settings."
+            "configure manual_profile_dir as a local profile inbox instead of CM settings.",
+            title="Cloudera Manager startup settings are missing",
+            reason_code="impala.cm_startup_settings_missing",
+            stage="Checking web startup source config",
+            next_step=(
+                "Add the missing non-secret CM settings and CM_PASSWORD or CM_TOKEN, "
+                "or configure manual_profile_dir for local exported profiles."
+            ),
         )
 
     warnings: list[str] = []
@@ -347,7 +383,16 @@ def validate_web_startup_config(
             if not ca_path.is_absolute():
                 ca_path = cwd / ca_path
             if not ca_path.is_file() or not os.access(ca_path, os.R_OK):
-                raise WebError(f"Configured ca_bundle is not readable: {ca_bundle}")
+                raise WebError(
+                    "Configured ca_bundle is not readable.",
+                    title="Cloudera Manager CA bundle is not readable",
+                    reason_code="impala.cm_ca_bundle_unreadable",
+                    stage="Checking web startup TLS config",
+                    next_step=(
+                        "Fix the configured CM ca_bundle file, remove the setting, "
+                        "or explicitly use insecure_skip_verify for a local risk review."
+                    ),
+                )
             if insecure_skip_verify:
                 warnings.append(
                     "insecure_skip_verify=true is set; CM TLS verification will be disabled even though ca_bundle is configured."
@@ -387,6 +432,20 @@ def configured_corpus_dir(
     return resolve_config_path_value(DEFAULT_CORPUS_DIR, base_dir=cwd)
 
 
+def configured_optional_config_path(
+    config_values: dict[str, object],
+    key: str,
+    *,
+    config_path: Path,
+    cwd: Path,
+) -> Path | None:
+    value = optional_config_path(config_values, key)
+    if value is None:
+        return None
+    config_base_dir = resolve_config_path_value(config_path, base_dir=cwd).parent
+    return resolve_config_path_value(value, base_dir=config_base_dir)
+
+
 def resolve_config_path_value(path: Path, *, base_dir: Path) -> Path:
     expanded = path.expanduser()
     return expanded if expanded.is_absolute() else base_dir / expanded
@@ -395,9 +454,21 @@ def resolve_config_path_value(path: Path, *, base_dir: Path) -> Path:
 def validate_manual_profile_dir(path: Path) -> None:
     try:
         if not path.is_dir() or not os.access(path, os.R_OK):
-            raise WebError("Configured manual_profile_dir is not a readable local directory.")
+            raise WebError(
+                "Configured manual_profile_dir is not a readable local directory.",
+                title="Manual profile directory is not readable",
+                reason_code="web.manual_profile_dir_unreadable",
+                stage="Checking web startup source config",
+                next_step="Fix manual_profile_dir or choose a CM/direct-Impala source.",
+            )
     except OSError as exc:
-        raise WebError("Configured manual_profile_dir is not available.") from exc
+        raise WebError(
+            "Configured manual_profile_dir is not available.",
+            title="Manual profile directory is not available",
+            reason_code="web.manual_profile_dir_unavailable",
+            stage="Checking web startup source config",
+            next_step="Fix manual_profile_dir or choose a CM/direct-Impala source.",
+        ) from exc
 
 
 def cluster_is_manual_only(cluster: WebClusterConfig) -> bool:
@@ -411,13 +482,130 @@ def cluster_is_manual_only(cluster: WebClusterConfig) -> bool:
     )
 
 
+def cluster_is_trino_beta_only(cluster: WebClusterConfig) -> bool:
+    return bool(
+        cluster.trino_beta_enabled
+        and cluster.trino_coordinator_url
+        and cluster.trino_query_info_source_contract
+        and not any(
+            (
+                cluster.cm_url,
+                cluster.cm_cluster,
+                cluster.cm_service,
+                cluster.impala_profile_hosts,
+                cluster.manual_profile_dir,
+            )
+        )
+    )
+
+
+def cluster_has_trino_beta_config(cluster: WebClusterConfig) -> bool:
+    return bool(
+        cluster.trino_beta_enabled
+        or cluster.trino_coordinator_url
+        or cluster.trino_query_info_source_contract
+        or cluster.trino_query_list_source_contract
+        or cluster.trino_auth_header_file
+        or cluster.trino_kerberos_principal
+        or cluster.trino_krb5_ccname
+        or cluster.trino_krb5_config
+        or cluster.trino_kerberos_ca_cert
+        or cluster.trino_kerberos_insecure_tls
+    )
+
+
+def validate_trino_beta_startup_cluster(
+    cluster: WebClusterConfig,
+    *,
+    config_base_dir: Path,
+) -> None:
+    from query_doctor.web.trino_beta_query import validate_trino_beta_startup_config
+
+    if not cluster_has_trino_beta_config(cluster):
+        return
+    if not cluster.trino_beta_enabled:
+        raise WebError(
+            "Trino Beta local config requires trino_beta_enabled=true.",
+            title="Trino Beta source is not enabled",
+            reason_code="trino_beta.not_enabled",
+            stage="Checking Trino Beta local config",
+            next_step="Set trino_beta_enabled=true for this local source or remove Trino Beta settings.",
+        )
+    if not cluster.trino_coordinator_url:
+        raise WebError(
+            "Trino Beta local config requires trino_coordinator_url.",
+            title="Trino Beta coordinator is not configured",
+            reason_code="trino_beta.coordinator_missing",
+            stage="Checking Trino Beta local config",
+            next_step="Configure trino_coordinator_url for this local source or remove Trino Beta settings.",
+        )
+    if cluster.trino_query_info_source_contract is None:
+        raise WebError(
+            "Trino Beta local config requires trino_query_info_source_contract.",
+            title="Trino Beta source contract is not configured",
+            reason_code="trino_beta.query_info_contract_missing",
+            stage="Checking Trino Beta local config",
+            next_step=(
+                "Configure trino_query_info_source_contract for this local source "
+                "or remove Trino Beta settings."
+            ),
+        )
+    validate_trino_beta_startup_config(
+        source_contract=resolve_config_path_value(
+            cluster.trino_query_info_source_contract,
+            base_dir=config_base_dir,
+        ),
+        coordinator_url=cluster.trino_coordinator_url,
+        query_list_source_contract=resolve_config_path_value(
+            cluster.trino_query_list_source_contract,
+            base_dir=config_base_dir,
+        )
+        if cluster.trino_query_list_source_contract is not None
+        else None,
+        auth_header_file=resolve_config_path_value(
+            cluster.trino_auth_header_file,
+            base_dir=config_base_dir,
+        )
+        if cluster.trino_auth_header_file is not None
+        else None,
+        kerberos_principal=cluster.trino_kerberos_principal,
+        kerberos_service_name=cluster.trino_kerberos_service_name,
+        krb5_ccname=cluster.trino_krb5_ccname,
+        krb5_config=resolve_config_path_value(
+            cluster.trino_krb5_config,
+            base_dir=config_base_dir,
+        )
+        if cluster.trino_krb5_config is not None
+        else None,
+        kerberos_ca_cert=resolve_config_path_value(
+            cluster.trino_kerberos_ca_cert,
+            base_dir=config_base_dir,
+        )
+        if cluster.trino_kerberos_ca_cert is not None
+        else None,
+        kerberos_insecure_tls=cluster.trino_kerberos_insecure_tls,
+    )
+
+
 def validate_public_demo_settings(settings: WebSettings) -> None:
     if not settings.public_demo:
         return
     if settings.batch_summary is None:
-        raise WebError("Public demo mode requires --batch-summary generated by query-doctor-demo.")
+        raise WebError(
+            "Public demo mode requires --batch-summary generated by query-doctor-demo.",
+            title="Public demo pack is not configured",
+            reason_code="web.public_demo_summary_missing",
+            stage="Checking public demo startup",
+            next_step="Start public demo mode with the generated synthetic demo batch summary.",
+        )
     if not settings.no_llm:
-        raise WebError("Public demo mode requires --no-llm.")
+        raise WebError(
+            "Public demo mode requires --no-llm.",
+            title="Public demo LLM actions are not allowed",
+            reason_code="web.public_demo_llm_not_allowed",
+            stage="Checking public demo startup",
+            next_step="Restart public demo mode with --no-llm.",
+        )
     if settings.clusters or any(
         (
             settings.cm_url,
@@ -435,10 +623,24 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.viewer_identity_header,
             settings.viewer_identity.viewer_raw_subjects,
             settings.krb5ccname,
+            settings.trino_beta_enabled,
+            settings.trino_coordinator_url,
+            settings.trino_query_info_source_contract,
+            settings.trino_query_list_source_contract,
+            settings.trino_auth_header_file,
+            settings.trino_kerberos_principal,
+            settings.trino_krb5_ccname,
+            settings.trino_krb5_config,
+            settings.trino_kerberos_ca_cert,
+            settings.trino_kerberos_insecure_tls,
         )
     ):
         raise WebError(
-            "Public demo mode must not load CM, Impala, Prometheus, metadata, owner source, or raw viewer settings."
+            "Public demo mode must not load CM, Impala, Prometheus, metadata, owner source, raw viewer, or Trino beta settings.",
+            title="Public demo source config was rejected",
+            reason_code="web.public_demo_external_source_rejected",
+            stage="Checking public demo startup",
+            next_step="Remove live source settings from public demo mode and use the synthetic demo pack.",
         )
 
 
@@ -483,6 +685,11 @@ def first_int_value(*values: int | None, default: int | None) -> int | None:
     return default
 
 
+def normalize_engine_config(value: object) -> str:
+    engine = str(value or "").strip().lower()
+    return engine if engine in {"impala", "trino"} else "impala"
+
+
 def configured_viewer_identity_header(
     args: argparse.Namespace,
     config_values: dict[str, object],
@@ -494,7 +701,13 @@ def configured_viewer_identity_header(
     try:
         return normalize_viewer_identity_header(value)
     except ValueError as exc:
-        raise WebError(str(exc)) from exc
+        raise WebError(
+            str(exc),
+            title="Viewer identity header is invalid",
+            reason_code="owner_raw.viewer_identity_header_invalid",
+            stage="Checking owner source visibility",
+            next_step="Use a simple HTTP header token for viewer_identity_header or disable owner raw source.",
+        ) from exc
 
 
 def owner_raw_source_enabled_setting(
@@ -529,7 +742,11 @@ def build_web_settings(
     else:
         config_path = resolve_web_config_path(args.config, cwd=cwd)
         config_values = load_web_local_config(args.config, cwd=cwd)
-    clusters = build_web_cluster_configs(config_values)
+    config_base_dir = resolve_config_path_value(config_path, base_dir=cwd).parent
+    clusters = resolve_web_cluster_config_paths(
+        build_web_cluster_configs(config_values),
+        base_dir=config_base_dir,
+    )
     source_owner_user_options = (
         ()
         if public_demo
@@ -619,7 +836,13 @@ def build_web_settings(
             or DEFAULT_LANGUAGE
         )
     except ValueError as exc:
-        raise WebError(str(exc)) from exc
+        raise WebError(
+            str(exc),
+            title="Report language is invalid",
+            reason_code="web.language_invalid",
+            stage="Loading local web config",
+            next_step="Use a supported report language value in local config.",
+        ) from exc
 
     settings = WebSettings(
         config=config_path,
@@ -833,7 +1056,99 @@ def build_web_settings(
         viewer_identity_header=configured_viewer_identity_header(args, config_values),
         owner_raw_source_enabled=owner_raw_source_enabled_setting(args, config_values),
         viewer_identity=viewer_identity,
+        selected_engine=normalize_engine_config(optional_config_string(config_values, "engine")),
+        trino_beta_enabled=optional_config_bool(config_values, "trino_beta_enabled") is True,
+        trino_coordinator_url=optional_config_string(config_values, "trino_coordinator_url"),
+        trino_query_info_source_contract=configured_optional_config_path(
+            config_values,
+            "trino_query_info_source_contract",
+            config_path=config_path,
+            cwd=cwd,
+        ),
+        trino_query_list_source_contract=configured_optional_config_path(
+            config_values,
+            "trino_query_list_source_contract",
+            config_path=config_path,
+            cwd=cwd,
+        ),
+        trino_auth_header_file=configured_optional_config_path(
+            config_values,
+            "trino_auth_header_file",
+            config_path=config_path,
+            cwd=cwd,
+        ),
+        trino_kerberos_principal=optional_config_string(
+            config_values,
+            "trino_kerberos_principal",
+        ),
+        trino_kerberos_service_name=optional_config_string(
+            config_values,
+            "trino_kerberos_service_name",
+        )
+        or "HTTP",
+        trino_krb5_ccname=optional_config_string(config_values, "trino_krb5_ccname"),
+        trino_krb5_config=configured_optional_config_path(
+            config_values,
+            "trino_krb5_config",
+            config_path=config_path,
+            cwd=cwd,
+        ),
+        trino_kerberos_ca_cert=configured_optional_config_path(
+            config_values,
+            "trino_kerberos_ca_cert",
+            config_path=config_path,
+            cwd=cwd,
+        ),
+        trino_kerberos_insecure_tls=optional_config_bool(
+            config_values,
+            "trino_kerberos_insecure_tls",
+        )
+        is True,
     )
     if clusters:
         return settings_for_cluster_key(settings, clusters[0].key)
     return settings
+
+
+def resolve_web_cluster_config_paths(
+    clusters: tuple[WebClusterConfig, ...],
+    *,
+    base_dir: Path,
+) -> tuple[WebClusterConfig, ...]:
+    resolved: list[WebClusterConfig] = []
+    for cluster in clusters:
+        resolved.append(
+            replace(
+                cluster,
+                manual_profile_dir=resolve_optional_path(
+                    cluster.manual_profile_dir, base_dir=base_dir
+                ),
+                trino_query_info_source_contract=resolve_optional_path(
+                    cluster.trino_query_info_source_contract,
+                    base_dir=base_dir,
+                ),
+                trino_query_list_source_contract=resolve_optional_path(
+                    cluster.trino_query_list_source_contract,
+                    base_dir=base_dir,
+                ),
+                trino_auth_header_file=resolve_optional_path(
+                    cluster.trino_auth_header_file,
+                    base_dir=base_dir,
+                ),
+                trino_krb5_config=resolve_optional_path(
+                    cluster.trino_krb5_config,
+                    base_dir=base_dir,
+                ),
+                trino_kerberos_ca_cert=resolve_optional_path(
+                    cluster.trino_kerberos_ca_cert,
+                    base_dir=base_dir,
+                ),
+            )
+        )
+    return tuple(resolved)
+
+
+def resolve_optional_path(path: Path | None, *, base_dir: Path) -> Path | None:
+    if path is None:
+        return None
+    return resolve_config_path_value(path, base_dir=base_dir)
