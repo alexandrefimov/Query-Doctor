@@ -18,20 +18,30 @@ query-detail archive import, bounded local query-detail import, bounded local
 query-list aggregate import, bounded local statement-stats import,
 event-source contract checking, dry-run coordinator query-info target checking
 и metadata source-contract checking, bounded local metadata summary import,
-one-query pruned coordinator query-info probing/import, plus raw-free
-normalized fact boundaries; pruned coordinator import может писать direct
-`--boundary-out` для local readiness audits. Dev-only one-query handoff может
+one-query pruned coordinator query-info probing/import, local web Trino Beta
+retained-list Recent over one bounded retained pruned coordinator query-list
+read plus selected pruned QueryInfo reads, local web Trino Beta One Query ID,
+plus raw-free normalized fact boundaries; pruned coordinator import может
+писать direct `--boundary-out` для local readiness audits. Dev-only one-query handoff может
 писать optional `trino_one_query_handoff_summary_v1`, а retained suite audit
 может требовать matching retained handoff summaries без печати paths или
 расширения Trino в product support. Trino package-level retained
 evidence-handoff suite audits могут требовать selected safe source-contract,
 diagnostic-lane source-granularity и verification-scope labels из уже raw-free
 retained summaries; это dev-only retained-evidence gate, а не Trino product
-support claim. Dev-only
+support claim. Эти package-level suite gates также reject-ят unsafe или
+duplicate summary references, output/input overlap, missing artifacts, drifted
+manifest schema/redaction/no-support metadata и raw-like retained summary
+content, записывая только aggregate raw-free suite summaries. Dev-only
 `scripts/audit_trino_support_gap_matrix.py` сверяет registered Trino fact-family
 coverage, source-type registry coverage, engine fact promotion-policy coverage
 и adapter flags с этой matrix перед
 broader support-surface decisions.
+Dev-only `scripts/audit_trino_beta_release_readiness.py` собирает static
+audits, focused tests, local-config readiness и optional bounded live/UI smokes
+для Trino Beta demo/release handoff без печати local config values, Query IDs,
+coordinator URLs, auth references, local paths или raw payloads; это не
+установленный product CLI и не production support claim.
 Spark и другие движки остаются
 исследовательскими
 направлениями и не являются текущей пользовательской поддержкой.
@@ -64,10 +74,12 @@ bounded local query-detail/query-list aggregate import и bounded local
 statement-stats import, плюс event-source contract checking и dry-run
 coordinator query-info target checking, metadata source-contract checking, plus
 bounded local metadata summary import, one-query pruned coordinator query-info
-probing/import с direct `--boundary-out` для local readiness audits; broader
-Trino coordinator reader, metadata collection, browser/report surfaces,
-optimizer behavior и generated Trino SQL остаются неподдержанными, пока не появятся
-безопасные, ограниченные и проверенные источники фактов.
+probing/import с direct `--boundary-out` для local readiness audits, и local
+web Trino Beta retained-list Recent/One Query ID lanes; broader Trino
+coordinator reader, Running scans, metadata collection, Details/trusted report
+surfaces, optimizer behavior, SQL execution и generated Trino SQL остаются
+неподдержанными, пока не появятся безопасные, ограниченные и проверенные
+источники фактов.
 Retained Trino handoff manifests должны использовать только safe relative
 `*.json` artifact references и unique
 boundary/diagnosis/readiness-summary/handoff-summary/product-surface-summary

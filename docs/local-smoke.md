@@ -427,6 +427,14 @@ load-balanced or ingress endpoint may not reach the daemon that coordinated a
 particular query; in that case the smoke should fail safely with a collector
 subprocess category while keeping captured output hidden.
 
+Direct daemon query-list history is small and can be filled by metadata or
+validation statements such as `SET` and `SHOW`. When the query list is already
+at its retained log size, broad Search depth windows cannot recover older
+entries from the daemon endpoint. For metadata-path validation, prefer a fresh
+table-backed `SELECT` and run the Known Query ID smoke promptly; if the cluster
+is behind a load balancer or ingress, configure explicit daemon profile hosts
+when they are available.
+
 Validate the summary before changing wording or behavior:
 
 ```bash
@@ -545,6 +553,45 @@ Expected smoke behavior:
 - writes only `trino_smoke_summary.json` under the selected `/tmp` output
   directory.
 
+### Trino Beta Web Live Smoke
+
+Use this maintainer-only smoke after the local-config readiness audit when a
+local Trino Beta web source is intentionally configured. It exercises the same
+local web backend path as the UI: one bounded retained pruned coordinator
+query-list read, then bounded selected pruned QueryInfo reads for the retained
+rows.
+
+```bash
+python3 scripts/audit_trino_beta_release_readiness.py \
+  --config <ignored-local-web-config.json> \
+  --selected-query-limit 1
+
+python3 scripts/audit_trino_web_beta_readiness.py \
+  --config <ignored-local-web-config.json> \
+  --require-query-id \
+  --require-recent
+
+python3 scripts/audit_trino_web_beta_live_smoke.py \
+  --config <ignored-local-web-config.json> \
+  --selected-query-limit 1
+
+scripts/query-doctor-web-trino-beta-smoke \
+  --config <ignored-local-web-config.json> \
+  --limit 1
+```
+
+The release-readiness bundle is the preferred one-command handoff path. Use
+`--static-only` to run only static audits and focused tests when no intentional
+local Trino Beta source is available.
+
+The backend live smoke prints only raw-free counts and issue IDs. The web UI
+smoke starts the local web server, submits Trino Beta Recent, then uses one
+selected retained Query ID for the One Query ID form without printing it. Both
+smokes must not print coordinator URLs, Query IDs, auth references, local
+paths, or raw coordinator payloads. They perform no SQL execution, metadata
+collection, Running scan, Details/trusted report generation, optimizer
+behavior, or support-claim promotion.
+
 ### Padded `impala-shell` Output
 
 `impala-shell` can heavily pad tabular output, especially for
@@ -636,8 +683,9 @@ query-doctor-batch-recent \
 
 This batch workflow is intentionally two-stage:
 
-- run CM discovery and explicit query-id profile collection for at most
-  `--triage-profile-limit` cases;
+- run CM discovery and explicit query-id profile collection for selected cases;
+  large analyzer-only runs may collect a small reserve pool and retain up to
+  `--triage-profile-limit` successfully analyzed cases in the final summary;
 - run analyzer/metadata only for selected cases through pipeline
   `--stop-after-analysis`;
 - score `analysis_facts.md` deterministically;
@@ -647,8 +695,8 @@ Important bounds:
 
 - `--cm-inspect-limit` is the bounded recent-summary request/inspection cap
   after server-side CM filters such as time window and duration.
-- `--triage-profile-limit` is the maximum explicit profile collection count;
-  hard cap `5000`.
+- `--triage-profile-limit` is the target final analyzed-case count; hard cap
+  `5000`.
 - `--select-limit` is a deprecated compatibility alias.
 - Duration filtering is pushed into the CM request where supported and remains
   client-side as a safety backstop.
@@ -665,6 +713,10 @@ Parallelism:
 - `--jobs`: analyzer workers after collection.
 - `--metadata-jobs`: metadata refresh workers. Default and hard cap are both
   `5`; lower it manually for conservative smoke runs.
+- If CM profile collection returns repeated HTTP 5xx responses, the batch stops
+  submitting new profile jobs, keeps completed/in-flight results, marks
+  unsubmitted cases as skipped, and writes a raw-free warning to the summary.
+  Lower `--cm-jobs` or wait for Service Monitor to recover before rerunning.
 
 When metadata is enabled, `--metadata-top-limit` is spent on top collectable
 cases. For Cloudera Manager Recent batches, real table references may be passed
@@ -692,11 +744,12 @@ query-doctor-batch-recent \
   --allow-high-jobs
 ```
 
-Start high-concurrency collection with `--cm-jobs 20` or `--cm-jobs 50`.
-`--cm-jobs 100` is allowed, but it can create many concurrent CM profile
-requests. `--allow-high-jobs` is needed only when analyzer `--jobs` exceeds the
-normal cap; metadata refresh remains bounded separately by `--metadata-jobs <=
-5`.
+Start broad collection conservatively, then increase `--cm-jobs` only after a
+stable pass. `--cm-jobs 20`, `--cm-jobs 50`, and `--cm-jobs 100` can create many
+concurrent CM profile requests and should be used only when Service Monitor has
+capacity for that load. `--allow-high-jobs` is needed only when analyzer
+`--jobs` exceeds the normal cap; metadata refresh remains bounded separately by
+`--metadata-jobs <= 5`.
 
 Second-stage full reports should be run only for top suspicious cases from
 `batch_summary.json`:

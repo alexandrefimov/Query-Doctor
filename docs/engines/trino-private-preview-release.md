@@ -1,16 +1,20 @@
 # Trino Private Preview Release Path
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-16
 
 Language: English | [Russian](i18n/ru/trino-private-preview-release.md)
 
 This document defines the release-facing path for presenting Trino as an early
-closed test-cluster integration. It is not a live collector, not a live engine
-selector, not a Details/trusted-report surface, not an optimizer workflow, and
-not permission to execute user SQL through Query Doctor. The only Trino browser
-surface is the isolated local compact-diagnosis page for already raw-free direct
-boundary JSON excluding local metadata summary boundaries or a selected sample
-boundary from a package boundary export.
+closed test-cluster integration. It is not a live collector, not a production
+engine selector, not a Details/trusted-report surface, not an optimizer
+workflow, and not permission to execute user SQL through Query Doctor. The
+Trino browser surfaces are the isolated local compact-diagnosis page for already
+raw-free direct boundary JSON excluding local metadata summary boundaries or a
+selected sample boundary from a package boundary export, plus the local Trino
+Beta retained-list Recent lane over one bounded retained pruned coordinator
+query-list read and selected pruned QueryInfo reads, plus the local Trino Beta
+One Query ID lane over one bounded pruned coordinator QueryInfo read, both with
+the same raw-free compact diagnosis.
 
 Query Doctor production triage remains Apache Impala. Trino support is limited
 to sanitized offline evidence package import, bounded local event-store import,
@@ -27,7 +31,11 @@ audit coverage for source-type registry and engine fact promotion policy, and
 local compact
 diagnosis over raw-free direct boundary JSON excluding local metadata summary
 boundaries or selected package sample boundaries, and the isolated local
-`/trino/compact-diagnosis` page over the same already raw-free inputs. Trino
+`/trino/compact-diagnosis` page over the same already raw-free inputs, plus the
+local web Trino Beta retained-list Recent lane over one bounded retained pruned
+coordinator query-list read and selected pruned QueryInfo reads, plus the local
+web Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo
+read, both with the same raw-free compact diagnosis. Trino
 private preview means the release can show a bounded Kerberos/SPNEGO
 smoke against an approved test cluster plus sanitized package, local
 event-store, HTTP event archive, HTTP query-detail archive, local query-detail,
@@ -36,25 +44,28 @@ QueryInfo intake, package-to-boundary readiness audit, product-surface boundary
 audit, query-info target validation, metadata source-contract validation, local
 metadata summary import, one bounded pruned query-info probe, one bounded
 pruned query-info fact import, local compact diagnosis output, and the isolated
-local compact-diagnosis page while live product
-workflows still treat Trino as unsupported. A separate event-source contract
+local compact-diagnosis page plus the Trino Beta Recent and One Query ID lanes while
+production product workflows still treat Trino as unsupported. A separate event-source contract
 check remains the source gate for event archive readers, the coordinator
 query-info target check remains a dry-run gate, and the pruned coordinator
 query-info probe remains probe-only; the metadata source-contract check is only
 a dry-run relation/column allowlist gate; the local metadata summary import
 maps only aggregate coverage counts from an operator-prepared sanitized file;
-the pruned query-info import maps only allowlisted facts and remains outside
-browser/report collection. Compact
+the pruned query-info import maps only allowlisted facts and can feed only the
+explicit Trino Beta Recent/One Query ID lanes or raw-free local artifacts. Compact
 diagnosis consumes only already raw-free direct boundary JSON excluding local
 metadata summary boundaries or a selected sample boundary from a package export,
-and the isolated page renders only sanitized diagnosis fields; both
-remain outside Details/trusted reports, optimizer behavior, live Recent scans,
-and live Query ID diagnosis.
+and the isolated page plus Recent/One Query ID beta lanes render only sanitized
+diagnosis fields; all remain outside Details/trusted reports, optimizer
+behavior, Running scans, metadata collection, query-history crawling, SQL
+execution, and production Query ID support.
 
 Use this with [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
 [trino-live-collection-design.md](trino-live-collection-design.md),
 [trino-test-cluster-evidence-checklist.md](trino-test-cluster-evidence-checklist.md),
-and [trino-evidence-package-templates.md](trino-evidence-package-templates.md).
+[trino-evidence-package-templates.md](trino-evidence-package-templates.md), and
+[trino-beta-ui-readiness.md](../trino-beta-ui-readiness.md) for the local UI
+beta show-readiness gate.
 
 ## Release Positioning
 
@@ -75,8 +86,10 @@ Allowed wording:
   metadata source-contract checking, bounded local metadata summary import, and
   one-query pruned coordinator query-info probing/import, dev-only
   package-to-boundary evidence handoff audit, dev-only one-query handoff and
-  handoff-suite readiness over raw-free handoff artifacts, and does not add
-  live Trino coordinator collection or web diagnosis."
+  handoff-suite readiness over raw-free handoff artifacts, plus local web Trino
+  Beta retained-list Recent and One Query ID diagnosis, and does not add Trino
+  Running scans, query-history crawling, metadata collection, Details/trusted
+  reports, optimizer behavior, or SQL execution."
 - "The event-source contract check validates source type, auth reference,
   schema, bounds, and redaction policy before the HTTP archive reader can
   contact an operator archive."
@@ -229,7 +242,7 @@ For a release demo, show the path in this order:
    with source granularity, evidence readiness, verification scope, and required
    audit gates, and does not ingest raw Trino
    payloads, copy input summaries or string metric values, claim root causes,
-   submit SQL, run live Recent scans, collect live Query ID diagnosis, or add
+   submit SQL, run live Recent scans, collect production Query ID support, or add
    Details/trusted report or optimizer output. The same accepted direct
    boundary, or the package boundary export plus a sample index, may be pasted
    into the isolated local `/trino/compact-diagnosis` page, which must not echo
@@ -405,7 +418,7 @@ For a release demo, show the path in this order:
    shape, Query ID shape, safe `trino_version_family`, bounds, and
    redaction/storage policy, then prints no URL or Query ID. It does not contact
    Trino, issue `/v1/query`, fetch
-   query-info JSON, submit SQL, collect live Query ID diagnosis, or add
+   query-info JSON, submit SQL, collect production Query ID support, or add
    browser/report output.
 
 12. Optionally show metadata source-contract checking:
@@ -467,8 +480,8 @@ For a release demo, show the path in this order:
    operator-managed `Authorization` header line, and prints no auth header
    path/value, URL, Query ID, raw QueryInfo, query text, session fields,
    endpoint URLs, object names, or raw payload content. It does not map
-   QueryInfo to facts, crawl query history, submit SQL, collect live Query ID
-   diagnosis, or add browser/report output.
+   QueryInfo to facts, crawl query history, submit SQL, collect production
+   Query ID support, or add browser/report output.
 
 15. Optionally show local pruned QueryInfo fact import for an operator-prepared
     compact sanitized JSON file:
@@ -529,7 +542,7 @@ For a release demo, show the path in this order:
    source contract and stored compact diagnosis artifact are checked against the
    deterministic boundary-derived diagnosis without printing actual
    source-version values or artifact paths.
-   It does not crawl query history, submit SQL, collect live Query ID diagnosis,
+   It does not crawl query history, submit SQL, collect production Query ID support,
    or add browser/report output.
 
 17. Optionally use the dev-only one-query live handoff wrapper for the same
@@ -601,7 +614,7 @@ For a release demo, show the path in this order:
    written boundary/diagnosis artifacts and writes
    `trino_product_surface_boundary_audit_v1` raw-free machine evidence without
    printing the summary path. It does not crawl query history, submit SQL,
-   collect live Query ID diagnosis, or add browser/report output.
+   collect production Query ID support, or add browser/report output.
 
 18. For more than one retained one-query handoff result, build a local
     `trino_one_query_handoff_suite_v1` manifest whose entries reference each
@@ -643,10 +656,17 @@ For a release demo, show the path in this order:
    output/input overlap, unsafe
    absolute/parent/current-directory/backslash references, and duplicate
    boundary/diagnosis/readiness-summary/handoff-summary/product-surface-summary
-   references including path aliases, and
-   prints only aggregate counts and the relative-reference mode without paths or
-   filenames. The
-   manifest is local handoff metadata, not a committed artifact. The audit
+   references including path aliases. It still allows one shared smoke summary
+   across entries, but rejects any smoke summary artifact that overlaps a
+   boundary, diagnosis, readiness-summary, handoff-summary, or product-surface
+   summary artifact. The strict executed-smoke gate requires every smoke check
+   to finish with the known `ok` status and the retained smoke summary to keep
+   statement-count/check-count consistency, known safe error categories,
+   internally consistent planned/executed counters, explicit `not_written`
+   redaction assertions, and dev-only/no-product-support limitations. The
+   builder prints only aggregate counts and the relative-reference mode without
+   paths or filenames. The manifest is local handoff metadata, not a committed
+   artifact. The audit
    prints only aggregate counts and safe issue categories, can require every
    manifest entry to include a matching `trino_compact_readiness_summary_v1`
    artifact and a matching `trino_one_query_handoff_summary_v1` artifact from
@@ -663,7 +683,7 @@ For a release demo, show the path in this order:
    readiness evidence with safe issue categories.
    Neither output includes coordinator URLs, Query IDs, auth headers, raw
    QueryInfo, local paths, or filenames. It does not fetch additional queries,
-   crawl query history, submit SQL, collect live Query ID diagnosis, or add
+   crawl query history, submit SQL, collect production Query ID support, or add
    browser/report output.
 
 19. Before any product-surface promotion decision, run the dev-only
@@ -682,21 +702,25 @@ For a release demo, show the path in this order:
 
    This checks deterministic compact diagnosis artifacts, or every
    boundary/diagnosis entry in the handoff-suite manifest, pins
-   `live_known_query_diagnosis=not_wired`, verifies the allowed Trino web/CLI
-   registry is still limited to compact preview surfaces, verifies the retained
+   `live_known_query_diagnosis=one_query_pruned_query_info_beta` and
+   `live_recent_scan=retained_query_list_beta`, verifies the allowed Trino web
+   registry is still limited to compact preview surfaces plus the local Recent
+   and One Query ID beta surfaces and that Trino CLI stays preview/dev-only,
+   verifies the retained
    `diagnostic_lane` stays `preview_only` with deterministic source
    granularity, evidence readiness, verification scope, supported-attention
    count, fact-state counts, and required audit gates, writes only
    `trino_product_surface_boundary_audit_v1` raw-free machine evidence, and
-   makes no support claim. Manifest mode requires every entry to reference a
+   makes no production support claim. Manifest mode requires every entry to reference a
    compact diagnosis artifact, validates retained per-entry product-surface
    summaries when present, and prints no manifest or artifact paths. The
    product-surface summary output must differ from the manifest and every
    referenced boundary, diagnosis, smoke-summary, readiness-summary,
    handoff-summary, or product-surface-summary artifact.
-   A passing audit means the retained artifacts respect the current
-   no-product-surface boundary; it does not make Trino a Details/trusted-report,
-   optimizer, Recent, metadata, or live Query ID diagnosis workflow.
+   A passing audit means the retained artifacts respect the current beta-only
+   product-surface boundary; it does not make Trino a Details/trusted-report,
+   optimizer, Recent, metadata, query-history, SQL execution, or production
+   Query ID workflow.
 
 ## Release Gates
 
@@ -722,7 +746,7 @@ Before a release may describe Trino as private preview:
   summary drift checks, retained handoff summaries treated as protected input
   artifacts, checked `diagnostic_lane` source granularity, evidence readiness,
   verification scope, supported-attention count, fact-state counts, and
-  `live_known_query_diagnosis=not_wired`;
+  `live_known_query_diagnosis=one_query_pruned_query_info_beta`;
   aggregate metadata-summary boundaries must be rejected as coverage evidence,
   not product-surface diagnosis artifacts.
 - Before any broader Trino support-surface decision, run
@@ -782,11 +806,13 @@ Before a release may describe Trino as private preview:
   support-gap audit coverage for source-type registry and engine fact
   promotion policy, and local
   compact diagnosis over raw-free direct boundary JSON excluding metadata
-  summary boundaries or selected package sample boundaries, and the isolated
-  local compact-diagnosis page over the same already raw-free inputs.
-- No live Trino engine selector, Details/trusted report path, optimizer
-  behavior, metadata collector, query-history reader, live support claim, or
-  browser workflow beyond the isolated compact-diagnosis page is added.
+  summary boundaries or selected package sample boundaries, the isolated local
+  compact-diagnosis page over the same already raw-free inputs, and the local
+  web Trino Beta retained-list Recent and One Query ID lanes.
+- No production Trino engine selector, Details/trusted report path, optimizer
+  behavior, metadata collector, query-history reader, production support claim,
+  or browser workflow beyond the isolated compact-diagnosis page and
+  Recent/One Query ID beta lanes is added.
 - No raw Trino payloads, local paths, cluster identifiers, query identifiers,
   users, hostnames, object names, credentials, stack traces, connector
   internals, or artifact filenames are committed or shown in trusted reports.

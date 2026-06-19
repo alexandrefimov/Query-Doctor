@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-15
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -103,6 +103,17 @@ Current support is intentionally narrow:
   scans, Running scans, and one explicit Known Query ID. They do not provide
   Cloudera Manager events; optional Prometheus runtime metrics can be collected
   only when explicitly configured.
+- Direct Impala Recent and Running scans inherit upstream coordinator query-log
+  retention. Impala defaults that log to `--query_log_size=200` entries plus a
+  byte cap, so deeper direct history is an Impala daemon configuration choice on
+  every coordinator, not a Query Doctor discovery guarantee. Very large
+  coordinator query logs can make the daemon Web UI query-list endpoint slower
+  to render or serialize.
+- Deeper direct Impala history has three possible source families with separate
+  contracts: larger coordinator query-log retention through the existing daemon
+  endpoints, future operator-managed profile-log directory ingestion, and
+  future bounded external history indexes such as Loki or OpenSearch. Only the
+  first family is current product behavior.
 - Direct Impala profile collection keeps text profile endpoints as the default
   compatibility path. Optional JSON profile probing, `/profile_docs` counter
   stability probing, and `/admission?json` aggregate context degrade safely to
@@ -122,6 +133,12 @@ Current support is intentionally narrow:
 - Future upstream Impala profile JSON/parser/redactor compatibility must map
   into the same Python-owned fact and raw-free browser/report boundary before it
   becomes product behavior.
+- Future direct Impala profile-log or external-history ingestion, if added,
+  must be an explicit operator-managed source with allowlisted local/mounted
+  roots or source-contract labels, bounded file counts, record counts, byte
+  reads, and time windows, safe freshness controls, raw-free indexing, and no
+  browser-triggered remote shell, pod exec, pod copy, arbitrary path traversal,
+  arbitrary log-search DSL, or credential entry.
 - Future live multi-engine support must enter through an engine fact contract
   with real fixtures and safety tests, not through placeholder adapters.
 - The engine fact contract currently supports an Impala analyzer projection,

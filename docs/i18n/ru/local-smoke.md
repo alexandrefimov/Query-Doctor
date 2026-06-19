@@ -239,6 +239,13 @@ hosts, Prometheus URL и Kerberos service names только в ignored local co
 - Prometheus runtime metrics опциональны, bounded, allowlisted и пишутся только
   как normalized runtime context.
 
+Daemon query-list history у direct Impala маленькая и может быстро заполниться
+metadata/validation statement-ами (`SET`, `SHOW`). Если endpoint уже на
+retained-log лимите, большой Search depth не вернет более старые entries. Для
+metadata-path проверки используйте свежий table-backed `SELECT` и сразу
+запускайте Known Query ID smoke; за load balancer или ingress настраивайте
+explicit daemon profile hosts, когда они доступны.
+
 Для current-upstream Impala follow-up используйте канонический английский
 runbook в [local-smoke.md](../../local-smoke.md). Public docs должны оставаться
 generic: local cluster selector, connectivity command, real endpoints,

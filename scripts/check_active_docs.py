@@ -35,6 +35,7 @@ ACTIVE_DOCS = (
     "docs/impala-profile-counter-caveats.md",
     "docs/engine-expansion-plan.md",
     "docs/engine-support-gap-matrix.md",
+    "docs/trino-beta-ui-readiness.md",
     "docs/query-optimizer-contract.md",
     "docs/roadmap.md",
     "docs/customer-readiness-priorities.md",

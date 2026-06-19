@@ -1,6 +1,6 @@
 # Trino private preview release path
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-16
 
 Язык: [English](../../trino-private-preview-release.md) | Русский
 
@@ -10,12 +10,15 @@ live product support.
 
 ## Статус
 
-Это не live collector, не live engine selector, не Details/trusted-report
+Это не live collector, не production engine selector, не Details/trusted-report
 surface, не optimizer workflow и не разрешение выполнять user SQL через Query
-Doctor. Единственная Trino browser surface - isolated local
-`/trino/compact-diagnosis` page для already raw-free direct boundary JSON
-excluding local metadata summary boundaries или selected sample boundary из
-package boundary export.
+Doctor. Trino browser surfaces - isolated local `/trino/compact-diagnosis` page
+для already raw-free direct boundary JSON excluding local metadata summary
+boundaries или selected sample boundary из package boundary export, плюс local
+Trino Beta retained-list Recent lane over one bounded retained pruned
+coordinator query-list read and selected pruned QueryInfo reads, плюс local
+Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo read,
+both with the same raw-free compact diagnosis.
 Production triage остается Apache Impala. Trino support ограничен sanitized
 offline evidence package import, bounded local event-store import, bounded
 HTTP event archive import, bounded HTTP query-detail archive import, bounded
@@ -29,20 +32,30 @@ raw-free compact artifacts, dev-only one-query handoff and handoff-suite
 readiness over raw-free handoff artifacts, dev-only support-gap audit coverage
 for source-type registry и engine fact promotion policy, local compact
 diagnosis over raw-free direct boundary JSON excluding local metadata summary
-boundaries или selected package sample boundaries и isolated local
-`/trino/compact-diagnosis` page over the same already raw-free inputs.
+boundaries или selected package sample boundaries, isolated local
+`/trino/compact-diagnosis` page over the same already raw-free inputs, local web
+Trino Beta retained-list Recent lane over one bounded retained pruned
+coordinator query-list read and selected pruned QueryInfo reads, и local web
+Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo read,
+both with the same raw-free compact diagnosis.
 Отдельный event-source contract check остается source gate для event archive
 readers, coordinator query-info target check остается dry-run gate, а pruned
 coordinator query-info probe остается probe-only; metadata source-contract check
 остается dry-run relation/column allowlist gate; local metadata summary import
 мапит только aggregate coverage counts из operator-prepared sanitized file;
-pruned query-info import мапит только allowlisted facts и не становится
-browser/report collection.
+pruned query-info import мапит только allowlisted facts и может feed-ить только
+explicit Trino Beta Recent/One Query ID lanes или raw-free local artifacts.
 Compact diagnosis читает только уже raw-free direct boundary JSON excluding
 local metadata summary boundaries или selected sample boundary из package export;
-isolated page рендерит только sanitized diagnosis fields. Оба остаются вне
-Details/trusted reports, optimizer behavior, live Recent scans и live Query ID
-diagnosis.
+isolated page и Recent/One Query ID beta lanes рендерят только sanitized
+diagnosis fields. Они остаются вне Details/trusted reports, optimizer behavior,
+Running scans, metadata collection, query-history crawling, SQL execution и
+production Query ID support.
+
+Для local UI beta show-readiness gate используйте
+[trino-beta-ui-readiness.md](../../../trino-beta-ui-readiness.md); он фиксирует
+showable Recent and One Query ID beta surfaces, required UI behavior, blocked claims,
+release gates и screenshot-refresh boundary без расширения Trino support.
 
 Trino можно называть private preview только если есть безопасные сигналы:
 
@@ -595,8 +608,16 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
    reject-ит output/input overlap, unsafe
    absolute/parent/current-directory/backslash references и duplicate
    boundary/diagnosis/readiness-summary/handoff-summary/product-surface-summary
-   references including path aliases, и печатает только aggregate counts и
-   relative-reference mode без paths или filenames. Manifest остается
+   references including path aliases. Он still allows one shared smoke summary
+   across entries, но rejects any smoke summary artifact that overlaps a
+   boundary, diagnosis, readiness-summary, handoff-summary, or product-surface
+   summary artifact. Strict executed-smoke gate требует, чтобы every smoke
+   check имел known `ok` status, а retained smoke summary сохранял
+   statement-count/check-count consistency, known safe error categories,
+   internally consistent planned/executed counters, explicit `not_written`
+   redaction assertions и dev-only/no-product-support limitations. Builder
+   печатает только aggregate counts и relative-reference mode без paths или
+   filenames. Manifest остается
    local handoff metadata, а не committed artifact. Audit печатает только
    aggregate counts и safe issue categories, может требовать matching
    `trino_compact_readiness_summary_v1` artifact из one-query wrapper для
@@ -634,22 +655,25 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
 
    Он проверяет deterministic compact diagnosis artifacts или каждую
    boundary/diagnosis entry из handoff-suite manifest, pin-ит
-   `live_known_query_diagnosis=not_wired`, валидирует, что allowed Trino web/CLI
-   registry остается ограничен compact preview surfaces, проверяет, что
+   `live_known_query_diagnosis=one_query_pruned_query_info_beta` и
+   `live_recent_scan=retained_query_list_beta`, валидирует, что allowed Trino
+   web registry остается ограничен compact preview surfaces plus the local
+   Recent and One Query ID beta surfaces и что Trino CLI stays preview/dev-only, проверяет, что
    retained `diagnostic_lane` остается `preview_only` с deterministic source
    granularity, evidence readiness, verification scope, supported-attention
    count, fact-state counts и required audit gates, пишет только
    `trino_product_surface_boundary_audit_v1` raw-free machine evidence и не
-   делает support claim. Manifest mode требует compact diagnosis artifact для
+   делает production support claim. Manifest mode требует compact diagnosis artifact для
    каждой entry, валидирует retained per-entry product-surface summaries when
    present и не печатает manifest или artifact paths.
    Product-surface summary output должен отличаться от manifest и каждого
    referenced boundary, diagnosis, smoke-summary, readiness-summary,
    handoff-summary или product-surface-summary artifact.
    Passing audit
-   означает, что retained artifacts соблюдают текущий no-product-surface
-   boundary; он не делает Trino Details/trusted-report, optimizer, Recent,
-   metadata или live Query ID diagnosis workflow.
+   означает, что retained artifacts соблюдают текущий beta-only
+   product-surface boundary; он не делает Trino Details/trusted-report,
+   optimizer, Recent, metadata, query-history, SQL execution или production
+   Query ID workflow.
 
 ## Release gates
 
@@ -671,7 +695,7 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
   summary drift checks, retained handoff summaries treated as protected input
   artifacts, checked `diagnostic_lane` source granularity, evidence readiness,
   verification scope, supported-attention count, fact-state counts и
-  `live_known_query_diagnosis=not_wired`;
+  `live_known_query_diagnosis=one_query_pruned_query_info_beta`;
   aggregate metadata-summary boundaries
   должны reject-иться как coverage evidence, а не product-surface diagnosis
   artifacts.
@@ -722,8 +746,9 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
   compact artifacts, dev-only one-query handoff and handoff-suite readiness
   over raw-free handoff artifacts, local compact
   diagnosis over raw-free direct boundary JSON excluding metadata summary
-  boundaries или selected package sample boundaries и isolated local
-  compact-diagnosis page over the same already raw-free inputs.
+  boundaries или selected package sample boundaries, isolated local
+  compact-diagnosis page over the same already raw-free inputs и local web
+  Trino Beta One Query ID lane.
 - Перед любым broader Trino support-surface decision запускайте
   `python3 scripts/audit_trino_support_gap_matrix.py --summary-json
   <raw-free-trino-support-gap-summary-json>`, чтобы registered Trino fact
@@ -731,9 +756,10 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
   coverage, neutral `no_*` gaps, blocked product adapter flags и
   `trino_support_gap_matrix_audit_v1` evidence оставались согласованы с
   support-gap matrix.
-- Не добавлены live Trino engine selector, Details/trusted report path,
-  optimizer behavior, metadata collector, query-history reader, live support
-  claim или browser workflow beyond the isolated compact-diagnosis page.
+- Не добавлены production Trino engine selector, Details/trusted report path,
+  optimizer behavior, metadata collector, query-history reader, production
+  support claim или browser workflow beyond the isolated compact-diagnosis page
+  and Recent/One Query ID beta lanes.
 
 ## Что остается после private preview
 

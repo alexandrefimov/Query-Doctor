@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-17
 
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
@@ -40,9 +40,14 @@ implementation boundaries.
   facts must degrade to `unknown`, `not_observed`, or an explicit safe
   limitation. Do not backfill fake metrics, counters, lifecycle evidence, or
   events across engines.
-- Trino fixture facts and Spark compact facts remain below product support
-  unless separate support gates add real collection contracts, metadata
-  allowlists, browser/report safety tests, and support-gap closure. See
+- Trino fixture facts and Spark compact facts remain below production support.
+  The Trino product beta exceptions are local web retained-list Recent over one
+  bounded retained pruned coordinator query-list read plus selected pruned
+  coordinator QueryInfo reads, and one explicit local web Query ID over bounded
+  pruned coordinator QueryInfo. Both render raw-free compact diagnosis. They do
+  not enable Running, query-history crawling, metadata collection,
+  Details/trusted reports, optimizer behavior, Query Doctor-generated Trino
+  SQL, SQL execution, or production support. See
   [engine-support-gap-matrix.md](engine-support-gap-matrix.md) for current
   status.
 
@@ -201,6 +206,13 @@ contents, or real production profile text.
   Known Query ID may generate the deterministic Python report as part of its
   explicit analysis submit job. LLM report and Query LLM optimizer generation
   remain explicit for one selected case.
+- Trino Beta Recent uses one bounded retained pruned coordinator query-list
+  read plus bounded selected pruned coordinator QueryInfo reads from local
+  config; Trino Beta One Query ID uses one bounded pruned coordinator
+  QueryInfo read from local config. Both render only raw-free compact diagnosis.
+  They must not render coordinator URLs, auth header paths or values, raw
+  QueryInfo, raw query-list payloads, raw SQL, local source-contract paths,
+  Details/trusted reports, optimizer output, or generated Trino SQL.
 - Details-page Query LLM optimizer may render a validated read-only SQL draft
   only for an explicit selected-case optimizer action when the current web
   source policy is `source_visibility=owner_raw`. The default

@@ -13,7 +13,8 @@ report surface, optimizer path, broad live collector, raw event-log path, Spark
 job-execution path, or public Spark support claim. Trino remains limited to
 sanitized offline/local evidence import,
 source-contract/target checks, and one-query pruned coordinator query-info
-probing/import; it is not live Trino product support.
+probing/import, plus local web Trino Beta One Query ID; it is not production
+Trino product support.
 
 Use this document with
 [../engine-expansion-plan.md](../engine-expansion-plan.md),

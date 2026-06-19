@@ -22,7 +22,7 @@ def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
 
     for required in (
         "not a live Trino coordinator collector",
-        "live engine selector",
+        "production engine selector",
         "Details/trusted-report surface",
         "optimizer workflow",
         "permission to execute Trino SQL",
@@ -74,12 +74,12 @@ def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
         "stored diagnosis artifact is checked against the deterministic boundary-derived diagnosis",
         "performs no network read, accepts only top-level state and allowlisted queryStats fields",
         "rejects raw QueryInfo fields such as Query IDs, query text, session fields, endpoint URLs, object names, and stage/task detail",
-        "does not map QueryInfo to facts, submit SQL, crawl query history, collect live Query ID diagnosis",
+        "does not map QueryInfo to facts, submit SQL, crawl query history, collect production Query ID support",
         "may contain only one operator-managed Authorization header line",
         "prints no auth header path or value",
         "output boundary path",
         "maps only allowlisted lifecycle, timing, row/byte, memory/spill, blocked, and task-count fields",
-        "claim root causes, submit SQL, crawl query history, collect live Query ID diagnosis, or add browser/report or optimizer output",
+        "claim root causes, submit SQL, crawl query history, collect production Query ID support, or add browser/report output outside the explicit Trino Beta Recent/One Query ID lanes or optimizer output",
         "reads only one already raw-free engine_fact_boundary_v1 payload",
         "rejects non-Trino boundaries and local metadata summary boundaries",
         "Planning-heavy timing can become an attention area only from supported planning_time_ms and trino_elapsed_time_ms facts; high peak memory can become an attention area only from supported one-query trino_peak_memory_bytes at or above 100 GiB; queue or resource-group delay can become an attention area only from supported one-query trino_queued_time_ms, trino_resource_group_queue_time_ms, or trino_blocked_signal facts; task retry/failure attention can become an attention area only from supported one-query trino_retried_task_count or trino_failed_task_count facts; and connector-metric attention can become an attention area only from supported one-query trino_connector_metric_signal facts.",

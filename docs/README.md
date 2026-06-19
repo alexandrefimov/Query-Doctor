@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-16
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -64,6 +64,9 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [customer-readiness-priorities.md](customer-readiness-priorities.md):
   near-term Impala-first customer-readiness backlog for demo, config, docs,
   UI, and validation focus.
+- [trino-beta-ui-readiness.md](trino-beta-ui-readiness.md): acceptance gate for
+  showing the local Trino Beta retained-list Recent and One Query ID UI surfaces
+  without broadening the support claim.
 - [repository-simplification-audit.md](repository-simplification-audit.md):
   conservative docs, scripts, and tests classification before cleanup.
 
@@ -112,8 +115,8 @@ release work. Do not read every reference doc before small tasks.
   query-detail/query-list/statement-stats plus pruned QueryInfo import
   contract.
 - [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md):
-  release-facing private-preview path for closed test-cluster Trino evidence,
-  without live Trino product workflows.
+  release-facing private-preview path for closed test-cluster Trino evidence
+  plus the local Trino Beta One Query ID product surface.
 
 ## Document Status Index
 
@@ -142,6 +145,7 @@ Status legend:
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
 | [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | active | Current engine support status, normalized fact coverage, fixture/research boundaries, and second-engine support gaps. |
 | [customer-readiness-priorities.md](customer-readiness-priorities.md) | active | Near-term Impala-first customer-readiness backlog for demo, config, docs, UI, and validation focus. |
+| [trino-beta-ui-readiness.md](trino-beta-ui-readiness.md) | active | Acceptance gate for showing the local Trino Beta retained-list Recent and One Query ID UI surfaces without broadening the support claim. |
 | [repository-simplification-audit.md](repository-simplification-audit.md) | active | Conservative docs, scripts, and tests classification before cleanup. |
 | [research/upstream-watch.md](research/upstream-watch.md) | reference | Upstream and adjacent-market watch loop for diagnostic signals across the query stack. |
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
@@ -149,7 +153,7 @@ Status legend:
 | [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md) | reference | Future Trino live-collection source, auth, bounds, redaction, and fixture gates. |
 | [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md) | reference | Safe operator-export checklist for the first sanitized Trino test-cluster evidence handoff. |
 | [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest, redaction-note, local event-store, operator HTTP archive, local query-detail, local query-list, statement-stats, pruned query-info probe/import, and compact diagnosis templates for sanitized Trino intake. |
-| [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Closed test-cluster private-preview release path for Trino without public engine support. |
+| [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Closed test-cluster private-preview release path for Trino plus the local Recent and One Query ID beta boundary. |
 | [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md) | reference | Bounded compact Spark History Server/event-log fact-model, compact-only adapter, compact-intake, and isolated collect-or-paste compact-diagnosis page contract without public engine support. |
 | [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md) | reference | Safe operator-reviewed compact Spark History Server/event-log evidence checklist for promotion-gate work without live Spark support claims. |
 | [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "source": "query-doctor-demo synthetic demo pack",
-  "demo_pack_version": "0.5.0",
+  "demo_pack_version": "0.8.0",
   "demo_pack_command": "query-doctor-demo --out \"$DEMO_PACK\" --overwrite",
   "web_command": "QUERY_DOCTOR_ACTION_OUTCOMES_PATH=\"$DEMO_PACK/action_outcomes.jsonl\" query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary \"$DEMO_PACK/batch_summary.json\"",
   "screenshots": [

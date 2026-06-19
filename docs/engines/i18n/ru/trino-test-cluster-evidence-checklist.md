@@ -137,7 +137,12 @@ support claim.
 и проверяйте их командой
 `python3 scripts/audit_trino_evidence_handoff.py --handoff-suite-manifest <trino-evidence-handoff-suite.json> --require-min-inputs <minimum-retained-package-count> --summary-json <raw-free-trino-evidence-handoff-suite-summary.json>`.
 Suite path повторно открывает только retained raw-free summaries, не packages и
-не raw exports.
+не raw exports. Builder и audit требуют safe relative `*.json` references,
+reject-ят output/input overlap, missing или duplicate summary artifacts, unsafe
+references, drifted manifest schema/redaction/no-support metadata и raw-like
+retained summary content, а suite summary остается aggregate-only machine
+evidence с fixed count, diagnostic-lane, issue-category и requirement sections,
+не artifact references или paths.
 Если handoff содержит compact sanitized local event-listener store без package
 wrapper, запускайте
 `query-doctor-trino-event-store-import --redaction-reviewed <sanitized-event-store.json-or-ndjson>`.

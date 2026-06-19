@@ -67,6 +67,9 @@ def test_trino_test_cluster_evidence_checklist_requires_sanitized_operator_expor
         "requires explicit redaction-review and sentinel-test confirmations",
         "writes output only after validation accepts the package",
         "must not echo raw payloads, raw values, or the input path",
+        "The suite path reopens only retained raw-free summaries, not packages or raw exports.",
+        "reject output/input overlap, missing or duplicate summary artifacts, unsafe references, drifted manifest schema/redaction/no-support metadata, and raw-like retained summary content",
+        "suite summary remains aggregate-only machine evidence with fixed count, diagnostic-lane, issue-category, and requirement sections, not artifact references or paths",
         "Keep raw exports outside the repository and outside prompts.",
     ):
         assert required in text

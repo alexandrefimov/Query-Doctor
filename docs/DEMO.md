@@ -1,6 +1,6 @@
 # Query Doctor Local UI Demo
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-06-19
 
 Language: English | [Russian](i18n/ru/DEMO.md)
 
@@ -27,7 +27,10 @@ query-doctor-web --public-demo
 This generates a fresh synthetic pack under the system temp directory, points
 the web UI at that pack, forces Python-only mode, ignores default local config
 and owner-source environment hints, rejects explicitly loaded external source
-settings, and blocks all POST routes.
+settings, and blocks all POST routes. The pack includes static read-only Trino
+Beta demo cases rendered from raw-free compact diagnosis facts; those cases do
+not contact a Trino coordinator and do not enable Details, trusted reports,
+optimizer behavior, generated SQL, or SQL execution.
 
 If you need to inspect or reuse the generated pack manually, generate a local
 synthetic pack and open it in the web UI:
@@ -53,7 +56,8 @@ outside the repository. Useful demo filters:
 
 The synthetic pack does not call Cloudera Manager, Impala, Prometheus, a local
 generation backend, or the network. It contains only generated demo data and is
-not performance evidence.
+not performance evidence. The Trino Beta demo section is a bounded compact
+diagnosis demo, not production Trino support.
 
 ## Read-Only Public Demo
 

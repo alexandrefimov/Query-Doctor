@@ -1,6 +1,6 @@
 # Справочник конфигурации
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-19
 
 Язык: [English](../../configuration.md) | Русский
 
@@ -37,10 +37,24 @@ environment variables или local env files, описанных в
 - direct Impala profile/query source settings, including optional JSON profile
   probing with text fallback and optional safe `/profile_docs` counter-stability
   probing;
+- direct Impala Recent и Running scans видят только историю, которую еще
+  отдают daemon query-list endpoints координаторов. В upstream Impala
+  coordinator query log по умолчанию хранит `--query_log_size=200` записей и
+  дополнительно ограничен `--query_log_size_in_bytes`; для большей истории
+  нужно осознанно увеличить эти настройки на каждом coordinator-impalad;
+- более глубокая direct Impala history может развиваться тремя отдельными
+  путями: увеличить retention query log на coordinator web endpoints, добавить
+  будущий read-only ingestion profile-log directories с allowlisted
+  mount/local paths, либо добавить future bounded external history source вроде
+  Loki или OpenSearch через operator-owned source contract; последние два пути
+  не являются текущей product support;
 - optional direct Impala `/admission?json` aggregate context collection;
 - `cluster_type` для различения `cm` и direct `impala` clusters;
 - общий language mode: `language` = `en` или `ru`; он показывается в web
-  header и управляет Help, Details static UI и новыми trusted reports;
+  header и управляет Help, deterministic body-текстом в Recent Finding,
+  длинными deterministic recommendation / explanation body-текстами в Details,
+  а также новыми trusted reports; Details headings, compact Recent labels,
+  table headers, badges и технические термины остаются английскими;
 - `recent_window_minutes` задает bounded Search depth для CLI Recent и web
   Finished-query scans across Cloudera Manager и direct Impala sources; большие
   окна могут увеличивать нагрузку на Cloudera Manager, direct Impala UI
@@ -66,6 +80,52 @@ environment variables или local env files, описанных в
 - `owner_raw_source_enabled`; kill switch для isolated owner-only original
   source page/link. Он не должен тихо менять collection owner filters или
   optimizer policy.
+
+## Trino Beta Recent и One Query ID
+
+Trino Beta в web UI является local lane для bounded retained-list Recent
+diagnosis и одного explicit Query ID. Recent читает один bounded pruned
+coordinator query list после принятого local query-list source contract, затем
+читает bounded pruned coordinator QueryInfo payloads через QueryInfo source
+contract для выбранных retained rows. One Query ID использует тот же bounded
+QueryInfo path для одного explicit ID. Оба пути строят raw-free boundary in
+memory и показывают deterministic compact diagnosis. Это не production Trino
+support.
+
+Минимальные non-secret JSON fields:
+
+```json
+{
+  "engine": "trino",
+  "trino_beta_enabled": true,
+  "trino_coordinator_url": "https://trino-coordinator.example.com",
+  "trino_query_info_source_contract": "./trino-query-info-contract.json",
+  "trino_query_list_source_contract": "./trino-query-list-contract.json",
+  "trino_kerberos_principal": "sa@EXAMPLE.COM",
+  "trino_krb5_ccname": "FILE:/tmp/krb5cc_query_doctor_trino"
+}
+```
+
+Auth mode выбирается локально: либо `trino_auth_header_file` указывает на local
+file с одним operator-managed `Authorization:` header line, либо
+`trino_kerberos_principal` включает Kerberos/SPNEGO GET path. Не комбинируйте
+эти режимы. Для SPNEGO можно добавить `trino_kerberos_service_name` (default
+`HTTP`), `trino_krb5_ccname`, `trino_krb5_config`, `trino_kerberos_ca_cert` и
+local test-cluster override `trino_kerberos_insecure_tls`. Secret values и
+ticket contents не хранятся в JSON. Для auth-header mode используйте JSON key
+`"trino_auth_header_file"` вместо Kerberos keys.
+Cluster entries могут иметь отдельные Trino Beta keys для разных local targets.
+Web UI помечает configured sources как `Trino Beta Recent + One Query ID`,
+`Trino Beta Recent` или `Trino Beta One Query ID`. Diagnose Engine control
+сужает Source cluster selector до Impala-capable sources или Trino Beta-ready
+sources до выбора workflow. Web UI не показывает coordinator URLs, auth
+reference paths/values, local source-contract paths, raw QueryInfo, raw
+query-list payloads или raw SQL, и fail-closed для stale или forged Trino
+submits до analysis или async job creation.
+
+Trino Beta не включает Running scans, query-history crawling, metadata
+collection, Details/trusted reports, optimizer behavior, generated Trino SQL
+или SQL execution.
 
 ## Owner Raw и D3 viewer header
 

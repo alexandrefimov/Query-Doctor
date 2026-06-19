@@ -1,6 +1,6 @@
 # Synthetic Demo Mode
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-06-19
 
 Language: English | [Russian](i18n/ru/demo-mode.md)
 
@@ -14,11 +14,12 @@ query-doctor-web --public-demo
 ```
 
 `--public-demo` generates a fresh synthetic pack under the system temp
-directory, points the web UI at its `batch_summary.json` and synthetic
-`action_outcomes.jsonl`, forces Python-only mode, ignores default local config
-discovery and owner-source environment hints, rejects explicitly loaded CM,
-direct Impala, Prometheus, metadata, or owner-source settings, and blocks every
-POST route with a safe read-only response.
+directory, points the web UI at its `batch_summary.json`, synthetic
+`action_outcomes.jsonl`, and static `trino_demo.json`, forces Python-only mode,
+ignores default local config discovery and owner-source environment hints,
+rejects explicitly loaded CM, direct Impala, Prometheus, metadata, Trino Beta,
+or owner-source settings, and blocks every POST route with a safe read-only
+response.
 
 If you need to inspect or reuse the generated pack manually, generate it under
 a dedicated `query-doctor-*` temp directory. The generator refuses repository
@@ -61,6 +62,12 @@ for:
 - direct Impala profile compatibility with missing optional endpoints treated
   as non-fatal
 - local synthetic action outcomes for recommendation follow-up history
+
+The generated pack also includes two read-only Trino Beta demo cases in
+`trino_demo.json`. The UI renders them from static raw-free compact diagnosis
+facts, without contacting a Trino coordinator, without metadata collection, and
+without enabling Details pages, trusted reports, optimizer behavior, generated
+SQL, or SQL execution.
 
 The generated local synthetic action outcomes include enough comparable rerun
 records with measured results to satisfy the default synthetic outcome gate for

@@ -1,6 +1,6 @@
 # Query Doctor: русская навигация
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-16
 
 Язык: [English](../../README.md) | Русский
 
@@ -60,7 +60,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
 - [Public documentation boundary](public-documentation-boundary.md): что
   можно коммитить в public docs, а что должно оставаться в local exclude-only notes.
 - [Матрица поддержки движков](engine-support-gap-matrix.md): что реализовано
-  для Impala и почему Trino и Spark остаются ниже product support.
+  для Impala, где проходят Trino retained-list Recent и One Query ID beta
+  boundaries и почему Spark остается ниже product support.
 - [Ограничения счетчиков профиля Impala](impala-profile-counter-caveats.md):
   будущий контракт стабильности счетчиков, диалекты профилей и правила
   доказательств.
@@ -126,8 +127,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
   query-detail, local query-list/statement-stats, pruned query-info и compact
   diagnosis формат для sanitized handoff.
 - [Trino private preview release path](../../engines/i18n/ru/trino-private-preview-release.md):
-  как показывать Trino как closed test-cluster private preview без public
-  support claim.
+  как показывать Trino как closed test-cluster private preview и local Trino
+  Beta Recent + One Query ID boundary без public support claim.
 - [Архитектурный spike Spark](../../engines/i18n/ru/spark-architecture-spike.md):
   bounded compact research контракт для Spark History Server/event-log fact
   model, compact-only adapter и isolated compact-diagnosis page без public
@@ -226,8 +227,11 @@ Markdown-документ. Для длинных документов это н�
   validator markers, если они являются частью интерфейса или тестового
   контракта.
 
-Текущий global config `language` управляет Help, Details static UI copy и
-новыми trusted reports. Английский остается default; русский режим использует
-тот же language-specific report contract, prompt, normalizer и validator tests.
+Текущий global config `language` управляет Help, deterministic body-текстом в
+Recent Finding, длинными deterministic recommendation / explanation
+body-текстами Details и новыми trusted reports. Details headings, compact
+Recent labels, table headers, badges и технические термины остаются английскими.
+Английский остается default; русский режим использует тот же language-specific
+report contract, prompt, normalizer и validator tests.
 Смена языка остается общей для web copy и новых reports, а не отдельным
 переключателем только prompt текста.

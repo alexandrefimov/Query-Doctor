@@ -1,6 +1,6 @@
 # Engine Preview And Research Docs
 
-Last reviewed: 2026-06-11
+Last reviewed: 2026-06-16
 
 Query Doctor production triage support remains Apache Impala. Trino and Spark
 materials in this directory are bounded raw-free preview, compact-intake, and
@@ -21,11 +21,14 @@ behavior, or generated SQL behavior for any second engine.
   import, source-contract checks, pruned coordinator probe/import, and compact
   diagnosis.
 - [trino-live-collection-design.md](trino-live-collection-design.md): future
-  live-collection design constraints; not current product support.
+  live-collection design constraints; current product support is limited to the
+  local Trino Beta retained-list Recent and One Query ID surfaces named in the
+  support matrix.
 - [trino-test-cluster-evidence-checklist.md](trino-test-cluster-evidence-checklist.md):
   safe operator-reviewed evidence handoff checklist.
 - [trino-private-preview-release.md](trino-private-preview-release.md): closed
-  private-preview release path without public Trino engine support.
+  private-preview release path plus the local Recent and One Query ID beta
+  boundary.
 
 ## Spark
 
@@ -38,6 +41,9 @@ behavior, or generated SQL behavior for any second engine.
 ## Boundary Summary
 
 - Do not treat Trino or Spark preview commands as production Recent scans.
+- Do not broaden Trino beyond the local retained-list Recent and One Query ID
+  beta surfaces without the support matrix, product boundary audit, and
+  browser/report safety tests.
 - Do not add Details, trusted report, optimizer, metadata, SQL execution, broad
   live collection, or support claims for a second engine without explicit
   implementation, fixtures, raw-free browser/report tests, and support-gap

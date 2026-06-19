@@ -48,12 +48,13 @@ details, local output paths и планы следующей сессии дол
 - Current-upstream Impala smoke details должны оставаться generic в public docs:
   local cluster selectors, endpoints, generated cases, query IDs и output paths
   хранятся только в ignored local notes или config.
-- Trino остается bounded private-preview groundwork, не production Recent,
-  Details/trusted report, optimizer, metadata или live Query ID support. Spark
-  compact History Server intake остается experimental research для explicit
-  application через CLI или isolated direct compact page; это не Recent
-  workflow, Details/trusted report surface, optimizer behavior, engine
-  registration или support claim.
+- Trino остается bounded private-preview groundwork плюс local web Trino Beta
+  retained-list Recent и One Query ID lanes, не production Recent,
+  Details/trusted report, optimizer, metadata, SQL execution или broader live
+  Query ID support. Spark compact History Server intake остается experimental
+  research для explicit application через CLI или isolated direct compact page;
+  это не Recent workflow, Details/trusted report surface, optimizer behavior,
+  engine registration или support claim.
 - Trino preview source-kind ownership теперь находится в
   `query_doctor/trino/source_contract_registry.py`. Новые Trino source types
   должны обновлять этот registry, focused tests и

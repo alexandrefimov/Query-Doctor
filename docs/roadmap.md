@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -32,6 +32,11 @@ is not a historical audit log. For engineering risks, use
   and one explicit Known Query ID through daemon query-list/profile endpoints.
   It does not provide Cloudera Manager events. It can optionally collect
   bounded Prometheus runtime metrics when explicitly configured.
+- Direct Impala deeper-history options are distinct source families: increasing
+  coordinator query-log retention on Impala daemons, future operator-managed
+  read-only profile-log directory ingestion, or future bounded external history
+  sources such as Loki or OpenSearch. Only the daemon query-list/profile endpoint
+  path is current support.
 - Current-upstream Apache Impala compatibility is being validated through the
   direct Impala path. A 2026-05-28 Kubernetes smoke against an Apache Impala
   `5.0.0-SNAPSHOT` build collected JSON daemon profiles and `/profile_docs`
