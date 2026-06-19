@@ -20,12 +20,16 @@ if str(ROOT) not in sys.path:
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError  # noqa: E402
 from query_doctor.cli.commands import COMMAND_SPECS  # noqa: E402
-from query_doctor.cli.trino_diagnosis_output import same_path  # noqa: E402
 from query_doctor.report.safety_validation import (  # noqa: E402
     contains_raw_sql_like_text,
     validate_report_internal_fingerprints,
 )
 from query_doctor.safety.browser_display import redact_browser_display_text  # noqa: E402
+from query_doctor.safety.handoff_artifacts import (  # noqa: E402
+    ascii_json_artifact_text,
+    output_overlaps_inputs_error,
+    write_ascii_json_artifact,
+)
 from query_doctor.trino.diagnosis import (  # noqa: E402
     TRINO_COMPACT_DIAGNOSIS_SCHEMA_VERSION,
     TRINO_COMPACT_DIAGNOSIS_SUPPORT_STATUS,
@@ -41,6 +45,7 @@ from query_doctor.trino.diagnosis import (  # noqa: E402
     select_trino_boundary_payload,
 )
 from query_doctor.web.preview_surfaces import PREVIEW_WEB_POST_PATHS  # noqa: E402
+from query_doctor.web.preview_surfaces import PREVIEW_WEB_SURFACES  # noqa: E402
 from query_doctor.web.routes import STATIC_POST_PATHS  # noqa: E402
 from scripts.audit_trino_compact_readiness import (  # noqa: E402
     EXPECTED_DIAGNOSIS_BOUNDARY,
@@ -54,7 +59,7 @@ from scripts.audit_trino_compact_readiness import (  # noqa: E402
 
 
 TRINO_PRODUCT_SURFACE_AUDIT_SUMMARY_KIND = "trino_product_surface_boundary_audit_v1"
-TRINO_PRODUCT_SURFACE_STATUS = "not_promoted"
+TRINO_PRODUCT_SURFACE_STATUS = "recent_and_query_id_beta"
 EXPECTED_DIAGNOSTIC_LANE_GATES = {
     "readiness_audit": "required_for_handoff",
     "surface_audit": "required_before_wiring",
@@ -114,8 +119,72 @@ PRODUCT_SURFACE_SOURCE_ROOTS = (
     ROOT / "query_doctor" / "report",
     ROOT / "query_doctor" / "optimizer",
 )
+TRINO_PUBLIC_CLAIM_PATHS = (
+    ROOT / "README.md",
+    ROOT / "README.ru.md",
+    ROOT / "docs" / "changelog.md",
+    ROOT / "docs" / "README.md",
+    ROOT / "docs" / "i18n" / "ru" / "README.md",
+    ROOT / "docs" / "configuration.md",
+    ROOT / "docs" / "i18n" / "ru" / "configuration.md",
+    ROOT / "docs" / "engines" / "README.md",
+    ROOT / "docs" / "engine-support-gap-matrix.md",
+    ROOT / "docs" / "i18n" / "ru" / "engine-support-gap-matrix.md",
+    ROOT / "docs" / "safety-contract.md",
+    ROOT / "docs" / "i18n" / "ru" / "safety-contract.md",
+    ROOT / "docs" / "release-checklist.md",
+    ROOT / "docs" / "i18n" / "ru" / "release-checklist.md",
+    ROOT / "docs" / "public-release-readiness.md",
+    ROOT / "docs" / "i18n" / "ru" / "public-release-readiness.md",
+    ROOT / "docs" / "trino-beta-ui-readiness.md",
+    ROOT / "query_doctor" / "web" / "ui" / "help.py",
+    ROOT / "query_doctor" / "web" / "ui" / "recent_scan_form.py",
+    ROOT / "query_doctor" / "web" / "ui" / "trino.py",
+    ROOT / "query_doctor" / "web" / "ui" / "trino_demo.py",
+)
+REQUIRED_TRINO_PUBLIC_CLAIM_FRAGMENTS = (
+    "Trino Beta",
+    "Recent",
+    "One Query ID",
+    "Running",
+    "query-history crawling",
+    "metadata collection",
+    "Details",
+    "trusted reports",
+    "optimizer",
+    "SQL execution",
+)
+FORBIDDEN_TRINO_PUBLIC_CLAIM_FRAGMENTS = (
+    "Trino production support is enabled",
+    "Trino production support is available",
+    "production Trino support is enabled",
+    "production Trino support is available",
+    "Trino Recent scan is supported",
+    "Trino Running scan is supported",
+    "Trino query-history crawling is supported",
+    "Trino metadata collection is supported",
+    "Trino Details are supported",
+    "Trino trusted report is supported",
+    "Trino optimizer is supported",
+    "generated Trino SQL is supported",
+    "Trino SQL execution is supported",
+    "does not enable Recent/Running",
+    "production Trino support доступен",
+    "production Trino support включен",
+    "Trino Recent scan поддерживается",
+    "Trino Running scan поддерживается",
+    "Trino query-history crawling поддерживается",
+    "Trino metadata collection поддерживается",
+    "Trino Details поддерживаются",
+    "Trino trusted reports поддерживаются",
+    "Trino optimizer поддерживается",
+    "generated Trino SQL поддерживается",
+    "Trino SQL execution поддерживается",
+)
 TRINO_PRODUCT_SOURCE_EXEMPT_MODULES = frozenset(
     {
+        "query_doctor.web.trino_beta_query",
+        "query_doctor.web.trino_recent",
         "query_doctor.web.trino_compact",
         "query_doctor.web.ui.trino",
     }
@@ -132,6 +201,45 @@ ALLOWED_TRINO_PRODUCT_SOURCE_IMPORT_PREFIXES = {
             "query_doctor.web.ui.trino",
         }
     ),
+    "query_doctor.web.batch_scan": frozenset(
+        {
+            "query_doctor.web.trino_beta_query",
+            "query_doctor.web.trino_recent",
+        }
+    ),
+    "query_doctor.web.batch_jobs": frozenset(
+        {
+            "query_doctor.web.trino_beta_query",
+            "query_doctor.web.trino_recent",
+            "query_doctor.web.ui.trino",
+        }
+    ),
+    "query_doctor.web.jobs": frozenset(
+        {
+            "query_doctor.web.ui.trino",
+        }
+    ),
+    "query_doctor.web.query_analysis": frozenset(
+        {
+            "query_doctor.web.trino_beta_query",
+        }
+    ),
+    "query_doctor.web.request_handlers": frozenset(
+        {
+            "query_doctor.web.trino_beta_query",
+        }
+    ),
+    "query_doctor.web.ui.pages": frozenset(
+        {
+            "query_doctor.web.ui.trino",
+            "query_doctor.web.ui.trino_demo",
+        }
+    ),
+    "query_doctor.web.ui.trino_demo": frozenset(
+        {
+            "query_doctor.web.ui.trino",
+        }
+    ),
 }
 FORBIDDEN_TRINO_SOURCE_IMPORT_PREFIXES = (
     "query_doctor.trino",
@@ -140,6 +248,39 @@ FORBIDDEN_TRINO_SOURCE_IMPORT_PREFIXES = (
     "query_doctor.web.preview_surfaces",
     "query_doctor.web.trino_compact",
     "query_doctor.web.ui.trino",
+)
+FORBIDDEN_TRINO_BETA_QUERY_IMPORT_PREFIXES = (
+    "query_doctor.cli",
+    "query_doctor.optimizer",
+    "query_doctor.report",
+    "query_doctor.web.batch_case_actions",
+    "query_doctor.web.command_builders",
+    "query_doctor.web.specific_query_actions",
+    "query_doctor.web.subprocesses",
+    "subprocess",
+)
+FORBIDDEN_TRINO_BETA_UI_IMPORT_PREFIXES = (
+    "query_doctor.optimizer",
+    "query_doctor.report",
+    "query_doctor.web.batch_case_actions",
+    "query_doctor.web.report_actions",
+    "query_doctor.web.specific_query",
+    "query_doctor.web.specific_query_actions",
+    "query_doctor.web.specific_query_pages",
+    "query_doctor.web.ui.report",
+    "query_doctor.web.ui.specific_query",
+)
+FORBIDDEN_TRINO_BETA_UI_SURFACE_SNIPPETS = (
+    'href="/query/details/',
+    'href="/optimizer"',
+    'action="/query/details/',
+    "data-case-action",
+    "Python Report",
+    "Run report",
+    "Run optimizer",
+    "LLM narrative",
+    "Query LLM optimizer",
+    "start_specific_query",
 )
 
 
@@ -164,6 +305,8 @@ class TrinoProductSurfaceAuditResult:
     input_count: int = 0
     diagnosis_artifact_checked_count: int = 0
     product_source_module_checked_count: int = 0
+    product_source_allowed_trino_import_count: int = 0
+    public_claim_surface_checked_count: int = 0
     attention_area_count: int = 0
     supported_attention_area_count: int = 0
     diagnostic_lane_checked_count: int = 0
@@ -278,6 +421,9 @@ def main(argv: Iterable[str] | None = None) -> int:
     result = TrinoProductSurfaceAuditResult()
     audit_registry_surface(result)
     audit_product_surface_source_boundaries(result)
+    audit_trino_beta_query_module_boundary(result)
+    audit_trino_beta_ui_modules_boundary(result)
+    audit_public_trino_claim_boundaries(result)
     if not args.registry_only:
         if args.handoff_suite_manifest is not None:
             if args.sample_index is not None:
@@ -309,12 +455,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(
         "Boundary: "
         f"product_surface={TRINO_PRODUCT_SURFACE_STATUS}, "
-        "support_claim=not_claimed, "
+        "support_claim=beta_only, "
         "details_trusted_report_surface=not_wired, "
         "trusted_reports=not_wired, "
         "optimizer_behavior=not_wired, "
-        "live_recent_scan=not_wired, "
-        "live_known_query_diagnosis=not_wired, "
+        "live_recent_scan=retained_query_list_beta, "
+        "live_known_query_diagnosis=one_query_pruned_query_info_beta, "
         "trino_sql_execution=not_performed"
     )
     print(
@@ -326,14 +472,16 @@ def main(argv: Iterable[str] | None = None) -> int:
     )
     print(
         "Registry: "
-        "trino_product_routes=blocked, "
+        "trino_product_routes=recent_and_query_id_beta, "
         "trino_product_cli=blocked, "
         "details_report_source_imports=blocked, "
-        "allowed_surface=compact_diagnosis_only"
+        "allowed_surface=compact_diagnosis_recent_beta_and_query_id_beta"
     )
     print(
         "Source boundaries: "
         f"product_source_modules_checked={result.product_source_module_checked_count}, "
+        f"allowed_trino_preview_imports={result.product_source_allowed_trino_import_count}, "
+        f"public_claim_surfaces_checked={result.public_claim_surface_checked_count}, "
         "paths=not_printed"
     )
     print_issues(result, limit=args.limit)
@@ -840,6 +988,27 @@ def audit_registry_surface(result: TrinoProductSurfaceAuditResult) -> None:
             "missing_trino_post_route",
             "Trino compact diagnosis is missing from the isolated preview route registry.",
         )
+    trino_preview_surfaces = tuple(
+        surface for surface in PREVIEW_WEB_SURFACES if surface.engine.lower() == "trino"
+    )
+    unexpected_preview_surfaces = tuple(
+        surface
+        for surface in trino_preview_surfaces
+        if surface.surface_id != "compact_diagnosis"
+        or surface.route_path not in ALLOWED_TRINO_POST_PATHS
+    )
+    if unexpected_preview_surfaces:
+        add_issue(
+            result,
+            "unexpected_trino_preview_surface",
+            "Trino preview registry contains a surface outside isolated compact diagnosis.",
+        )
+    if any(surface.product_surface_allowed for surface in trino_preview_surfaces):
+        add_issue(
+            result,
+            "trino_preview_surface_product_allowed",
+            "Trino preview registry must not mark isolated preview routes as product surfaces.",
+        )
     trino_roles = {
         role
         for role, spec in COMMAND_SPECS.items()
@@ -899,6 +1068,165 @@ def audit_product_surface_source_boundaries(
                     "outside the isolated compact surface."
                 ),
             )
+        result.product_source_allowed_trino_import_count += sum(
+            1
+            for imported_name in imported_names
+            if is_allowed_trino_product_source_import_root(target.module_name, imported_name)
+        )
+
+
+def audit_trino_beta_query_module_boundary(
+    result: TrinoProductSurfaceAuditResult,
+    *,
+    target: ProductSurfaceSourceTarget | None = None,
+) -> None:
+    if target is None:
+        target = ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_beta_query",
+            path=ROOT / "query_doctor" / "web" / "trino_beta_query.py",
+        )
+    try:
+        source = target.path.read_text(encoding="utf-8")
+    except OSError:
+        add_issue(
+            result,
+            "trino_beta_query_module_unreadable",
+            "The Trino Beta Query ID module could not be inspected.",
+        )
+        return
+    try:
+        imported_names = source_import_names(target.module_name, source)
+    except SyntaxError:
+        add_issue(
+            result,
+            "trino_beta_query_module_unparseable",
+            "The Trino Beta Query ID module could not be parsed for imports.",
+        )
+        return
+    if any(
+        is_forbidden_import_prefix(imported_name, FORBIDDEN_TRINO_BETA_QUERY_IMPORT_PREFIXES)
+        for imported_name in imported_names
+    ):
+        add_issue(
+            result,
+            "trino_beta_query_forbidden_import",
+            (
+                "The Trino Beta Query ID module imports report, optimizer, CLI, "
+                "subprocess, or product action dependencies."
+            ),
+        )
+
+
+def audit_trino_beta_ui_modules_boundary(result: TrinoProductSurfaceAuditResult) -> None:
+    for target in trino_beta_ui_module_targets():
+        audit_trino_beta_ui_module_boundary(result, target=target)
+
+
+def trino_beta_ui_module_targets() -> tuple[ProductSurfaceSourceTarget, ...]:
+    return (
+        ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.ui.trino",
+            path=ROOT / "query_doctor" / "web" / "ui" / "trino.py",
+        ),
+        ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.ui.trino_demo",
+            path=ROOT / "query_doctor" / "web" / "ui" / "trino_demo.py",
+        ),
+    )
+
+
+def audit_trino_beta_ui_module_boundary(
+    result: TrinoProductSurfaceAuditResult,
+    *,
+    target: ProductSurfaceSourceTarget | None = None,
+) -> None:
+    if target is None:
+        target = ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.ui.trino",
+            path=ROOT / "query_doctor" / "web" / "ui" / "trino.py",
+        )
+    try:
+        source = target.path.read_text(encoding="utf-8")
+    except OSError:
+        add_issue(
+            result,
+            "trino_beta_ui_module_unreadable",
+            "The Trino Beta UI module could not be inspected.",
+        )
+        return
+    try:
+        imported_names = source_import_names(target.module_name, source)
+    except SyntaxError:
+        add_issue(
+            result,
+            "trino_beta_ui_module_unparseable",
+            "The Trino Beta UI module could not be parsed for imports.",
+        )
+        return
+    if any(
+        is_forbidden_import_prefix(imported_name, FORBIDDEN_TRINO_BETA_UI_IMPORT_PREFIXES)
+        for imported_name in imported_names
+    ):
+        add_issue(
+            result,
+            "trino_beta_ui_forbidden_import",
+            (
+                "The Trino Beta UI module imports Details, report, optimizer, "
+                "or product action rendering dependencies."
+            ),
+        )
+    if any(snippet in source for snippet in FORBIDDEN_TRINO_BETA_UI_SURFACE_SNIPPETS):
+        add_issue(
+            result,
+            "trino_beta_ui_forbidden_surface_marker",
+            (
+                "The Trino Beta UI module contains Details, report, optimizer, "
+                "or selected-case action surface markers."
+            ),
+        )
+
+
+def audit_public_trino_claim_boundaries(
+    result: TrinoProductSurfaceAuditResult,
+    *,
+    paths: Iterable[Path] | None = None,
+) -> None:
+    claim_paths = tuple(paths) if paths is not None else TRINO_PUBLIC_CLAIM_PATHS
+    aggregate_text_parts: list[str] = []
+    for path in claim_paths:
+        result.public_claim_surface_checked_count += 1
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            add_issue(
+                result,
+                "trino_public_claim_surface_unreadable",
+                "One public Trino claim surface could not be inspected.",
+            )
+            continue
+        normalized = " ".join(text.split())
+        aggregate_text_parts.append(normalized)
+        if any(fragment in normalized for fragment in FORBIDDEN_TRINO_PUBLIC_CLAIM_FRAGMENTS):
+            add_issue(
+                result,
+                "trino_public_forbidden_support_claim",
+                "A public Trino claim surface contains wording shaped like unsupported product support.",
+            )
+    aggregate_text = " ".join(aggregate_text_parts)
+    missing_required = [
+        fragment
+        for fragment in REQUIRED_TRINO_PUBLIC_CLAIM_FRAGMENTS
+        if fragment not in aggregate_text
+    ]
+    if missing_required:
+        add_issue(
+            result,
+            "trino_public_claim_boundary_incomplete",
+            (
+                "The public Trino claim surfaces are missing required beta-only "
+                "or blocked-surface wording."
+            ),
+        )
 
 
 def product_surface_source_targets() -> tuple[ProductSurfaceSourceTarget, ...]:
@@ -960,10 +1288,27 @@ def is_forbidden_trino_product_source_import(
     )
 
 
+def is_allowed_trino_product_source_import_root(
+    module_name: str,
+    imported_name: str,
+) -> bool:
+    if not is_trino_preview_import(imported_name):
+        return False
+    if module_name in TRINO_PRODUCT_SOURCE_EXEMPT_MODULES:
+        return False
+    return imported_name in ALLOWED_TRINO_PRODUCT_SOURCE_IMPORT_PREFIXES.get(module_name, ())
+
+
 def is_trino_preview_import(imported_name: str) -> bool:
     return any(
         imported_name == prefix or imported_name.startswith(prefix)
         for prefix in FORBIDDEN_TRINO_SOURCE_IMPORT_PREFIXES
+    )
+
+
+def is_forbidden_import_prefix(imported_name: str, prefixes: Iterable[str]) -> bool:
+    return any(
+        imported_name == prefix or imported_name.startswith(f"{prefix}.") for prefix in prefixes
     )
 
 
@@ -978,18 +1323,22 @@ def product_surface_summary_payload(
         "mode": "trino_product_surface_boundary",
         "boundary": {
             "product_surface": TRINO_PRODUCT_SURFACE_STATUS,
-            "support_claim": "not_claimed",
+            "support_claim": "beta_only",
             "details_trusted_report_surface": "not_wired",
             "trusted_reports": "not_wired",
             "optimizer_behavior": "not_wired",
-            "live_recent_scan": "not_wired",
-            "live_known_query_diagnosis": "not_wired",
+            "live_recent_scan": "retained_query_list_beta",
+            "live_known_query_diagnosis": "one_query_pruned_query_info_beta",
             "trino_sql_execution": "not_performed",
         },
         "counts": {
             "boundary_json_count": result.input_count,
             "diagnosis_json_checked_count": result.diagnosis_artifact_checked_count,
             "product_source_modules_checked_count": result.product_source_module_checked_count,
+            "product_source_allowed_trino_import_count": (
+                result.product_source_allowed_trino_import_count
+            ),
+            "public_claim_surface_checked_count": result.public_claim_surface_checked_count,
             "attention_area_count": result.attention_area_count,
             "supported_attention_area_count": result.supported_attention_area_count,
             "diagnostic_lane_checked_count": result.diagnostic_lane_checked_count,
@@ -1002,7 +1351,7 @@ def product_surface_summary_payload(
             "fact_states": counter_payload(result.diagnostic_lane_fact_state_counts),
         },
         "registry": {
-            "trino_product_routes": "blocked",
+            "trino_product_routes": "recent_and_query_id_beta",
             "trino_product_cli": "blocked",
             "details_report_source_imports": "blocked",
             "allowed_web_post_paths": sorted(ALLOWED_TRINO_POST_PATHS),
@@ -1088,7 +1437,7 @@ def expected_diagnostic_lane_verification_scope(
 def write_summary_or_reject(path: Path | None, payload: Mapping[str, Any]) -> bool:
     if path is None:
         return True
-    text = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+    text = ascii_json_artifact_text(payload)
     if raw_text_issue_categories(text):
         print(
             "[trino-product-surface-audit] rejected: summary JSON would contain raw-like text",
@@ -1096,8 +1445,7 @@ def write_summary_or_reject(path: Path | None, payload: Mapping[str, Any]) -> bo
         )
         return False
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        write_ascii_json_artifact(path, payload)
     except OSError:
         print(
             "[trino-product-surface-audit] rejected: summary JSON could not be written",
@@ -1111,11 +1459,11 @@ def reject_summary_output_overlap(
     summary_json: Path | None,
     inputs: Iterable[Path | None],
 ) -> str | None:
-    if summary_json is not None and any(
-        path is not None and same_path(summary_json, path) for path in inputs
-    ):
-        return "summary JSON output must differ from every input artifact"
-    return None
+    return output_overlaps_inputs_error(
+        summary_json,
+        inputs,
+        message="summary JSON output must differ from every input artifact",
+    )
 
 
 def add_issue(

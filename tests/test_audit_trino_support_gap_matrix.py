@@ -29,8 +29,11 @@ def test_trino_support_gap_matrix_audit_pins_preview_gaps() -> None:
     assert result.status_counts["product_blocked"] == 2
     assert result.required_fact_count > 0
     assert result.required_limitation_fact_count == 5
+    assert result.beta_product_capability_count == 2
     assert result.preview_adapter_flag_count == len(audit.PREVIEW_ADAPTER_FLAGS)
-    assert result.blocked_product_adapter_flag_count == len(audit.PRODUCT_ADAPTER_FLAGS)
+    assert result.blocked_product_adapter_flag_count == len(audit.PRODUCT_ADAPTER_FLAGS) - len(
+        audit.TRINO_ALLOWED_BETA_PRODUCT_ADAPTER_FLAGS
+    )
     assert result.source_registry_entry_count == len(trino_source_contract_registry())
     assert result.promotion_policy_entry_count == len(engine_fact_promotion_policy_entries())
     assert result.fact_scope_counts["engine_specific"] > 0
@@ -44,8 +47,9 @@ def test_trino_support_gap_matrix_audit_pins_preview_gaps() -> None:
     assert summary["summary_kind"] == audit.TRINO_SUPPORT_GAP_SUMMARY_KIND
     assert summary["support_gap_status"] == audit.TRINO_SUPPORT_GAP_STATUS
     assert summary["production_support"] == "not_claimed"
-    assert summary["product_surfaces"] == "blocked"
+    assert summary["product_surfaces"] == "recent_and_query_id_beta"
     assert summary["trino_sql_execution"] == "not_performed"
+    assert summary["beta_product_capability_count"] == 2
     assert summary["source_registry_entry_count"] == len(trino_source_contract_registry())
     assert summary["source_registry_surface_counts"]["local_compact_import"] == 4
     assert summary["promotion_policy_entry_count"] == len(engine_fact_promotion_policy_entries())
@@ -62,7 +66,7 @@ def test_trino_support_gap_matrix_cli_writes_path_free_summary(tmp_path: Path, c
     assert rc == 0
     assert "Trino support-gap matrix audit: ok" in captured.out
     assert "production_support=not_claimed" in captured.out
-    assert "product_surfaces=blocked" in captured.out
+    assert "product_surfaces=recent_and_query_id_beta" in captured.out
     assert "Source registry: entries=" in captured.out
     assert "Promotion policy: entries=" in captured.out
     assert "Issues: none" in captured.out
@@ -81,7 +85,7 @@ def test_trino_support_gap_matrix_cli_writes_path_free_summary(tmp_path: Path, c
 def test_trino_support_gap_matrix_rejects_accidental_product_surface(monkeypatch) -> None:
     def fake_get_engine_adapter(engine_name: str):
         if engine_name == "trino":
-            return replace(TRINO_ADAPTER, supports_query_id_mode=True)
+            return replace(TRINO_ADAPTER, supports_metadata_collection=True)
         if engine_name == "impala":
             return IMPALA_ADAPTER
         raise AssertionError(engine_name)
@@ -94,6 +98,32 @@ def test_trino_support_gap_matrix_rejects_accidental_product_surface(monkeypatch
     assert result.issue_counts["trino_product_surface_enabled"] == 1
     assert any(
         family_id == "product_surfaces" and issue.category == "trino_product_surface_enabled"
+        for family_id, issue in result.issues
+    )
+
+
+def test_trino_support_gap_matrix_rejects_beta_capability_surface_drift(monkeypatch) -> None:
+    capabilities = tuple(audit.engine_capabilities("trino"))
+    patched = tuple(
+        replace(capability, route_path="/trino/live-query")
+        if capability.surface_id == "query_id_mode"
+        else capability
+        for capability in capabilities
+    )
+
+    monkeypatch.setattr(
+        audit,
+        "engine_capabilities",
+        lambda engine_name: patched if engine_name == "trino" else (),
+    )
+
+    result = audit.audit_trino_support_gap_matrix()
+
+    assert not result.ok
+    assert result.beta_product_capability_count == 2
+    assert result.issue_counts["trino_beta_capability_surface_drift"] == 1
+    assert any(
+        family_id == "product_surfaces" and issue.category == "trino_beta_capability_surface_drift"
         for family_id, issue in result.issues
     )
 

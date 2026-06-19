@@ -25,6 +25,7 @@ from query_doctor.analyzer.trino_evidence_package import (  # noqa: E402
 )
 from query_doctor.safety.handoff_artifacts import (  # noqa: E402
     ascii_json_artifact_text,
+    output_overlaps_inputs_error,
     path_overlaps_any,
     same_path,
     write_ascii_json_artifact,
@@ -976,9 +977,11 @@ def reject_summary_output_any_overlap(
     summary_json: Path | None,
     input_paths: Iterable[Path | None],
 ) -> str | None:
-    if path_overlaps_any(summary_json, input_paths):
-        return "summary JSON output must differ from every input artifact"
-    return None
+    return output_overlaps_inputs_error(
+        summary_json,
+        input_paths,
+        message="summary JSON output must differ from every input artifact",
+    )
 
 
 def write_handoff_summary_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -992,9 +995,11 @@ def write_handoff_summary_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def reject_summary_output_overlap(summary_json: Path | None, package_json: Path) -> str | None:
-    if path_overlaps_any(summary_json, (package_json,)):
-        return "summary JSON output must differ from the package input"
-    return None
+    return output_overlaps_inputs_error(
+        summary_json,
+        (package_json,),
+        message="summary JSON output must differ from the package input",
+    )
 
 
 def safe_label(value: Any) -> str:

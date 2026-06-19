@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
+from query_doctor.cli.trino_diagnosis_output import (
+    same_path,
+    write_trino_compact_diagnosis_out,
+)
 from query_doctor.trino.diagnosis import (
-    build_trino_compact_diagnosis_from_boundary,
     select_trino_boundary_payload,
 )
 
@@ -61,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         payload = select_trino_boundary_payload(
             read_boundary_payload(args.boundary_json), args.sample_index
         )
-        write_json(args.diagnosis_out, build_trino_compact_diagnosis_from_boundary(payload))
+        write_trino_compact_diagnosis_out(args.diagnosis_out, payload)
     except EngineFactContractError as exc:
         print(f"[Trino compact diagnosis] ERROR: {exc}", file=sys.stderr)
         return 3
@@ -91,24 +94,6 @@ def read_boundary_payload(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("boundary JSON input must be an object")
     return payload
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-    except OSError as exc:
-        raise OSError("could not write JSON") from exc
-
-
-def same_path(left: Path, right: Path) -> bool:
-    try:
-        return left.resolve() == right.resolve()
-    except OSError:
-        return left.absolute() == right.absolute()
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -504,6 +504,56 @@ CASE_SPECIFIC_TRINO_FACT_STATES = {
         "query_detail_import": "unknown",
         "source_contract": "unknown",
     },
+    "trino_query_info_pruned_zero_absence_fixture": {
+        "trino_elapsed_time_ms": "supported",
+        "trino_queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "trino_execution_time_ms": "supported",
+        "trino_cpu_time_ms": "supported",
+        "trino_wall_time_ms": "supported",
+        "trino_input_rows": "supported",
+        "trino_input_bytes": "supported",
+        "trino_output_rows": "supported",
+        "trino_output_bytes": "supported",
+        "trino_peak_memory_bytes": "supported",
+        "trino_spilled_bytes": "not_observed",
+        "trino_connector_metric_signal": "unknown",
+        "trino_stage_count": "unknown",
+        "trino_completed_split_count": "unknown",
+        "trino_blocked_signal": "not_observed",
+        "trino_stage_skew_candidate": "unknown",
+        "trino_task_count": "supported",
+        "trino_failed_task_count": "not_observed",
+        "trino_retried_task_count": "unknown",
+        "source_contract": "supported",
+        "trino_statement_execution": "not_observed",
+        "query_detail_fetch": "not_observed",
+    },
+    "trino_query_info_pruned_invalid_values_fixture": {
+        "trino_elapsed_time_ms": "unknown",
+        "trino_queued_time_ms": "unknown",
+        "planning_time_ms": "unknown",
+        "trino_execution_time_ms": "unknown",
+        "trino_cpu_time_ms": "unknown",
+        "trino_wall_time_ms": "unknown",
+        "trino_input_rows": "unknown",
+        "trino_input_bytes": "unknown",
+        "trino_output_rows": "unknown",
+        "trino_output_bytes": "unknown",
+        "trino_peak_memory_bytes": "unknown",
+        "trino_spilled_bytes": "unknown",
+        "trino_connector_metric_signal": "unknown",
+        "trino_stage_count": "unknown",
+        "trino_completed_split_count": "unknown",
+        "trino_blocked_signal": "unknown",
+        "trino_stage_skew_candidate": "unknown",
+        "trino_task_count": "unknown",
+        "trino_failed_task_count": "unknown",
+        "trino_retried_task_count": "unknown",
+        "source_contract": "supported",
+        "trino_statement_execution": "not_observed",
+        "query_detail_fetch": "not_observed",
+    },
 }
 EXPECTED_TRINO_LIFECYCLE_STATES = {
     "trino_statement_stats_fixture": "supported",
@@ -532,6 +582,8 @@ EXPECTED_TRINO_LIFECYCLE_STATES = {
     "trino_query_detail_task_failure_fixture": "supported",
     "trino_query_detail_missing_fields_fixture": "unknown",
     "trino_query_detail_unknown_source_contract_fixture": "unknown",
+    "trino_query_info_pruned_zero_absence_fixture": "supported",
+    "trino_query_info_pruned_invalid_values_fixture": "supported",
 }
 FORBIDDEN_TRINO_BOUNDARY_TOKENS = (
     "queryText",
@@ -579,8 +631,8 @@ def test_trino_readiness_fixtures_keep_minimum_fact_states_explicit(case):
     assert adapter.supports_coordinator_query_info_pruned_probe is True
     assert adapter.supports_coordinator_query_info_pruned_import is True
     assert adapter.supports_compact_diagnosis is True
-    assert adapter.supports_recent_scan is False
-    assert adapter.supports_query_id_mode is False
+    assert adapter.supports_recent_scan is True
+    assert adapter.supports_query_id_mode is True
     assert adapter.supports_metadata_collection is False
     assert adapter.supports_validated_reports is False
     assert case.expected_engine == "trino"
@@ -1206,10 +1258,10 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
 
     for phrase in (
         "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, plus bounded local statement-stats import and bounded local pruned QueryInfo import",
-        "Query Doctor also has raw-free event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing, one-query pruned coordinator fact import, local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local `/trino/compact-diagnosis` page over the same already raw-free inputs.",
+        "Query Doctor also has raw-free event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing, one-query pruned coordinator fact import, local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local `/trino/compact-diagnosis` page over the same already raw-free inputs. The product-facing Trino Beta surfaces are local web retained-list Recent diagnosis over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads, and local web One Query ID diagnosis over one bounded pruned coordinator QueryInfo read",
         "Minimum Raw-Free Intake Contract",
         "Consumers must not read raw Trino JSON directly.",
-        "only current browser exception is the isolated local `/trino/compact-diagnosis` page",
+        "current browser exceptions are the isolated local `/trino/compact-diagnosis` page and the local Trino Beta retained-list Recent/One Query ID lanes",
         "single-boundary Trino import commands may write the same diagnosis through `--diagnosis-out` after their accepted boundary is built",
         "excluding local metadata summary boundaries because aggregate `trino_metadata_*` facts are metadata-coverage evidence, not compact diagnosis inputs",
         "Planning-heavy compact diagnosis may be emitted only from supported `planning_time_ms` and `trino_elapsed_time_ms` facts",
@@ -1247,7 +1299,7 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "pruned coordinator query-info probing may issue only one bounded `GET /v1/query/{queryId}?pruned=true` request after the same accepted `coordinator_query_info` contract passes with `operator_managed_reference`",
         "must keep raw QueryInfo outside storage, summaries, prompts, reports, and normalized facts",
         "must not expose URL, Query ID, query text, session fields, endpoint URLs, object names, or raw payload content",
-        "It must not crawl query history, submit SQL, become live Query ID diagnosis, or expose browser/report output.",
+        "It must not crawl query history, submit SQL, become production Query ID support, or expose browser/report output outside the explicit Trino Beta Recent/One Query ID lanes.",
         "pruned coordinator query-info import may use the same one-query bounded request and source contract to emit a raw-free `EngineFactBundle`",
         "It may map only top-level lifecycle state and allowlisted `queryStats` fields",
         "accepted pruned coordinator query-info imports may support only lifecycle, elapsed, queued, planning, execution, CPU timing, processed/output row and byte counts, peak memory, spilled bytes, blocked signal, total task count, and failed task count",
@@ -1263,15 +1315,21 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "stored compact diagnosis artifact matches the deterministic boundary-derived diagnosis and stays raw-free",
         "`--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`",
         "dry-run smoke plan cannot satisfy the release-facing evidence gate",
+        "statement-count/check-count consistency",
+        "known safe error categories",
+        "internally consistent planned/executed counters",
+        "explicit `not_written` redaction assertions",
+        "dev-only/no-product-support limitations",
+        "must reject smoke summaries that overlap boundary, diagnosis",
         "non-boolean resource queued markers remain `unknown`",
         "those count fields must be non-negative integers",
         "Validation must walk nested objects and arrays",
         "non-finite numeric values are rejected before mapping",
         "negative timing, resource, split, stage-count, queue-time, or ratio values",
         "Unknown remains a valid result.",
-        "Trino remains limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, and event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing and one-query pruned coordinator fact import, plus local compact diagnosis over already raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries and the isolated local `/trino/compact-diagnosis` page, until the following are true:",
+        "Trino remains limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, and event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing and one-query pruned coordinator fact import, plus local compact diagnosis over already raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, the isolated local `/trino/compact-diagnosis` page, the local web retained-list Recent beta lane, and the local web One Query ID beta lane, until the following are true:",
         "One-query readiness checks distinguish query-specific boundaries from aggregate query-list and metadata-summary boundaries",
-        "Browser and trusted-report safety tests exist before any Trino facts render outside the isolated compact-diagnosis page.",
+        "Browser and trusted-report safety tests exist before any Trino facts render outside the isolated compact-diagnosis page or Recent/One Query ID beta lanes.",
     ):
         assert phrase in normalized_text
 

@@ -1,0 +1,21 @@
+{
+  "state": "RUNNING",
+  "queryStats": {
+    "elapsedTime": "not-a-duration",
+    "queuedTime": "-1ms",
+    "planningTime": "NaNms",
+    "executionTime": -1,
+    "totalCpuTime": true,
+    "wallTime": "2parsecs",
+    "processedInputPositions": -1,
+    "processedInputDataSize": "-1MB",
+    "outputPositions": "7",
+    "outputDataSize": "not-a-size",
+    "peakTotalMemoryReservation": -1,
+    "peakUserMemoryReservation": "bad-size",
+    "spilledDataSize": "-1B",
+    "fullyBlocked": "false",
+    "totalTasks": "4",
+    "failedTasks": -1
+  }
+}

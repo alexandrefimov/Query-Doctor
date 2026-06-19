@@ -25,26 +25,45 @@ from query_doctor.web.server_args import parse_args
 def quickstart_corpus_settings_without_default_config(args, cwd: Path):
     if (
         getattr(args, "config", None)
-        or not getattr(args, "corpus_dir", None)
-        or getattr(args, "batch_summary", None)
         or getattr(args, "public_demo", False)
+        or not getattr(args, "corpus_dir", None)
     ):
         return None
     settings = build_web_settings(args, cwd=cwd, ignore_default_config=True)
     runtime = prepare_corpus_summary_runtime(settings)
-    return None if runtime is None else runtime.settings
+    if runtime is not None:
+        return runtime.settings
+    return None
+
+
+def quickstart_readonly_settings_without_default_config(args, cwd: Path):
+    if (
+        getattr(args, "config", None)
+        or getattr(args, "public_demo", False)
+        or not (getattr(args, "corpus_dir", None) or getattr(args, "batch_summary", None))
+    ):
+        return None
+    corpus_settings = quickstart_corpus_settings_without_default_config(args, cwd)
+    if corpus_settings is not None:
+        return corpus_settings
+    settings = build_web_settings(args, cwd=cwd, ignore_default_config=True)
+    if getattr(args, "batch_summary", None):
+        return settings
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         cwd = Path.cwd()
-        try:
-            settings = build_web_settings(args, cwd=cwd)
-        except cm_collector.ConfigError:
-            settings = quickstart_corpus_settings_without_default_config(args, cwd)
-            if settings is None:
-                raise
+        settings = quickstart_readonly_settings_without_default_config(args, cwd)
+        if settings is None:
+            try:
+                settings = build_web_settings(args, cwd=cwd)
+            except cm_collector.ConfigError:
+                settings = quickstart_readonly_settings_without_default_config(args, cwd)
+                if settings is None:
+                    raise
         public_demo_runtime = prepare_public_demo_runtime(settings)
         if public_demo_runtime is not None:
             settings = public_demo_runtime.settings

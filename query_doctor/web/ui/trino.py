@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import html
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.web.ui.errors import render_error_panel
 from query_doctor.web.ui.pages import render_page
+
+
+TRINO_DYNAMIC_ARTIFACT_NAME_RE = re.compile(r"\b[A-Za-z0-9_.-]+\.(?:json|ndjson|txt|log)\b")
 
 
 def render_trino_compact_page(
@@ -26,6 +31,207 @@ def render_trino_compact_page(
         active_nav="batch",
         show_run_panel=False,
         extra_sections=sections,
+    )
+
+
+def render_trino_query_analysis_result(result: Any) -> str:
+    query_id = html.escape(str(getattr(result, "query_id", "")))
+    diagnosis = getattr(result, "diagnosis", {}) or {}
+    return (
+        '<section class="panel batch-panel trino-beta-query-result" '
+        'aria-label="Trino Beta Query ID diagnosis">'
+        '<div class="batch-head"><div><h1>Trino Beta Query ID diagnosis</h1>'
+        "<p>One bounded pruned coordinator QueryInfo read, deterministic compact diagnosis, "
+        "and no Running scans, query-history crawling, metadata collection, "
+        "Details/trusted reports, optimizer behavior, generated SQL, or SQL execution.</p></div></div>"
+        '<div class="status-strip" aria-label="Trino Beta status">'
+        '<span class="status-item"><span class="dot"></span>Engine: '
+        '<span class="badge gray">Trino Beta</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Scope: '
+        '<span class="badge gray">one Query ID</span></span>'
+        "</div>"
+        f"{render_trino_beta_blocked_surfaces()}"
+        f'<div class="query-line"><span>Query:</span><code>{query_id}</code></div>'
+        f"{render_trino_beta_query_boundary_note()}"
+        "</section>"
+        f"{render_trino_compact_result(diagnosis)}"
+    )
+
+
+def render_trino_beta_blocked_surfaces() -> str:
+    return (
+        '<div class="status-strip trino-beta-blocked-surfaces" '
+        'aria-label="Trino Beta blocked surfaces">'
+        '<span class="status-item"><span class="dot gray"></span>Running: '
+        '<span class="badge gray">not available</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Query-history crawl: '
+        '<span class="badge gray">not performed</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Metadata: '
+        '<span class="badge gray">not collected</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Details/reports: '
+        '<span class="badge gray">not available</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Optimizer: '
+        '<span class="badge gray">not available</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Generated SQL: '
+        '<span class="badge gray">not generated</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>SQL execution: '
+        '<span class="badge gray">not performed</span></span>'
+        "</div>"
+    )
+
+
+def render_trino_beta_query_boundary_note() -> str:
+    return (
+        '<div class="source-locator-block trino-beta-boundary-note">'
+        '<span class="source-locator-heading">Beta boundary</span>'
+        "<p>"
+        "This result is the complete Trino Beta product output for the selected Query ID. "
+        "It does not create Running scans, a query-history crawl, metadata "
+        "collection, Details pages, trusted reports, optimizer recommendations, "
+        "generated SQL drafts, or SQL execution."
+        "</p>"
+        "</div>"
+    )
+
+
+def render_trino_recent_scan_result(result: Any) -> str:
+    rows = tuple(getattr(result, "rows", ()) or ())
+    warnings = tuple(getattr(result, "warnings", ()) or ())
+    cluster_key = text_value(getattr(result, "cluster_key", ""))
+    warning_html = "".join(
+        f"<li>{html.escape(text_value(warning))}</li>"
+        for warning in warnings
+        if text_value(warning)
+    )
+    if warning_html:
+        warning_html = (
+            '<details class="compact-details optimizer-reading-guide trino-limitations" open>'
+            "<summary>Beta limitations</summary>"
+            '<div class="compact-details-body">'
+            f'<ul class="optimizer-scope-list">{warning_html}</ul>'
+            "</div></details>"
+        )
+    row_html = "".join(render_trino_recent_scan_row(row, cluster_key=cluster_key) for row in rows)
+    if not row_html:
+        row_html = (
+            '<tr><td colspan="6">'
+            "No retained Trino Query IDs matched the selected bounded window and filters."
+            "</td></tr>"
+        )
+    records_seen = safe_int(getattr(result, "records_seen", 0))
+    records_selected = safe_int(getattr(result, "records_selected", 0))
+    records_diagnosed = safe_int(getattr(result, "records_diagnosed", 0))
+    query_bound = safe_int(getattr(result, "query_bound", 0))
+    return (
+        '<section class="panel batch-panel trino-beta-recent-result" '
+        'aria-label="Trino Beta Recent diagnosis">'
+        '<div class="batch-head"><div><h1>Trino Beta Recent diagnosis</h1>'
+        "<p>Bounded retained coordinator query list, selected Query IDs, and one pruned "
+        "QueryInfo compact diagnosis per selected query. Running scans, query-history crawling, "
+        "metadata collection, Details/trusted reports, optimizer behavior, generated SQL, and "
+        "SQL execution remain unavailable.</p></div></div>"
+        '<div class="status-strip" aria-label="Trino Beta Recent status">'
+        '<span class="status-item"><span class="dot"></span>Engine: '
+        '<span class="badge gray">Trino Beta</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Retained records: '
+        f"<strong>{records_seen}</strong></span>"
+        '<span class="status-item"><span class="dot gray"></span>Selected: '
+        f"<strong>{records_selected}</strong></span>"
+        '<span class="status-item"><span class="dot gray"></span>Diagnosed: '
+        f"<strong>{records_diagnosed}</strong></span>"
+        '<span class="status-item"><span class="dot gray"></span>Contract bound: '
+        f"<strong>{query_bound}</strong></span>"
+        "</div>"
+        f"{render_trino_beta_blocked_surfaces()}"
+        f"{warning_html}"
+        '<div class="batch-table-wrap">'
+        '<table class="batch-table trino-recent-table">'
+        "<thead><tr>"
+        "<th>Query ID</th><th>Status</th><th>Lifecycle</th><th>Coverage</th>"
+        "<th>Attention</th><th>Safe note</th>"
+        "</tr></thead>"
+        f"<tbody>{row_html}</tbody>"
+        "</table>"
+        "</div>"
+        f"{render_trino_recent_boundary_note()}"
+        "</section>"
+    )
+
+
+def render_trino_recent_scan_row(row: Any, *, cluster_key: str = "") -> str:
+    query_id_value = str(getattr(row, "query_id", ""))
+    status = safe_status_label(getattr(row, "status", "unknown"))
+    lifecycle = safe_status_label(getattr(row, "lifecycle", "unknown"))
+    coverage = safe_status_label(getattr(row, "parser_coverage", "unknown"))
+    attention_count = safe_int(getattr(row, "supported_attention_area_count", 0))
+    raw_areas = getattr(row, "attention_areas", ()) or ()
+    areas = [
+        label_from_id(area, fallback="Attention")
+        for area in raw_areas
+        if isinstance(area, str) and area
+    ][:3]
+    attention = ", ".join(areas) if areas else "No supported attention areas"
+    error = text_value(getattr(row, "error", ""))
+    note_html = (
+        render_trino_recent_row_error(row, error)
+        if error
+        else html.escape(f"{attention_count} supported area(s)")
+    )
+    return (
+        "<tr>"
+        f"<td>{render_trino_recent_query_id_action(query_id_value, cluster_key)}</td>"
+        f'<td><span class="badge {badge_for_state(status)}">{html.escape(status)}</span></td>'
+        f'<td><span class="badge gray">{html.escape(lifecycle)}</span></td>'
+        f'<td><span class="badge {badge_for_state(coverage)}">{html.escape(coverage)}</span></td>'
+        f"<td>{html.escape(attention)}</td>"
+        f"<td>{note_html}</td>"
+        "</tr>"
+    )
+
+
+def render_trino_recent_row_error(row: Any, error: str) -> str:
+    reason = text_value(getattr(row, "error_reason_code", ""))
+    next_step = text_value(getattr(row, "error_next_step", ""))
+    reason_html = f'<span class="badge amber">{html.escape(reason)}</span>' if reason else ""
+    next_step_html = f"<small>{html.escape(next_step)}</small>" if next_step else ""
+    return (
+        '<div class="trino-row-error">'
+        f"<strong>{html.escape(error)}</strong>"
+        f"{reason_html}"
+        f"{next_step_html}"
+        "</div>"
+    )
+
+
+def render_trino_recent_query_id_action(query_id: str, cluster_key: str) -> str:
+    escaped_query_id = html.escape(query_id, quote=True)
+    escaped_cluster_key = html.escape(cluster_key, quote=True)
+    visible_query_id = html.escape(query_id)
+    return (
+        '<form class="trino-recent-query-action" method="post" action="/analyze">'
+        '<input type="hidden" name="engine" value="trino">'
+        '<input type="hidden" name="diagnosis_target" value="query">'
+        f'<input type="hidden" name="cluster_key" value="{escaped_cluster_key}">'
+        f'<input type="hidden" name="query_id" value="{escaped_query_id}">'
+        '<button class="trino-recent-query-button" type="submit" '
+        'aria-label="Open Trino Beta Query ID diagnosis">'
+        f"<code>{visible_query_id}</code>"
+        "</button>"
+        "</form>"
+    )
+
+
+def render_trino_recent_boundary_note() -> str:
+    return (
+        '<div class="source-locator-block trino-beta-boundary-note">'
+        '<span class="source-locator-heading">Beta boundary</span>'
+        "<p>"
+        "Trino Recent Beta uses only the bounded retained coordinator list to choose Query IDs, "
+        "then renders compact raw-free diagnosis for each selected Query ID. It does not create "
+        "Details pages, trusted reports, optimizer recommendations, generated SQL drafts, "
+        "metadata collection, query-history crawling, Running scans, or SQL execution."
+        "</p>"
+        "</div>"
     )
 
 
@@ -83,13 +289,10 @@ def render_trino_compact_scope_details() -> str:
 
 
 def render_trino_compact_error_panel(error: object) -> str:
-    safe_error = sanitize_browser_error_text(error, max_chars=None)
-    return (
-        '<section class="error-card" role="alert">'
-        "<strong>Safe Trino compact state</strong>"
-        f"{html.escape(safe_error)}<br>"
-        "Submitted boundary JSON is not displayed back, and rejected input is hidden."
-        "</section>"
+    return render_error_panel(
+        error,
+        default_title="Safe Trino compact state",
+        footer="Submitted boundary JSON is not displayed back, and rejected input is hidden.",
     )
 
 
@@ -290,7 +493,15 @@ def mapping_items(value: object) -> tuple[Mapping[str, Any], ...]:
 
 
 def text_value(value: object) -> str:
-    return value if isinstance(value, str) else ""
+    if not isinstance(value, str):
+        return ""
+    redacted = redact_browser_display_text(
+        value,
+        redact_artifact_markers=True,
+        redact_infrastructure=True,
+        redact_sql_snippets=True,
+    )
+    return TRINO_DYNAMIC_ARTIFACT_NAME_RE.sub("[artifact name hidden]", redacted)
 
 
 def safe_status_label(value: object) -> str:
@@ -298,6 +509,12 @@ def safe_status_label(value: object) -> str:
         return "unknown"
     safe = "".join(char for char in value.lower().strip() if char.isalnum() or char in "_-")
     return safe or "unknown"
+
+
+def safe_int(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if value >= 0 else 0
 
 
 def badge_for_state(value: str) -> str:

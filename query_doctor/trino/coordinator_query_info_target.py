@@ -565,7 +565,12 @@ def _fetch_pruned_query_info_text(
     }
     if auth_headers is not None:
         kwargs["auth_headers"] = _request_auth_headers(auth_headers)
-    return fetcher(coordinator_url, **kwargs)
+    try:
+        return fetcher(coordinator_url, **kwargs)
+    except EngineFactContractError:
+        raise
+    except (OSError, TimeoutError, URLError) as exc:
+        raise EngineFactContractError("Trino coordinator query-info could not be read") from exc
 
 
 def _request_headers(auth_headers: Mapping[str, str] | None) -> dict[str, str]:

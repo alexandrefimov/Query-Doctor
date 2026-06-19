@@ -436,6 +436,40 @@ def test_build_trino_handoff_suite_manifest_rejects_alias_duplicate_references(
         assert fragment not in captured.err
 
 
+def test_build_trino_handoff_suite_manifest_rejects_smoke_alias_to_boundary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_json(tmp_path, "secret-boundary.json")
+    smoke_alias = tmp_path / "secret-smoke-alias.json"
+    smoke_alias.symlink_to(boundary.name)
+    manifest = tmp_path / "secret-suite-manifest.json"
+
+    rc = build_trino_handoff_suite_manifest.main(
+        [
+            "--redaction-reviewed",
+            "--boundary-json",
+            str(boundary),
+            "--smoke-summary",
+            str(smoke_alias),
+            "--out",
+            str(manifest),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert (
+        "smoke summary artifacts must differ from boundary, diagnosis, readiness summary, handoff summary, and product-surface summary artifacts"
+        in captured.err
+    )
+    assert not manifest.exists()
+    for fragment in _protected_fragments(tmp_path):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def test_build_trino_handoff_suite_manifest_requires_replace_for_existing_output(
     tmp_path: Path,
     capsys,
@@ -519,6 +553,7 @@ def _protected_fragments(tmp_path: Path) -> tuple[str, ...]:
         "first-secret-smoke.json",
         "second-secret-smoke.json",
         "secret-smoke-summary.json",
+        "secret-smoke-alias.json",
         "first-secret-readiness-summary.json",
         "second-secret-readiness-summary.json",
         "secret-readiness-summary.json",

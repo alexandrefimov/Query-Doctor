@@ -38,15 +38,35 @@ def handle_trino_compact_request(
 def parse_trino_boundary_form_payload(form: dict[str, list[str]]) -> Mapping[str, Any]:
     text = first_form_value(form, "boundary_json")
     if not text:
-        raise WebError("Trino boundary JSON is required.")
+        raise trino_compact_input_error(
+            "Trino boundary JSON is required.",
+            reason_code="trino_compact.boundary_json_required",
+            title="Trino boundary JSON is missing",
+            next_step="Paste one already raw-free Trino boundary JSON payload, then retry.",
+        )
     if len(text.encode("utf-8")) > TRINO_BOUNDARY_MAX_JSON_BYTES:
-        raise WebError("Trino boundary JSON exceeds the accepted compact payload limit.")
+        raise trino_compact_input_error(
+            "Trino boundary JSON exceeds the accepted compact payload limit.",
+            reason_code="trino_compact.boundary_json_too_large",
+            title="Trino boundary JSON is too large",
+            next_step="Use a compact raw-free boundary payload within the accepted byte limit.",
+        )
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise WebError("Trino boundary JSON is not valid JSON.") from exc
+        raise trino_compact_input_error(
+            "Trino boundary JSON is not valid JSON.",
+            reason_code="trino_compact.boundary_json_invalid",
+            title="Trino boundary JSON is invalid",
+            next_step="Fix the JSON syntax and resubmit the raw-free boundary payload.",
+        ) from exc
     if not isinstance(payload, dict):
-        raise WebError("Trino boundary JSON must be an object.")
+        raise trino_compact_input_error(
+            "Trino boundary JSON must be an object.",
+            reason_code="trino_compact.boundary_json_object_required",
+            title="Trino boundary JSON object is required",
+            next_step="Submit one boundary JSON object or one accepted package boundary export.",
+        )
     return payload
 
 
@@ -57,7 +77,32 @@ def parse_trino_sample_index_form_value(form: dict[str, list[str]]) -> int | Non
     try:
         sample_index = int(text, 10)
     except ValueError as exc:
-        raise WebError("Trino package sample index must be a non-negative integer.") from exc
+        raise trino_compact_sample_index_error() from exc
     if sample_index < 0:
-        raise WebError("Trino package sample index must be a non-negative integer.")
+        raise trino_compact_sample_index_error()
     return sample_index
+
+
+def trino_compact_input_error(
+    message: str,
+    *,
+    reason_code: str,
+    title: str,
+    next_step: str,
+) -> WebError:
+    return WebError(
+        message,
+        title=title,
+        reason_code=reason_code,
+        stage="Checking Trino compact input",
+        next_step=next_step,
+    )
+
+
+def trino_compact_sample_index_error() -> WebError:
+    return trino_compact_input_error(
+        "Trino package sample index must be a non-negative integer.",
+        reason_code="trino_compact.sample_index_invalid",
+        title="Trino sample index is invalid",
+        next_step="Use a non-negative integer sample index, or leave it empty for a single boundary.",
+    )

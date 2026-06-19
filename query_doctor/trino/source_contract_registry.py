@@ -192,6 +192,16 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         network_access="one_explicit_pruned_query_info_request",
     ),
     TrinoSourceContractRegistryEntry(
+        source_type="trino_coordinator_query_list",
+        surface_class="contract_gated_coordinator_recent",
+        contract_family="coordinator_query_list_source_contract",
+        raw_policy="bounded_retained_query_list_after_source_contract",
+        required_bounds=("max_query_ids", "max_bytes", "max_query_list_depth", "timeout_seconds"),
+        network_access="one_bounded_retained_query_list_request",
+        product_surfaces="trino_recent_beta",
+        recent_scan="retained_query_list_beta",
+    ),
+    TrinoSourceContractRegistryEntry(
         source_type="local_metadata_summary_import",
         surface_class="local_contract_gated_import",
         contract_family="metadata_source_contract",

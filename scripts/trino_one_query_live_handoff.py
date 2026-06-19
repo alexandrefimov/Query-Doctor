@@ -17,9 +17,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError  # noqa: E402
 from query_doctor.cli.trino_diagnosis_output import (  # noqa: E402
-    same_path,
     write_trino_boundary_out,
     write_trino_compact_diagnosis_out,
+)
+from query_doctor.safety.handoff_artifacts import (  # noqa: E402
+    output_overlaps_inputs_error,
+    same_path,
 )
 from query_doctor.trino.coordinator_query_info_pruned_import import (  # noqa: E402
     format_trino_coordinator_query_info_pruned_import_summary,
@@ -440,31 +443,29 @@ def _output_overlap_error(args: argparse.Namespace) -> str | None:
         args.kerberos_ca_cert,
         _krb5_ccname_file(args.krb5_ccname),
     )
-    for protected_input in protected_inputs:
-        if protected_input is None:
-            continue
-        if same_path(args.boundary_out, protected_input):
-            return "boundary output must differ from every input artifact"
-        if same_path(args.diagnosis_out, protected_input):
-            return "compact diagnosis output must differ from every input artifact"
-        if args.product_surface_summary_out is not None and same_path(
+    input_overlap_checks = (
+        (args.boundary_out, "boundary output must differ from every input artifact"),
+        (args.diagnosis_out, "compact diagnosis output must differ from every input artifact"),
+        (
             args.product_surface_summary_out,
-            protected_input,
-        ):
-            return "product-surface summary output must differ from every input artifact"
-        if args.handoff_summary_out is not None and same_path(
-            args.handoff_summary_out,
-            protected_input,
-        ):
-            return "handoff summary output must differ from every input artifact"
+            "product-surface summary output must differ from every input artifact",
+        ),
+        (args.handoff_summary_out, "handoff summary output must differ from every input artifact"),
+    )
+    for output, message in input_overlap_checks:
+        overlap_error = output_overlaps_inputs_error(output, protected_inputs, message=message)
+        if overlap_error is not None:
+            return overlap_error
     if same_path(args.boundary_out, args.diagnosis_out):
         return "boundary output must differ from compact diagnosis output"
     if args.readiness_summary_out is not None:
-        for protected_input in protected_inputs:
-            if protected_input is not None and same_path(
-                args.readiness_summary_out, protected_input
-            ):
-                return "readiness summary output must differ from every input artifact"
+        overlap_error = output_overlaps_inputs_error(
+            args.readiness_summary_out,
+            protected_inputs,
+            message="readiness summary output must differ from every input artifact",
+        )
+        if overlap_error is not None:
+            return overlap_error
         if same_path(args.readiness_summary_out, args.boundary_out) or same_path(
             args.readiness_summary_out,
             args.diagnosis_out,

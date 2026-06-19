@@ -12,6 +12,9 @@ from query_doctor.trino.coordinator_query_info_pruned_import import (
 from query_doctor.trino.coordinator_query_info_target import (
     TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE,
 )
+from query_doctor.trino.coordinator_query_list_target import (
+    TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE,
+)
 from query_doctor.trino.event_source_contract import TRINO_EVENT_SOURCE_TYPES
 from query_doctor.trino.http_event_archive import TRINO_HTTP_EVENT_ARCHIVE_SOURCE_TYPE
 from query_doctor.trino.http_query_detail_archive import (
@@ -36,6 +39,7 @@ def test_trino_source_contract_registry_covers_preview_source_types() -> None:
         TRINO_HTTP_EVENT_ARCHIVE_SOURCE_TYPE,
         TRINO_HTTP_QUERY_DETAIL_ARCHIVE_SOURCE_TYPE,
         TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE,
+        TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE,
         TRINO_METADATA_SOURCE_TYPE,
         "local_event_store_import",
         "local_query_detail_import",
@@ -55,9 +59,19 @@ def test_trino_source_contract_registry_covers_preview_source_types() -> None:
 def test_trino_source_contract_registry_pins_raw_free_preview_policies() -> None:
     for entry in trino_source_contract_registry():
         assert entry.required_bounds
-        assert entry.product_surfaces == "blocked"
+        expected_product_surface = (
+            "trino_recent_beta"
+            if entry.source_type == TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE
+            else "blocked"
+        )
+        expected_recent_scan = (
+            "retained_query_list_beta"
+            if entry.source_type == TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE
+            else "blocked"
+        )
+        assert entry.product_surfaces == expected_product_surface
         assert entry.details_report_output == "blocked"
-        assert entry.recent_scan == "blocked"
+        assert entry.recent_scan == expected_recent_scan
         assert entry.optimizer_behavior == "blocked"
         assert entry.sql_execution == "not_performed"
         assert entry.browser_report_output == "blocked"
@@ -84,6 +98,13 @@ def test_trino_source_contract_registry_drives_validator_source_type_constants()
             surface_class="coordinator_query_info_contract",
         )
         == TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE
+    )
+    assert (
+        trino_source_type_for_contract_family(
+            "coordinator_query_list_source_contract",
+            surface_class="contract_gated_coordinator_recent",
+        )
+        == TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE
     )
     assert (
         trino_source_type_for_contract_family(

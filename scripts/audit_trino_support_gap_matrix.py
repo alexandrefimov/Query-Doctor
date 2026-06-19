@@ -34,6 +34,7 @@ from query_doctor.analyzer.trino_evidence_package import (  # noqa: E402
 )
 from query_doctor.engines.capabilities import (  # noqa: E402
     adapter_flags_for_engine,
+    engine_capabilities,
     product_adapter_flags,
 )
 from query_doctor.engines import get_engine_adapter  # noqa: E402
@@ -42,6 +43,9 @@ from query_doctor.trino.coordinator_query_info_pruned_import import (  # noqa: E
 )
 from query_doctor.trino.coordinator_query_info_target import (  # noqa: E402
     TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE,
+)
+from query_doctor.trino.coordinator_query_list_target import (  # noqa: E402
+    TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE,
 )
 from query_doctor.trino.event_source_contract import TRINO_EVENT_SOURCE_TYPES  # noqa: E402
 from query_doctor.trino.http_event_archive import TRINO_HTTP_EVENT_ARCHIVE_SOURCE_TYPE  # noqa: E402
@@ -59,6 +63,7 @@ from query_doctor.trino.source_contract_registry import (  # noqa: E402
 TRINO_SUPPORT_GAP_SUMMARY_KIND = "trino_support_gap_matrix_audit_v1"
 TRINO_SUPPORT_GAP_STATUS = "preview_gaps_pinned"
 PRODUCT_ADAPTER_FLAGS = tuple(sorted(product_adapter_flags()))
+TRINO_ALLOWED_BETA_PRODUCT_ADAPTER_FLAGS = ("supports_query_id_mode", "supports_recent_scan")
 PREVIEW_ADAPTER_FLAGS = tuple(sorted(adapter_flags_for_engine("trino")))
 TRINO_REQUIRED_SOURCE_REGISTRY_TYPES = frozenset(
     {
@@ -68,6 +73,7 @@ TRINO_REQUIRED_SOURCE_REGISTRY_TYPES = frozenset(
         TRINO_HTTP_EVENT_ARCHIVE_SOURCE_TYPE,
         TRINO_HTTP_QUERY_DETAIL_ARCHIVE_SOURCE_TYPE,
         TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE,
+        TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE,
         TRINO_METADATA_SOURCE_TYPE,
         "local_event_store_import",
         "local_query_detail_import",
@@ -84,8 +90,10 @@ TRINO_ALLOWED_SOURCE_REGISTRY_NETWORK_ACCESS = frozenset(
         "one_explicit_operator_archive_url",
         "optional_one_explicit_pruned_query_info_request",
         "one_explicit_pruned_query_info_request",
+        "one_bounded_retained_query_list_request",
     }
 )
+TRINO_RECENT_BETA_SOURCE_TYPES = frozenset({TRINO_COORDINATOR_QUERY_LIST_SOURCE_TYPE})
 
 
 @dataclass(frozen=True)
@@ -109,6 +117,7 @@ class TrinoSupportGapAuditResult:
     required_fact_count: int = 0
     required_limitation_fact_count: int = 0
     trino_allowed_fact_count: int = 0
+    beta_product_capability_count: int = 0
     preview_adapter_flag_count: int = 0
     blocked_product_adapter_flag_count: int = 0
     source_registry_entry_count: int = 0
@@ -273,7 +282,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         "Boundary: "
         f"support_gap_status={TRINO_SUPPORT_GAP_STATUS}, "
         "production_support=not_claimed, "
-        "product_surfaces=blocked, "
+        "product_surfaces=recent_and_query_id_beta, "
         "trino_sql_execution=not_performed"
     )
     print(f"Families: total={result.family_count}, {counter_text(result.status_counts) or 'none'}")
@@ -322,6 +331,7 @@ def audit_trino_support_gap_matrix(
         result.status_counts[family.status] += 1
         audit_family(result, family, definitions)
     audit_engine_adapters(result)
+    audit_trino_beta_capability(result)
     audit_source_contract_registry(
         result,
         source_registry=(
@@ -402,12 +412,21 @@ def audit_engine_adapters(result: TrinoSupportGapAuditResult) -> None:
                 "impala_reference_product_flag_changed",
                 "Impala must remain the product-support reference for product adapter flags.",
             )
+        if flag in TRINO_ALLOWED_BETA_PRODUCT_ADAPTER_FLAGS:
+            if getattr(trino, flag) is not True:
+                add_issue(
+                    result,
+                    "product_surfaces",
+                    "trino_beta_product_surface_missing",
+                    "Trino Query ID beta adapter flag must remain wired while beta is exposed.",
+                )
+            continue
         if getattr(trino, flag) is not False:
             add_issue(
                 result,
                 "product_surfaces",
                 "trino_product_surface_enabled",
-                "Trino product adapter flags must stay blocked until support gates close.",
+                "Trino product adapter flags except Query ID beta must stay blocked until support gates close.",
             )
         else:
             result.blocked_product_adapter_flag_count += 1
@@ -421,6 +440,74 @@ def audit_engine_adapters(result: TrinoSupportGapAuditResult) -> None:
             )
         else:
             result.preview_adapter_flag_count += 1
+
+
+def audit_trino_beta_capability(result: TrinoSupportGapAuditResult) -> None:
+    beta_capabilities = tuple(
+        capability
+        for capability in engine_capabilities("trino")
+        if capability.product_surface_allowed
+    )
+    result.beta_product_capability_count = len(beta_capabilities)
+    expected_by_surface = {
+        "recent_scan": {
+            "surface_id": "recent_scan",
+            "support_level": "product_beta",
+            "surface_class": "product_web",
+            "input_kind": "bounded_trino_retained_query_list_pruned_query_info",
+            "raw_policy": "raw_free_summary_only",
+            "adapter_flag": "supports_recent_scan",
+            "promotion_gate": "trino_beta_recent_retained_query_list_contract",
+        },
+        "query_id_mode": {
+            "surface_id": "query_id_mode",
+            "support_level": "product_beta",
+            "surface_class": "product_web",
+            "input_kind": "one_known_trino_query_id_pruned_query_info",
+            "raw_policy": "raw_free_summary_only",
+            "adapter_flag": "supports_query_id_mode",
+            "promotion_gate": "trino_beta_one_query_pruned_query_info_contract",
+        },
+    }
+    if len(beta_capabilities) != len(expected_by_surface):
+        add_issue(
+            result,
+            "product_surfaces",
+            "trino_beta_capability_count_drift",
+            "Trino must expose exactly the Recent and One Query ID product beta capabilities.",
+        )
+        return
+    for capability in beta_capabilities:
+        expected = expected_by_surface.get(capability.surface_id)
+        if expected is None:
+            add_issue(
+                result,
+                "product_surfaces",
+                "trino_beta_capability_shape_drift",
+                "Trino product beta capability shape drifted from the beta contracts.",
+            )
+            continue
+        for field_name, expected_value in expected.items():
+            if getattr(capability, field_name) != expected_value:
+                add_issue(
+                    result,
+                    "product_surfaces",
+                    "trino_beta_capability_shape_drift",
+                    "Trino product beta capability shape drifted from the beta contracts.",
+                )
+                break
+        if (
+            capability.cli_role
+            or capability.script_path
+            or capability.route_path
+            or capability.dev_only
+        ):
+            add_issue(
+                result,
+                "product_surfaces",
+                "trino_beta_capability_surface_drift",
+                "Trino product beta capability must stay web-only without CLI, script, route, or dev wiring.",
+            )
 
 
 def audit_source_contract_registry(
@@ -480,12 +567,15 @@ def audit_source_contract_registry_entry(
             "trino_source_registry_network_access_unsupported",
             "A Trino source registry entry uses an unsupported network-access class.",
         )
-    if entry.product_surfaces != "blocked":
+    expected_product_surface = (
+        "trino_recent_beta" if entry.source_type in TRINO_RECENT_BETA_SOURCE_TYPES else "blocked"
+    )
+    if entry.product_surfaces != expected_product_surface:
         add_issue(
             result,
             "source_contract_registry",
             "trino_source_registry_product_surface_enabled",
-            "Trino source registry entries must not enable product surfaces.",
+            "Trino source registry product surfaces must match the implemented beta boundary.",
         )
     if entry.details_report_output != "blocked":
         add_issue(
@@ -494,12 +584,17 @@ def audit_source_contract_registry_entry(
             "trino_source_registry_details_output_enabled",
             "Trino source registry entries must not enable Details or trusted report output.",
         )
-    if entry.recent_scan != "blocked":
+    expected_recent_scan = (
+        "retained_query_list_beta"
+        if entry.source_type in TRINO_RECENT_BETA_SOURCE_TYPES
+        else "blocked"
+    )
+    if entry.recent_scan != expected_recent_scan:
         add_issue(
             result,
             "source_contract_registry",
             "trino_source_registry_recent_enabled",
-            "Trino source registry entries must not enable Recent scans.",
+            "Trino source registry Recent status must match the implemented beta boundary.",
         )
     if entry.optimizer_behavior != "blocked":
         add_issue(
@@ -634,12 +729,13 @@ def support_gap_summary_payload(
         "status": status,
         "support_gap_status": TRINO_SUPPORT_GAP_STATUS,
         "production_support": "not_claimed",
-        "product_surfaces": "blocked",
+        "product_surfaces": "recent_and_query_id_beta",
         "trino_sql_execution": "not_performed",
         "family_count": result.family_count,
         "required_fact_count": result.required_fact_count,
         "required_limitation_fact_count": result.required_limitation_fact_count,
         "trino_allowed_fact_count": result.trino_allowed_fact_count,
+        "beta_product_capability_count": result.beta_product_capability_count,
         "preview_adapter_flag_count": result.preview_adapter_flag_count,
         "blocked_product_adapter_flag_count": result.blocked_product_adapter_flag_count,
         "source_registry_entry_count": result.source_registry_entry_count,

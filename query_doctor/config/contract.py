@@ -66,6 +66,7 @@ ALLOWED_CONFIG_KEYS = {
     "cm_metrics_profile",
     "cm_timeseries_padding_sec",
     "corpus_dir",
+    "engine",
     "host",
     "impala_kerberos_service_name",
     "impala_collect_admission_context",
@@ -111,6 +112,17 @@ ALLOWED_CONFIG_KEYS = {
     "source_owner_user",
     "source_visibility",
     "status",
+    "trino_auth_header_file",
+    "trino_beta_enabled",
+    "trino_coordinator_url",
+    "trino_kerberos_ca_cert",
+    "trino_kerberos_insecure_tls",
+    "trino_kerberos_principal",
+    "trino_kerberos_service_name",
+    "trino_krb5_ccname",
+    "trino_krb5_config",
+    "trino_query_info_source_contract",
+    "trino_query_list_source_contract",
     "query_profile_source",
     "query_type",
     "recent_include_failed",
@@ -209,6 +221,17 @@ CLUSTER_CONFIG_KEYS = {
     "service",
     "source_owner_user",
     "source_visibility",
+    "trino_auth_header_file",
+    "trino_beta_enabled",
+    "trino_coordinator_url",
+    "trino_kerberos_ca_cert",
+    "trino_kerberos_insecure_tls",
+    "trino_kerberos_principal",
+    "trino_kerberos_service_name",
+    "trino_krb5_ccname",
+    "trino_krb5_config",
+    "trino_query_info_source_contract",
+    "trino_query_list_source_contract",
     "username",
 }
 CLUSTER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -375,7 +398,10 @@ def validate_config_field(key: str) -> None:
         raise ConfigError(
             f"Config field {key} looks secret-bearing; use environment variables for credentials."
         )
-    if key != "metadata_auth" and any(part in key_lower for part in SECRET_CONFIG_KEY_PARTS):
+    allowed_secret_reference_keys = {"metadata_auth", "trino_auth_header_file"}
+    if key not in allowed_secret_reference_keys and any(
+        part in key_lower for part in SECRET_CONFIG_KEY_PARTS
+    ):
         raise ConfigError(
             f"Config field {key} looks secret-bearing; use environment variables for credentials."
         )
@@ -471,6 +497,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "language",
         "manual_profile_dir",
         "corpus_dir",
+        "engine",
         "optimizer_model",
         "out",
         "pool",
@@ -491,6 +518,15 @@ def normalize_config_value(key: str, value: object) -> object:
         "source_owner_user",
         "source_visibility",
         "status",
+        "trino_auth_header_file",
+        "trino_coordinator_url",
+        "trino_kerberos_ca_cert",
+        "trino_kerberos_principal",
+        "trino_kerberos_service_name",
+        "trino_krb5_ccname",
+        "trino_krb5_config",
+        "trino_query_info_source_contract",
+        "trino_query_list_source_contract",
         "workload_history_path",
         "cluster_type",
         "query_profile_source",
@@ -515,6 +551,8 @@ def normalize_config_value(key: str, value: object) -> object:
                 "Config field query_profile_source must be one of: "
                 f"{', '.join(QUERY_PROFILE_SOURCE_CHOICES)}."
             )
+        if key == "engine" and normalized not in {"impala", "trino"}:
+            raise ConfigError("Config field engine must be one of: impala, trino.")
         if key in {"report_llm_provider", "optimizer_llm_provider"} and normalized not in (
             LLM_PROVIDER_CHOICES
         ):
@@ -556,7 +594,11 @@ def normalize_config_value(key: str, value: object) -> object:
             validate_safe_http_url(normalized, field_name="prometheus_url")
         if key in {"report_llm_base_url", "optimizer_llm_base_url"}:
             validate_safe_http_url(normalized, field_name=key)
-        if key in {"impala_kerberos_service_name", "metadata_kerberos_service_name"}:
+        if key in {
+            "impala_kerberos_service_name",
+            "metadata_kerberos_service_name",
+            "trino_kerberos_service_name",
+        }:
             validate_kerberos_service_name(normalized, field_name=key)
         if key == "metadata_kerberos_host_fqdn":
             validate_kerberos_host_fqdn(normalized, field_name=key)
@@ -656,6 +698,8 @@ def normalize_config_value(key: str, value: object) -> object:
         "metadata_redact",
         "metadata_ssl",
         "owner_raw_source_enabled",
+        "trino_beta_enabled",
+        "trino_kerberos_insecure_tls",
         "web_advanced_settings_enabled",
     }:
         if not isinstance(value, bool):

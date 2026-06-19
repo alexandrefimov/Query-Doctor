@@ -9,12 +9,14 @@ from typing import Literal
 
 SupportLevel = Literal[
     "production",
+    "product_beta",
     "bounded_raw_free_preview",
     "bounded_compact_preview",
     "dev_gate",
 ]
 SurfaceClass = Literal[
     "product_cli",
+    "product_web",
     "preview_cli",
     "isolated_preview_web",
     "dev_gate",
@@ -136,6 +138,28 @@ def _trino_preview(
     )
 
 
+def _trino_beta(
+    surface_id: str,
+    *,
+    input_kind: str,
+    promotion_gate: str,
+    adapter_flag: str | None = None,
+    raw_policy: RawPolicy = "raw_free_summary_only",
+    surface_class: SurfaceClass = "product_web",
+) -> EngineCapability:
+    return _capability(
+        engine="trino",
+        surface_id=surface_id,
+        support_level="product_beta",
+        surface_class=surface_class,
+        input_kind=input_kind,
+        raw_policy=raw_policy,
+        product_surface_allowed=True,
+        adapter_flag=adapter_flag,
+        promotion_gate=promotion_gate,
+    )
+
+
 def _trino_dev(
     surface_id: str,
     *,
@@ -237,6 +261,18 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         cli_role="report",
         input_kind="validated_impala_case",
         promotion_gate="strict_report_validation",
+    ),
+    _trino_beta(
+        "recent_scan",
+        adapter_flag="supports_recent_scan",
+        input_kind="bounded_trino_retained_query_list_pruned_query_info",
+        promotion_gate="trino_beta_recent_retained_query_list_contract",
+    ),
+    _trino_beta(
+        "query_id_mode",
+        adapter_flag="supports_query_id_mode",
+        input_kind="one_known_trino_query_id_pruned_query_info",
+        promotion_gate="trino_beta_one_query_pruned_query_info_contract",
     ),
     _trino_preview(
         "offline_evidence_import",
@@ -386,6 +422,13 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         promotion_gate="local_private_preview_smoke_only",
     ),
     _trino_dev(
+        "kerberos_cache_refresh",
+        input_kind="local_web_config_and_keytab",
+        surface_class="dev_wrapper",
+        script_path="scripts/refresh_trino_kerberos_caches.py",
+        promotion_gate="local_private_preview_smoke_only",
+    ),
+    _trino_dev(
         "evidence_handoff_audit",
         input_kind="sanitized_evidence_package",
         raw_policy="already_sanitized_raw_free",
@@ -428,6 +471,30 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         input_kind="capability_and_fact_registry",
         script_path="scripts/audit_trino_support_gap_matrix.py",
         promotion_gate="support_gap_static_audit",
+    ),
+    _trino_dev(
+        "web_beta_readiness_audit",
+        input_kind="local_web_config_and_source_contracts",
+        script_path="scripts/audit_trino_web_beta_readiness.py",
+        promotion_gate="local_config_readiness_without_network_read",
+    ),
+    _trino_dev(
+        "web_beta_live_smoke",
+        input_kind="bounded_trino_retained_query_list_pruned_query_info",
+        script_path="scripts/audit_trino_web_beta_live_smoke.py",
+        promotion_gate="developer_web_beta_live_smoke",
+    ),
+    _trino_dev(
+        "installed_beta_web_smoke",
+        input_kind="installed_web_fake_trino_coordinator",
+        script_path="scripts/installed_trino_beta_web_smoke.py",
+        promotion_gate="installed_package_beta_web_regression_gate",
+    ),
+    _trino_dev(
+        "beta_release_readiness_bundle",
+        input_kind="static_audits_focused_tests_and_optional_local_smokes",
+        script_path="scripts/audit_trino_beta_release_readiness.py",
+        promotion_gate="developer_beta_release_handoff_gate",
     ),
     _spark_preview(
         "offline_evidence_import",
@@ -582,8 +649,10 @@ def unsupported_product_capabilities(engine: str) -> tuple[EngineCapability, ...
     return tuple(
         capability
         for capability in engine_capabilities(engine)
-        if capability.adapter_flag in PRODUCT_ADAPTER_FLAGS
-        or capability.product_surface_allowed
+        if (
+            capability.adapter_flag in PRODUCT_ADAPTER_FLAGS
+            and not capability.product_surface_allowed
+        )
         or capability.support_level == "production"
     )
 

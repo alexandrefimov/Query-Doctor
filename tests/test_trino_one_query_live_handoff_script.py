@@ -627,8 +627,8 @@ def test_trino_one_query_live_handoff_can_write_product_surface_summary(
     assert "Trino product-surface boundary audit: ok" in captured.out
     assert summary["summary_kind"] == "trino_product_surface_boundary_audit_v1"
     assert summary["status"] == "ok"
-    assert summary["boundary"]["live_known_query_diagnosis"] == "not_wired"
-    assert summary["boundary"]["product_surface"] == "not_promoted"
+    assert summary["boundary"]["live_known_query_diagnosis"] == "one_query_pruned_query_info_beta"
+    assert summary["boundary"]["product_surface"] == "recent_and_query_id_beta"
     assert summary["counts"]["boundary_json_count"] == 1
     assert summary["counts"]["diagnosis_json_checked_count"] == 1
     assert summary["counts"]["diagnostic_lane_checked_count"] == 1
@@ -640,7 +640,7 @@ def test_trino_one_query_live_handoff_can_write_product_surface_summary(
         "source_granularity": {"one_query_boundary": 1},
         "verification_scope": {"comparable_one_query_rerun": 1},
     }
-    assert summary["registry"]["trino_product_routes"] == "blocked"
+    assert summary["registry"]["trino_product_routes"] == "recent_and_query_id_beta"
     assert summary["registry"]["trino_product_cli"] == "blocked"
     assert summary["issues"] == {"counts": {}, "items": []}
     assert captured.err == ""
@@ -1283,7 +1283,14 @@ def _smoke_summary(
             "query_identifiers": "not_written",
             "actor_identity_values": "not_written",
             "location_values": "not_written",
+            "object_identity_values": "not_written",
+            "failure_details": "not_written",
         },
+        "limitations": [
+            "dev_only_smoke_harness",
+            "built_in_readonly_statement_allowlist_only",
+            "not_query_doctor_trino_product_support",
+        ],
     }
 
 

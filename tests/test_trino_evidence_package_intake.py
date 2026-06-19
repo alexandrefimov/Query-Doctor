@@ -27,7 +27,7 @@ from query_doctor.engines import get_engine_adapter, list_engine_adapters
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "engine_facts"
 
 
-def test_trino_evidence_package_accepts_sanitized_samples_without_live_workflow_support():
+def test_trino_evidence_package_accepts_sanitized_samples_with_recent_and_query_id_beta():
     package = _package_payload()
 
     result = validate_trino_evidence_package_payload(package)
@@ -72,8 +72,8 @@ def test_trino_evidence_package_accepts_sanitized_samples_without_live_workflow_
     ]
     adapter = get_engine_adapter("trino")
     assert adapter.supports_offline_evidence_import is True
-    assert adapter.supports_recent_scan is False
-    assert adapter.supports_query_id_mode is False
+    assert adapter.supports_recent_scan is True
+    assert adapter.supports_query_id_mode is True
     assert adapter.supports_metadata_collection is False
     assert adapter.supports_validated_reports is False
 
