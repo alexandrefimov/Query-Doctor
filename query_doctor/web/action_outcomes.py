@@ -150,15 +150,33 @@ def action_outcome_record_from_case(
     form: dict[str, list[str]],
 ) -> ActionOutcomeRecord:
     if not recommendation_id_allowed(recommendation_id):
-        raise WebError("Unknown recommendation outcome target.")
+        raise WebError(
+            "Unknown recommendation outcome target.",
+            title="Outcome target was rejected",
+            reason_code="web.action_outcome_target_unknown",
+            stage="Saving recommendation outcome",
+            next_step="Refresh the case page and retry from an available recommendation.",
+        )
     safe_local_case_id = safe_case_id(case_id)
     if not safe_local_case_id:
-        raise WebError("Invalid case outcome target.")
+        raise WebError(
+            "Invalid case outcome target.",
+            title="Outcome case target was rejected",
+            reason_code="web.action_outcome_case_invalid",
+            stage="Saving recommendation outcome",
+            next_step="Refresh the Recent results and retry from a listed case.",
+        )
     workload_fingerprint = safe_workload_fingerprint(
         case.get("group_fingerprint") or case.get("workload_fingerprint")
     )
     if not workload_fingerprint:
-        raise WebError("Outcome tracking is unavailable for this case.")
+        raise WebError(
+            "Outcome tracking is unavailable for this case.",
+            title="Outcome tracking is unavailable",
+            reason_code="web.action_outcome_unavailable",
+            stage="Saving recommendation outcome",
+            next_step="Use outcome tracking from a grouped Recent case that includes a workload fingerprint.",
+        )
 
     applied = normalize_applied(first_form_value(form, "applied"))
     outcome = normalize_outcome(first_form_value(form, "outcome"), applied=applied)
@@ -184,7 +202,13 @@ def action_outcome_record_from_case(
 def normalize_applied(value: Any) -> str:
     text = str(value or "").strip().lower()
     if text not in ALLOWED_APPLIED:
-        raise WebError("Invalid action outcome value.")
+        raise WebError(
+            "Invalid action outcome value.",
+            title="Outcome value was rejected",
+            reason_code="web.action_outcome_value_invalid",
+            stage="Saving recommendation outcome",
+            next_step="Choose one of the available outcome options and retry.",
+        )
     return text
 
 
@@ -193,7 +217,13 @@ def normalize_outcome(value: Any, *, applied: str) -> str:
         return "not_applicable"
     text = str(value or "unsure").strip().lower()
     if text not in ALLOWED_OUTCOMES or text == "not_applicable":
-        raise WebError("Invalid action result value.")
+        raise WebError(
+            "Invalid action result value.",
+            title="Outcome result was rejected",
+            reason_code="web.action_result_value_invalid",
+            stage="Saving recommendation outcome",
+            next_step="Choose one of the available result options and retry.",
+        )
     return text
 
 
@@ -203,7 +233,13 @@ def normalize_verification_status(value: Any, *, applied: str) -> str:
     text = str(value or "").strip().lower()
     if text == "comparable_rerun":
         return text
-    raise WebError("Action outcome requires comparable rerun verification.")
+    raise WebError(
+        "Action outcome requires comparable rerun verification.",
+        title="Outcome verification is required",
+        reason_code="web.action_outcome_verification_required",
+        stage="Saving recommendation outcome",
+        next_step="Confirm that the outcome is based on a comparable rerun before saving.",
+    )
 
 
 def append_action_outcome(

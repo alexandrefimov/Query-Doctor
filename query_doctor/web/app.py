@@ -57,9 +57,21 @@ def parse_post_content_length(value: str | None) -> int:
     try:
         length = int(raw_value)
     except ValueError as exc:
-        raise WebError("Invalid POST content length.") from exc
+        raise WebError(
+            "Invalid POST content length.",
+            title="Request body length is invalid",
+            reason_code="web.post_content_length_invalid",
+            stage="Reading web request",
+            next_step="Retry the request from the Query Doctor web form.",
+        ) from exc
     if length < 0:
-        raise WebError("Invalid POST content length.")
+        raise WebError(
+            "Invalid POST content length.",
+            title="Request body length is invalid",
+            reason_code="web.post_content_length_invalid",
+            stage="Reading web request",
+            next_step="Retry the request from the Query Doctor web form.",
+        )
     return length
 
 
@@ -72,7 +84,13 @@ def read_bounded_post_form(
     length = parse_post_content_length(content_length_value)
     raw_body = body.read(min(length, max_bytes + 1))
     if length > max_bytes:
-        raise WebError("Submitted form exceeds the bounded web input limit.")
+        raise WebError(
+            "Submitted form exceeds the bounded web input limit.",
+            title="Submitted form is too large",
+            reason_code="web.post_body_too_large",
+            stage="Reading web request",
+            next_step="Reduce the submitted form payload and retry.",
+        )
     return parse_qs(raw_body.decode("utf-8", errors="replace"), keep_blank_values=True)
 
 
@@ -332,7 +350,7 @@ def make_handler(
             try:
                 form = read_bounded_post_form(self.rfile, self.headers.get("Content-Length"))
             except WebError as exc:
-                status = 413 if "bounded web input limit" in str(exc) else 400
+                status = 413 if exc.reason_code == "web.post_body_too_large" else 400
                 self.write_html(
                     status,
                     render_page(self.settings_for_request(), active_nav="batch", error=exc),
@@ -438,11 +456,23 @@ def make_handler(
             )
 
         def write_rejected_host_response(self) -> None:
-            error = WebError("Refusing request Host header outside the local web allowlist.")
+            error = WebError(
+                "Refusing request Host header outside the local web allowlist.",
+                title="Request host is not allowed",
+                reason_code="web.host_not_allowed",
+                stage="Checking web request origin",
+                next_step="Open Query Doctor through the configured local host and port.",
+            )
             self.write_html(400, render_page(settings, active_nav="batch", error=error))
 
         def write_rejected_origin_response(self) -> None:
-            error = WebError("Refusing POST Origin outside the local web allowlist.")
+            error = WebError(
+                "Refusing POST Origin outside the local web allowlist.",
+                title="Request origin is not allowed",
+                reason_code="web.origin_not_allowed",
+                stage="Checking web request origin",
+                next_step="Submit the form from the Query Doctor page served by this web session.",
+            )
             headers = getattr(self, "headers", {})
             origin_value = headers.get("Origin") if hasattr(headers, "get") else None
             host_value = headers.get("Host") if hasattr(headers, "get") else None

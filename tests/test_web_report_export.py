@@ -770,7 +770,9 @@ def test_batch_case_details_show_no_recipe_optimizer_guidance_without_raw_sql(tm
     assert "Compare partition pruning, scan rows, filter selectivity" in details.body
     assert "rerun under comparable load" in details.body
     assert "No trusted SQL draft shape detected" in details.body
-    assert "Generate Python report + optimizer" in details.body
+    assert "No supported deterministic optimizer recipe is available" in details.body
+    assert "Generate Python report + optimizer" not in details.body
+    assert "Run Query LLM optimizer" not in details.body
     assert "Validated SQL draft" not in details.body
     assert "RAW_OPTIMIZER_SOURCE_LITERAL" not in details.body
     assert "secret_col" not in details.body

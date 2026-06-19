@@ -43,7 +43,13 @@ def build_web_cluster_configs(config_values: Mapping[str, object]) -> tuple[WebC
         clusters: list[WebClusterConfig] = []
         for cluster in clusters_value:
             if not isinstance(cluster, Mapping):
-                raise WebError("Invalid clusters local config.")
+                raise WebError(
+                    "Invalid clusters local config.",
+                    title="Cluster config is invalid",
+                    reason_code="web.cluster_config_invalid",
+                    stage="Loading local web config",
+                    next_step="Fix clusters[] so every entry is an object, then restart the web UI.",
+                )
             clusters.append(build_web_cluster_config(cluster, defaults=config_values))
         return tuple(clusters)
     if has_top_level_cluster_config(config_values):
@@ -69,6 +75,17 @@ def has_top_level_cluster_config(config_values: Mapping[str, object]) -> bool:
             "manual_profile_dir",
             "query_profile_source",
             "impala_profile_hosts",
+            "trino_beta_enabled",
+            "trino_coordinator_url",
+            "trino_query_info_source_contract",
+            "trino_query_list_source_contract",
+            "trino_auth_header_file",
+            "trino_kerberos_ca_cert",
+            "trino_kerberos_insecure_tls",
+            "trino_kerberos_principal",
+            "trino_kerberos_service_name",
+            "trino_krb5_ccname",
+            "trino_krb5_config",
         )
     )
 
@@ -235,6 +252,40 @@ def build_web_cluster_config(
             DEFAULT_RECENT_SCAN_TIMEZONE,
         )
         or DEFAULT_RECENT_SCAN_TIMEZONE,
+        trino_beta_enabled=first_bool(values, defaults, "trino_beta_enabled", default=False),
+        trino_coordinator_url=first_string(
+            string_value(values, "trino_coordinator_url"),
+            string_value(defaults, "trino_coordinator_url"),
+        ),
+        trino_query_info_source_contract=first_path(
+            values, defaults, "trino_query_info_source_contract"
+        ),
+        trino_query_list_source_contract=first_path(
+            values, defaults, "trino_query_list_source_contract"
+        ),
+        trino_auth_header_file=first_path(values, defaults, "trino_auth_header_file"),
+        trino_kerberos_principal=first_string(
+            string_value(values, "trino_kerberos_principal"),
+            string_value(defaults, "trino_kerberos_principal"),
+        ),
+        trino_kerberos_service_name=first_string(
+            string_value(values, "trino_kerberos_service_name"),
+            string_value(defaults, "trino_kerberos_service_name"),
+            "HTTP",
+        )
+        or "HTTP",
+        trino_krb5_ccname=first_string(
+            string_value(values, "trino_krb5_ccname"),
+            string_value(defaults, "trino_krb5_ccname"),
+        ),
+        trino_krb5_config=first_path(values, defaults, "trino_krb5_config"),
+        trino_kerberos_ca_cert=first_path(values, defaults, "trino_kerberos_ca_cert"),
+        trino_kerberos_insecure_tls=first_bool(
+            values,
+            defaults,
+            "trino_kerberos_insecure_tls",
+            default=False,
+        ),
     )
 
 
@@ -242,7 +293,13 @@ def normalize_cluster_cm_metrics_profile(value: str | None) -> str:
     try:
         return normalize_cm_metrics_profile(value or DEFAULT_CM_METRICS_PROFILE)
     except ValueError as exc:
-        raise WebError("Invalid cm_metrics_profile in local cluster config.") from exc
+        raise WebError(
+            "Invalid cm_metrics_profile in local cluster config.",
+            title="CM metrics profile is invalid",
+            reason_code="web.cm_metrics_profile_invalid",
+            stage="Loading local web config",
+            next_step="Use a supported cm_metrics_profile value in local config, then restart the web UI.",
+        ) from exc
 
 
 def string_value(values: Mapping[str, object], key: str) -> str | None:
@@ -334,7 +391,32 @@ def default_cluster_key(settings: WebSettings) -> str:
 
 
 def cluster_select_options(settings: WebSettings) -> tuple[tuple[str, str], ...]:
-    return tuple((cluster.key, cluster.label) for cluster in settings.clusters)
+    return tuple((cluster.key, cluster_select_label(cluster)) for cluster in settings.clusters)
+
+
+def cluster_select_label(cluster: WebClusterConfig) -> str:
+    label = cluster.label
+    if cluster_trino_beta_query_ready(cluster) and cluster_trino_beta_recent_ready(cluster):
+        return f"{label} - Trino Beta Recent + One Query ID"
+    if cluster_trino_beta_recent_ready(cluster):
+        return f"{label} - Trino Beta Recent"
+    if cluster_trino_beta_query_ready(cluster):
+        return f"{label} - Trino Beta One Query ID"
+    return label
+
+
+def cluster_trino_beta_query_ready(cluster: WebClusterConfig) -> bool:
+    return bool(
+        cluster.trino_beta_enabled
+        and cluster.trino_coordinator_url
+        and cluster.trino_query_info_source_contract
+    )
+
+
+def cluster_trino_beta_recent_ready(cluster: WebClusterConfig) -> bool:
+    return bool(
+        cluster_trino_beta_query_ready(cluster) and cluster.trino_query_list_source_contract
+    )
 
 
 def selected_cluster_key_from_mapping(
@@ -411,13 +493,36 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 viewer_identity=viewer_identity,
                 krb5ccname=cluster.krb5ccname,
                 recent_scan_timezone=cluster.recent_scan_timezone,
+                trino_beta_enabled=cluster.trino_beta_enabled,
+                trino_coordinator_url=cluster.trino_coordinator_url,
+                trino_query_info_source_contract=cluster.trino_query_info_source_contract,
+                trino_query_list_source_contract=cluster.trino_query_list_source_contract,
+                trino_auth_header_file=cluster.trino_auth_header_file,
+                trino_kerberos_principal=cluster.trino_kerberos_principal,
+                trino_kerberos_service_name=cluster.trino_kerberos_service_name,
+                trino_krb5_ccname=cluster.trino_krb5_ccname,
+                trino_krb5_config=cluster.trino_krb5_config,
+                trino_kerberos_ca_cert=cluster.trino_kerberos_ca_cert,
+                trino_kerberos_insecure_tls=cluster.trino_kerberos_insecure_tls,
             )
-    raise WebError("Selected cluster is not configured in local config.")
+    raise WebError(
+        "Selected cluster is not configured in local config.",
+        title="Selected source is not configured",
+        reason_code="web.cluster_not_found",
+        stage="Checking selected source",
+        next_step="Choose an available source from local config or restart after fixing clusters[].",
+    )
 
 
 def require_cm_cluster_settings(settings: WebSettings) -> None:
     if settings.query_profile_source != "cm":
-        raise WebError("Recent and Running scans require a Cloudera Manager configured cluster.")
+        raise WebError(
+            "Recent and Running scans require a Cloudera Manager configured cluster.",
+            title="Cloudera Manager source is required",
+            reason_code="impala.cm_source_required",
+            stage="Checking selected source",
+            next_step="Select a Cloudera Manager source for Recent/Running, or use a direct-Impala supported action.",
+        )
     missing: list[str] = []
     if not settings.cm_url:
         missing.append("cm_url")
@@ -426,4 +531,10 @@ def require_cm_cluster_settings(settings: WebSettings) -> None:
     if not settings.cm_service:
         missing.append("service")
     if missing:
-        raise WebError("Selected cluster is missing CM setting(s): " + ", ".join(missing) + ".")
+        raise WebError(
+            "Selected cluster is missing CM setting(s): " + ", ".join(missing) + ".",
+            title="Selected source is missing CM settings",
+            reason_code="impala.cm_settings_missing",
+            stage="Checking selected source",
+            next_step="Add the missing CM settings to the selected source or choose another source.",
+        )

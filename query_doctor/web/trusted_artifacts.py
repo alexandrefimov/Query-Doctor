@@ -637,6 +637,9 @@ def load_batch_case_report_state(
         "report_variant": report_variant,
         "unavailable_reason": unavailable_reason,
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
+        "error_info": (
+            job.error_info if job is not None and job.status in {"failed", "cancelled"} else None
+        ),
         "job_id": report_job.job_id if report_job is not None else "",
         "job_kind": report_job.kind if report_job is not None else "",
         "stage_label": report_job.stage_label if report_job is not None else "",
@@ -689,6 +692,9 @@ def load_specific_query_report_state(
         "report_variant": report_variant,
         "unavailable_reason": unavailable_reason,
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
+        "error_info": (
+            job.error_info if job is not None and job.status in {"failed", "cancelled"} else None
+        ),
         "job_id": report_job.job_id if report_job is not None else "",
         "job_kind": report_job.kind if report_job is not None else "",
         "stage_label": report_job.stage_label if report_job is not None else "",
@@ -812,6 +818,9 @@ def load_optimized_query_state(
         else [],
         "source_scope": marker.get("source_scope") or "",
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
+        "error_info": (
+            job.error_info if job is not None and job.status in {"failed", "cancelled"} else None
+        ),
         "job_id": state_job.job_id if state_job is not None else "",
         "job_kind": state_job.kind if state_job is not None else "",
         "stage_label": state_job.stage_label if state_job is not None else "",

@@ -18,6 +18,7 @@ from query_doctor.web.ui.html_helpers import (
     display_score,
     escape_value,
 )
+from query_doctor.web.ui.diagnostic_i18n import localize_diagnostic_text
 from query_doctor.web.trusted_artifacts import decorate_cases_with_optimizer_artifact_status
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseRowView,
@@ -109,6 +110,7 @@ def render_batch_card(
         details_base_path=details_base_path,
         action_outcomes_recorded=action_outcome_count(),
         workload_outcome_metrics=workload_outcome_metrics_by_fingerprint(),
+        language=getattr(settings, "language", "en"),
     )
 
 
@@ -132,6 +134,7 @@ def render_batch_summary(
     details_base_path: str = "/batch/case",
     action_outcomes_recorded: int | None = None,
     workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None = None,
+    language: str = "en",
 ) -> str:
     view = present_recent_scan_summary(
         summary,
@@ -150,6 +153,7 @@ def render_batch_summary(
             details_base_path=details_base_path,
             workload_base_path=workload_base_path,
             query_group=active_group,
+            language=language,
         )
         for display_rank, row in enumerate(rows_for_group, start=1)
     )
@@ -167,6 +171,7 @@ def render_batch_summary(
             (),
             include_guidance=False,
             include_action_outcomes=False,
+            language=language,
         )
         if results_notices_open
         else ""
@@ -179,34 +184,40 @@ def render_batch_summary(
         include_guidance=False,
         include_empty=False,
         include_warnings=False,
+        language=language,
     )
     scan_details = render_batch_scan_details(
         summary,
         view.header_items,
         compact=True,
         workload_history=view.workload_history,
+        language=language,
     )
     frequent_short_limitations = render_frequent_short_limitations_note(
         summary,
         active_group,
+        language=language,
     )
     switcher = render_result_filters(
         view.rows,
         active_group,
         only_with_spills=only_with_spills,
-        summary_text=scan_volume_summary(view.header_items),
+        summary_text=scan_volume_summary(view.header_items, language=language),
+        language=language,
     )
     workload_followup = render_workload_followup_shortlist(
         view.workload_digest.action_queue,
         workload_base_path=workload_base_path,
+        language=language,
     )
-    table_legend = render_results_table_legend(active_group)
+    table_legend = render_results_table_legend(active_group, language=language)
     result_context = render_results_context_details(
         scan_details,
         secondary_results_notices,
         frequent_short_limitations,
         workload_followup,
         table_legend,
+        language=language,
     )
     escaped_title = html.escape(title)
     aria_label = html.escape(title.lower())
@@ -221,7 +232,7 @@ def render_batch_summary(
         f"{switcher}"
         f"{critical_results_notices}"
         f'<div class="batch-table-wrap"><table class="{table_class}">'
-        f"{batch_table_head(active_group)}"
+        f"{batch_table_head(active_group, language=language)}"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         f"{result_context}"
@@ -242,12 +253,15 @@ def render_action_outcomes_note(count: int | None) -> str:
 def render_frequent_short_limitations_note(
     summary: dict[str, Any],
     active_group: str,
+    *,
+    language: str = "en",
 ) -> str:
     if normalize_query_group(active_group) != "frequent_short":
         return ""
     limitations = frequent_short_limitation_messages(summary)
     if not limitations:
         return ""
+    del language
     items = "".join(f"<li>{html.escape(item)}</li>" for item in limitations)
     return (
         '<div class="batch-note batch-note--frequent-short-limitations">'
@@ -325,6 +339,7 @@ def render_results_notices(
     include_action_outcomes: bool = True,
     include_empty: bool = True,
     include_warnings: bool = True,
+    language: str = "en",
 ) -> str:
     rows = results_notice_rows(
         summary,
@@ -337,15 +352,24 @@ def render_results_notices(
     )
     if not rows:
         return ""
-    rendered_rows = "".join(
-        '<div class="batch-notice-row">'
-        f"<strong>{html.escape(label)}</strong>"
-        f"<span>{body}</span>"
-        "</div>"
-        for label, body in rows
-    )
+    del language
     row_labels = {label for label, _body in rows}
-    notice_title = "Scan warnings" if row_labels == {"Scan warnings"} else "Scan notes"
+    single_warning = row_labels == {"Scan warnings"} and len(rows) == 1
+    notice_title = "Scan warnings" if single_warning else "Scan notes"
+    if single_warning:
+        rendered_rows = (
+            '<div class="batch-notice-row batch-notice-row--single">'
+            f"<span>{rows[0][1]}</span>"
+            "</div>"
+        )
+    else:
+        rendered_rows = "".join(
+            '<div class="batch-notice-row">'
+            f"<strong>{html.escape(label)}</strong>"
+            f"<span>{body}</span>"
+            "</div>"
+            for label, body in rows
+        )
     if compact:
         return (
             f'<div class="batch-context-block batch-context-notes" aria-label="{notice_title}">'
@@ -366,7 +390,8 @@ def results_notices_open_by_default(summary: dict[str, Any]) -> bool:
     return batch_empty_notice_parts(summary) is not None or bool(scan_warning_message(summary))
 
 
-def render_results_context_details(*sections: str) -> str:
+def render_results_context_details(*sections: str, language: str = "en") -> str:
+    del language
     content = "".join(section for section in sections if section)
     if not content:
         return ""
@@ -407,7 +432,8 @@ def results_notice_rows(
     return rows
 
 
-def scan_volume_summary(header_items: tuple[tuple[str, Any], ...]) -> str:
+def scan_volume_summary(header_items: tuple[tuple[str, Any], ...], *, language: str = "en") -> str:
+    del language
     metrics = header_metric_map(header_items)
     scanned = metrics.get("CM inspected") or metrics.get("total") or ""
     value = "" if scanned is None else str(scanned).strip()
@@ -428,6 +454,7 @@ def render_batch_scan_details(
     *,
     compact: bool = False,
     workload_history: Any = None,
+    language: str = "en",
 ) -> str:
     if compact:
         parts = scan_context_coverage_parts(
@@ -440,6 +467,7 @@ def render_batch_scan_details(
         parts.extend(scan_detail_metric_parts(header_items))
     if not parts:
         return ""
+    del language
     items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
     if compact:
         return (
@@ -639,7 +667,8 @@ def batch_result_empty_message(
     return f"No {group_label} were found in the configured batch summary."
 
 
-def render_results_table_legend(active_group: str) -> str:
+def render_results_table_legend(active_group: str, *, language: str = "en") -> str:
+    del language
     normalized = normalize_query_group(active_group)
     if normalized == "optimization":
         items = (
@@ -701,6 +730,7 @@ def render_batch_case_row(
     details_base_path: str = "/batch/case",
     workload_base_path: str | None = None,
     query_group: str = DEFAULT_QUERY_GROUP,
+    language: str = "en",
 ) -> str:
     view = (
         case
@@ -716,7 +746,7 @@ def render_batch_case_row(
     if normalized == "optimization":
         cells = [
             compact_cell(rank),
-            summary_cell(view, query_group=normalized),
+            summary_cell(view, query_group=normalized, language=language),
             query_id_cell(view, workload_base_path=workload_base_path),
             user_cell(view.user),
             candidate_cell(view.optimization_tier),
@@ -732,7 +762,7 @@ def render_batch_case_row(
     elif normalized == "stats":
         cells = [
             compact_cell(rank),
-            summary_cell(view, query_group=normalized),
+            summary_cell(view, query_group=normalized, language=language),
             query_id_cell(view, workload_base_path=workload_base_path),
             user_cell(view.user),
             candidate_cell(view.stats_tier),
@@ -754,7 +784,7 @@ def render_batch_case_row(
         )
         cells = [
             compact_cell(rank),
-            summary_cell(view, query_group=normalized),
+            summary_cell(view, query_group=normalized, language=language),
             query_id_cell(view, workload_base_path=workload_base_path),
             user_cell(view.user),
             compact_cell(view.workload_group_member_count),
@@ -766,7 +796,7 @@ def render_batch_case_row(
     else:
         cells = [
             compact_cell(rank),
-            summary_cell(view, query_group=normalized),
+            summary_cell(view, query_group=normalized, language=language),
             query_id_cell(view, workload_base_path=workload_base_path),
             user_cell(view.user),
             score_cell(view),
@@ -829,7 +859,8 @@ def reason_cell(value: Any) -> str:
     return f'<td class="batch-cell--reason">{escape_value(value)}</td>'
 
 
-def score_cell(view: RecentScanCaseRowView) -> str:
+def score_cell(view: RecentScanCaseRowView, *, language: str = "en") -> str:
+    del language
     score = view.score
     if view.score_severity == "failed":
         class_name = "batch-severity--failed"
@@ -851,7 +882,8 @@ def score_cell(view: RecentScanCaseRowView) -> str:
     )
 
 
-def candidate_cell(tier: Any) -> str:
+def candidate_cell(tier: Any, *, language: str = "en") -> str:
+    del language
     normalized = str(tier or "not_likely").lower()
     class_name = {
         "high": "batch-severity--high",
@@ -863,7 +895,8 @@ def candidate_cell(tier: Any) -> str:
     return badge_cell(label, class_name, cell_class="batch-cell--candidate")
 
 
-def workload_regression_cell(view: RecentScanCaseRowView) -> str:
+def workload_regression_cell(view: RecentScanCaseRowView, *, language: str = "en") -> str:
+    del language
     class_name = {
         "strong": "batch-severity--high",
         "mild": "batch-severity--suspicious",
@@ -892,47 +925,94 @@ def display_seconds_label(value: Any) -> str:
     return f"{seconds:.1f}s"
 
 
-def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUERY_GROUP) -> str:
-    reason_html = f"<span>{escape_value(view.reason_text)}</span>" if view.reason_text else ""
+def summary_cell(
+    view: RecentScanCaseRowView,
+    *,
+    query_group: str = DEFAULT_QUERY_GROUP,
+    language: str = "en",
+) -> str:
+    reason_html = (
+        f"<span>{escape_value(localize_diagnostic_text(view.reason_text, language))}</span>"
+        if view.reason_text
+        else ""
+    )
     primary_html = (
-        f"<span>Primary: {escape_value(view.primary_bottleneck.summary)}.</span>"
+        "<span>"
+        f"{escape_value(localize_diagnostic_text('Primary:', language))} "
+        f"{escape_value(localize_diagnostic_text(view.primary_bottleneck.summary, language))}."
+        "</span>"
         if not view.primary_bottleneck.unavailable
         else ""
     )
     normalized = normalize_query_group(query_group)
-    title = view.signal_summary
+    title = localize_diagnostic_text(view.signal_summary, language)
     detail_html = ""
     if normalized == "optimization":
-        title = f"Query optimization candidate: {candidate_label(view.optimization_tier)}"
+        title = (
+            f"{localize_diagnostic_text('Query optimization candidate:', language)} "
+            f"{localize_diagnostic_text(candidate_label(view.optimization_tier), language)}"
+        )
         why = (
-            f"Why: {view.optimization_summary}"
+            f"{localize_diagnostic_text('Why:', language)} "
+            f"{localize_diagnostic_text(view.optimization_summary, language)}"
             if view.optimization_summary
-            else "Why: query-shape evidence"
+            else localize_diagnostic_text("Why: query-shape evidence", language)
         )
         review = (
-            f" Review: {view.optimization_review_areas}." if view.optimization_review_areas else ""
+            f" {localize_diagnostic_text('Review:', language)} "
+            f"{localize_diagnostic_text(view.optimization_review_areas, language)}."
+            if view.optimization_review_areas
+            else ""
         )
-        facts = f" Facts: {view.optimizer_fact_summary}." if view.optimizer_fact_summary else ""
+        facts = (
+            f" {localize_diagnostic_text('Facts:', language)} "
+            f"{localize_diagnostic_text(view.optimizer_fact_summary, language)}."
+            if view.optimizer_fact_summary
+            else ""
+        )
         guardrails = (
-            f" Guardrails: {view.optimizer_guardrail_summary}."
+            f" {localize_diagnostic_text('Guardrails:', language)} "
+            f"{localize_diagnostic_text(view.optimizer_guardrail_summary, language)}."
             if view.optimizer_guardrail_summary
             else ""
         )
         detail_html = f"<span>{escape_value(why)}.{escape_value(review)}{escape_value(facts)}{escape_value(guardrails)}</span>"
         source_location_html = render_row_source_location_chips(view, "query_optimization")
     elif normalized == "stats":
-        title = f"Stats candidate: {candidate_label(view.stats_tier)}"
-        why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
-        review = f" Review: {view.stats_review_areas}" if view.stats_review_areas else ""
+        title = (
+            f"{localize_diagnostic_text('Stats candidate:', language)} "
+            f"{localize_diagnostic_text(candidate_label(view.stats_tier), language)}"
+        )
+        why = (
+            f"{localize_diagnostic_text('Why:', language)} "
+            f"{localize_diagnostic_text(view.stats_summary, language)}"
+            if view.stats_summary
+            else localize_diagnostic_text("Why: stats-planning evidence", language)
+        )
+        review = (
+            f" {localize_diagnostic_text('Review:', language)} "
+            f"{localize_diagnostic_text(view.stats_review_areas, language)}"
+            if view.stats_review_areas
+            else ""
+        )
         detail_html = f"<span>{escape_value(why)}.{escape_value(review)}</span>"
     elif normalized in {"workloads", "regressions", "frequent_short"}:
         runs = view.workload_group_member_count
         if normalized == "regressions":
-            title = f"Regressed workload: {view.workload_regression.title()}"
+            title = (
+                f"{localize_diagnostic_text('Regressed workload:', language)} "
+                f"{localize_diagnostic_text(view.workload_regression.title(), language)}"
+            )
         elif normalized == "frequent_short":
-            title = f"Frequent short workload: {runs} similar queries"
+            title = localize_diagnostic_text(
+                f"Frequent short workload: {runs} similar queries",
+                language,
+            )
         else:
-            title = f"Repeated workload: {runs} similar queries"
+            title = localize_diagnostic_text(
+                f"Repeated workload: {runs} similar queries",
+                language,
+            )
         group_p95 = str(view.workload_group_duration_sec_p95 or "").strip()
         details = [
             f"{runs} similar queries",
@@ -948,7 +1028,9 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
             details.append(
                 f"{baseline_text}; regression {view.workload_regression}; n={view.workload_baseline_sample_count}"
             )
-        detail_html = f"<span>{escape_value('; '.join(details))}.</span>"
+        detail_html = (
+            f"<span>{escape_value(localize_diagnostic_text('; '.join(details), language))}.</span>"
+        )
     return (
         '<td class="batch-cell--summary">'
         f"<strong>{escape_value(title)}</strong>"
@@ -965,7 +1047,8 @@ def render_row_source_location_chips(view: RecentScanCaseRowView, group: str) ->
     return render_source_location_chips(locators, limit=2)
 
 
-def candidate_label(value: Any) -> str:
+def candidate_label(value: Any, *, language: str = "en") -> str:
+    del language
     return str(value or "not_likely").replace("_", " ").title()
 
 
@@ -982,7 +1065,8 @@ def optimizer_review_scope_text(view: RecentScanCaseRowView) -> str:
     return ". ".join(parts) or "Review query shape"
 
 
-def stats_need_label(value: Any) -> str:
+def stats_need_label(value: Any, *, language: str = "en") -> str:
+    del language
     labels = {
         "table_stats": "table/partition stats",
         "column_stats": "column stats",
@@ -994,7 +1078,10 @@ def stats_need_label(value: Any) -> str:
     return labels.get(str(value), str(value))
 
 
-def optimizer_rewrite_support_cell(status: Any, label: Any, reason: Any) -> str:
+def optimizer_rewrite_support_cell(
+    status: Any, label: Any, reason: Any, *, language: str = "en"
+) -> str:
+    del language
     display_label, class_name, title = optimizer_rewrite_support_view(status, label, reason)
     return badge_cell(display_label, class_name, title=title, cell_class="batch-cell--status")
 
@@ -1024,7 +1111,8 @@ def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tupl
     return fallback_label, class_name, title
 
 
-def metadata_cell(status: Any) -> str:
+def metadata_cell(status: Any, *, language: str = "en") -> str:
+    del language
     normalized = str(status).lower() if status is not None else "unknown"
     if normalized in {"ok", "available", "done", "collected"}:
         label = "Collected"
@@ -1041,7 +1129,8 @@ def metadata_cell(status: Any) -> str:
     return badge_cell(label, class_name, title=status, cell_class="batch-cell--status")
 
 
-def stats_cell(status: Any) -> str:
+def stats_cell(status: Any, *, language: str = "en") -> str:
+    del language
     normalized = str(status).lower() if status is not None else "not_checked"
     if normalized == "available":
         label = "Available"

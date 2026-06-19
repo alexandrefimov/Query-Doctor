@@ -6,7 +6,7 @@ from query_doctor.web.job_progress import (
     progress_view_from_snapshot,
 )
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
-from query_doctor.web.models import WebJobSnapshot
+from query_doctor.web.models import WebError, WebJobSnapshot
 
 
 class FakeClock:
@@ -109,6 +109,25 @@ def test_failed_job_progress_does_not_mark_done_step_complete():
     assert progress_view.steps[-1].detail == "Failed"
 
 
+def test_trino_query_job_progress_uses_beta_boundary_wording():
+    progress_view = progress_view_for_job("trino_query", "Reading bounded QueryInfo", 24)
+
+    labels = [step.label for step in progress_view.steps]
+    rendered = " ".join(labels)
+    assert labels == [
+        "Checking Trino Query ID",
+        "Reading bounded QueryInfo",
+        "Validating raw-free boundary",
+        "Building compact diagnosis",
+        "Preparing beta result",
+        "Done",
+    ]
+    assert progress_view.current_stage == "Reading bounded QueryInfo"
+    assert "profile" not in rendered.lower()
+    assert "report" not in rendered.lower()
+    assert "optimizer" not in rendered.lower()
+
+
 def test_web_job_store_updates_terminal_ttl_when_job_finishes():
     clock = FakeClock()
     store = WebJobStore(terminal_job_ttl_sec=10, clock=clock)
@@ -122,3 +141,44 @@ def test_web_job_store_updates_terminal_ttl_when_job_finishes():
     clock.advance(2)
 
     assert store.get(job.job_id) is None
+
+
+def test_web_job_status_json_includes_structured_safe_error_info():
+    store = WebJobStore()
+    job = store.create("qid", "analysis", kind="trino_query")
+    store.update_stage(job.job_id, 1)
+
+    store.fail(
+        job.job_id,
+        WebError(
+            "Authorization: Bearer secret-token failed at https://coordinator.example.test",
+            title="Trino auth failed",
+            reason_code="trino_beta.auth_rejected",
+            next_step="Renew the operator-managed auth reference or Kerberos ticket.",
+            details=("Raw coordinator response is hidden.",),
+        ),
+    )
+
+    payload = json.loads(render_job_status_json(store.get(job.job_id)))
+    rendered = json.dumps(payload, sort_keys=True)
+
+    assert payload["status"] == "failed"
+    assert payload["error_info"]["reason_code"] == "trino_beta.auth_rejected"
+    assert payload["error_info"]["stage"] == "Reading bounded QueryInfo"
+    assert payload["error_info"]["next_step"].startswith("Renew the operator-managed")
+    assert "trino_beta.auth_rejected" in payload["error_html"]
+    assert "secret-token" not in rendered
+    assert "coordinator.example.test" not in rendered
+
+
+def test_web_job_status_json_preserves_legacy_error_string():
+    store = WebJobStore()
+    job = store.create_batch({"scan_target": "finished"})
+
+    store.fail(job.job_id, WebError("Safe batch failure.", reason_code="batch.safe_failure"))
+
+    payload = json.loads(render_job_status_json(store.get(job.job_id)))
+
+    assert payload["error"] == "Safe batch failure."
+    assert payload["error_info"]["reason_code"] == "batch.safe_failure"
+    assert "error_html" in payload

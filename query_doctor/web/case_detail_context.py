@@ -21,6 +21,31 @@ OPTIMIZER_CASE_NOT_ACTIONABLE_REASON = (
 FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON = (
     "Optimizer requires successful deterministic processing for this case. Re-run analysis first."
 )
+OPTIMIZER_DRAFT_NOT_ELIGIBLE_REASON = (
+    "Query Doctor already classified this query shape as not eligible for an optimizer job. "
+    "Use the query-shape review areas instead."
+)
+OPTIMIZER_DRAFT_DISABLED_BY_GUARDRAILS_REASON = (
+    "Trusted SQL draft generation is disabled for this query shape by safety and validation "
+    "guardrails. Use the query-shape review areas instead."
+)
+OPTIMIZER_DRAFT_UNAVAILABLE_REASON = (
+    "A supported optimizer recipe was detected, but deterministic checks could not build a "
+    "trusted SQL draft for this concrete query shape."
+)
+OPTIMIZER_NO_RECIPE_REASON = (
+    "No supported deterministic optimizer recipe is available for this query shape. Use the "
+    "query-shape review areas instead."
+)
+OPTIMIZER_SOURCE_CLASSIFICATION_UNAVAILABLE_REASON = (
+    "Source SQL is unavailable or outside the optimizer read-only scope for this case."
+)
+OPTIMIZER_REWRITE_SUPPORT_ELIGIBLE_DRAFT = "safe_to_attempt"
+OPTIMIZER_REWRITE_SUPPORT_ELIGIBLE_STATUSES = {
+    "sql_draft_supported",
+    "sql_draft_attemptable",
+    "recipe_detected",
+}
 ACTION_TERMINAL_OR_VISIBLE_STATUSES = {
     "running",
     "generated",
@@ -177,7 +202,63 @@ def case_allows_llm_report(case: dict[str, object]) -> bool:
 
 
 def case_allows_query_optimizer(case: dict[str, object]) -> bool:
+    return case_score_severity(case) in {"high", "suspicious"} and case_has_optimizer_job_support(
+        case
+    )
+
+
+def case_score_allows_query_optimizer(case: dict[str, object]) -> bool:
     return case_score_severity(case) in {"high", "suspicious"}
+
+
+def case_has_optimizer_job_support(case: dict[str, object]) -> bool:
+    support = optimizer_rewrite_support(case)
+    if not support:
+        return True
+    eligibility = str(support.get("draft_eligibility") or "").strip().lower()
+    if eligibility:
+        return eligibility == OPTIMIZER_REWRITE_SUPPORT_ELIGIBLE_DRAFT
+    status = str(support.get("status") or "").strip().lower()
+    return status in OPTIMIZER_REWRITE_SUPPORT_ELIGIBLE_STATUSES
+
+
+def optimizer_rewrite_support(case: dict[str, object]) -> dict[str, object]:
+    support = case.get("optimizer_rewrite_support")
+    return support if isinstance(support, dict) else {}
+
+
+def optimizer_unavailable_reason_for_case(case: dict[str, object]) -> str:
+    severity = case_score_severity(case)
+    if severity == "failed":
+        return FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON
+    if severity not in {"high", "suspicious"}:
+        return OPTIMIZER_CASE_NOT_ACTIONABLE_REASON
+
+    support = optimizer_rewrite_support(case)
+    if not support:
+        return ""
+    eligibility = str(support.get("draft_eligibility") or "").strip().lower()
+    status = str(support.get("status") or "").strip().lower()
+    if eligibility == OPTIMIZER_REWRITE_SUPPORT_ELIGIBLE_DRAFT:
+        return ""
+    if not eligibility and status in OPTIMIZER_REWRITE_SUPPORT_ELIGIBLE_STATUSES:
+        return ""
+    if eligibility == "disabled_by_safety_thresholds":
+        return OPTIMIZER_DRAFT_DISABLED_BY_GUARDRAILS_REASON
+    if eligibility == "deterministic_draft_unavailable":
+        return OPTIMIZER_DRAFT_UNAVAILABLE_REASON
+    if eligibility == "no_recipe":
+        return OPTIMIZER_NO_RECIPE_REASON
+    if eligibility in {"source_unavailable", "not_candidate"} or status in {
+        "source_unavailable",
+        "not_candidate",
+    }:
+        if eligibility == "source_unavailable" or status == "source_unavailable":
+            return OPTIMIZER_SOURCE_CLASSIFICATION_UNAVAILABLE_REASON
+        return OPTIMIZER_DRAFT_NOT_ELIGIBLE_REASON
+    if status in {"guidance_only", "draft_disabled"}:
+        return OPTIMIZER_DRAFT_NOT_ELIGIBLE_REASON
+    return OPTIMIZER_DRAFT_NOT_ELIGIBLE_REASON
 
 
 def optimizer_state_for_case(
@@ -200,6 +281,20 @@ def optimizer_state_for_case(
                 "partial": False,
                 "source_available": False,
                 "unavailable_reason": FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON,
+                "error": "",
+            }
+        )
+        return unavailable
+    unavailable_reason = optimizer_unavailable_reason_for_case(case)
+    if unavailable_reason and severity in {"high", "suspicious"}:
+        unavailable = dict(optimized_query_state)
+        unavailable.update(
+            {
+                "status": "unavailable",
+                "running": False,
+                "trusted": False,
+                "partial": False,
+                "unavailable_reason": unavailable_reason,
                 "error": "",
             }
         )

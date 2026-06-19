@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var button = form.querySelector('button[type="submit"]');
       if (button) {
         button.disabled = true;
-        button.textContent = 'Run';
+        button.textContent = 'Running';
       }
       var queryInput = form.querySelector('input[name="query_id"]');
       if (queryInput) {
@@ -200,7 +200,56 @@ document.addEventListener('DOMContentLoaded', function () {
     var selected = root && root.querySelector('input[name="diagnosis_workflow"]:checked');
     return selected ? selected.value : '';
   }
+  function forceWorkflow(root, value) {
+    var changed = false;
+    Array.prototype.slice.call(root.querySelectorAll('input[name="diagnosis_workflow"]')).forEach(function (choice) {
+      var shouldCheck = choice.value === value;
+      if (choice.checked !== shouldCheck) {
+        choice.checked = shouldCheck;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+  function setWorkflowDisabled(root, value, disabled) {
+    Array.prototype.slice.call(root.querySelectorAll('input[name="diagnosis_workflow"]')).forEach(function (choice) {
+      if (choice.value !== value) {
+        return;
+      }
+      choice.disabled = disabled;
+      if (disabled) {
+        choice.setAttribute('aria-disabled', 'true');
+      } else {
+        choice.removeAttribute('aria-disabled');
+      }
+    });
+  }
+  function enforceTrinoWorkflow(root) {
+    if (currentEngine(root) !== 'trino') {
+      setWorkflowDisabled(root, 'finished', false);
+      setWorkflowDisabled(root, 'running', false);
+      setWorkflowDisabled(root, 'query', false);
+      return false;
+    }
+    var queryReady = selectedClusterTrinoQueryReady(root);
+    var recentReady = selectedClusterTrinoRecentReady(root);
+    setWorkflowDisabled(root, 'finished', !recentReady);
+    setWorkflowDisabled(root, 'running', true);
+    setWorkflowDisabled(root, 'query', !queryReady);
+    var workflow = workflowSelection(root);
+    if (workflow === 'running') {
+      return forceWorkflow(root, queryReady ? 'query' : 'finished');
+    }
+    if (workflow === 'finished' && !recentReady && queryReady) {
+      return forceWorkflow(root, 'query');
+    }
+    if (workflow === 'query' && !queryReady && recentReady) {
+      return forceWorkflow(root, 'finished');
+    }
+    return false;
+  }
   function syncWorkflowState(root) {
+    enforceTrinoWorkflow(root);
     var workflow = workflowSelection(root);
     if (!workflow) {
       return;
@@ -241,6 +290,20 @@ document.addEventListener('DOMContentLoaded', function () {
       choice.addEventListener('change', function () { applyDiagnosisTarget(root); });
     });
   });
+  var knownQueryCopy = {
+    impala: {
+      label: 'Query ID',
+      placeholder: 'aaaaaaaaaaaaaaaa:0000000000000001',
+      button: 'Run',
+      help: 'One explicit Query ID. Query Doctor collects or reuses the profile, runs deterministic analysis, adds metadata when configured, prepares the Python report, and does not auto-run LLM or optimizer actions. Recent-query filters stay hidden in this mode.'
+    },
+    trino: {
+      label: 'Trino Query ID',
+      placeholder: '20260603_120102_00001_abcde',
+      button: 'Run Trino Beta',
+      help: 'One explicit Trino Query ID. Query Doctor reads one bounded, pruned coordinator QueryInfo payload through local beta config and renders compact raw-free diagnosis. Running scans, query-history crawling, metadata collection, Details/trusted reports, optimizer behavior, generated SQL, and SQL execution remain unavailable.'
+    }
+  };
   function syncDiagnosisCluster(root) {
     var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
     if (!selector) {
@@ -250,12 +313,205 @@ document.addEventListener('DOMContentLoaded', function () {
       input.value = selector.value;
     });
   }
+  function clusterOptionMatchesEngine(option, engine) {
+    if (!option) {
+      return false;
+    }
+    if (engine === 'trino') {
+      return option.getAttribute('data-engine-trino-ready') === 'true';
+    }
+    return option.getAttribute('data-engine-impala-ready') !== 'false';
+  }
+  function clusterOptionsForEngine(root, engine) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector) {
+      return [];
+    }
+    return Array.prototype.slice.call(selector.options).filter(function (option) {
+      return clusterOptionMatchesEngine(option, engine);
+    });
+  }
+  function anyClusterImpalaReady(root) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector) {
+      return true;
+    }
+    return clusterOptionsForEngine(root, 'impala').length > 0;
+  }
+  function updateClusterOptionsForEngine(root) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector) {
+      return false;
+    }
+    var engine = currentEngine(root);
+    var firstMatching = null;
+    Array.prototype.slice.call(selector.options).forEach(function (option) {
+      var visible = clusterOptionMatchesEngine(option, engine);
+      if (visible && !firstMatching) {
+        firstMatching = option;
+      }
+      option.hidden = !visible;
+      option.disabled = !visible;
+    });
+    if (firstMatching && !clusterOptionMatchesEngine(selector.options[selector.selectedIndex], engine)) {
+      selector.value = firstMatching.value;
+      syncDiagnosisCluster(root);
+      return true;
+    }
+    syncDiagnosisCluster(root);
+    return false;
+  }
+  function selectedClusterTrinoReady(root) {
+    return selectedClusterTrinoQueryReady(root) || selectedClusterTrinoRecentReady(root);
+  }
+  function trinoReadyOptions(root) {
+    return clusterOptionsForEngine(root, 'trino');
+  }
+  function anyClusterTrinoReady(root) {
+    var options = trinoReadyOptions(root);
+    return options.length ? true : selectedClusterTrinoReady(root);
+  }
+  function selectFirstTrinoReadyCluster(root) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    var options = trinoReadyOptions(root);
+    if (!selector || !options.length) {
+      return false;
+    }
+    if (selectedClusterTrinoReady(root) && clusterOptionMatchesEngine(selector.options[selector.selectedIndex], 'trino')) {
+      return false;
+    }
+    selector.value = options[0].value;
+    syncDiagnosisCluster(root);
+    return true;
+  }
+  function selectedClusterTrinoQueryReady(root) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector || selector.selectedIndex < 0) {
+      return true;
+    }
+    var option = selector.options[selector.selectedIndex];
+    return !option || option.getAttribute('data-trino-beta-query-ready') === 'true';
+  }
+  function selectedClusterTrinoRecentReady(root) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector || selector.selectedIndex < 0) {
+      return false;
+    }
+    var option = selector.options[selector.selectedIndex];
+    return !!option && option.getAttribute('data-trino-beta-recent-ready') === 'true';
+  }
+  function syncEngineAvailability(root) {
+    var trinoReady = anyClusterTrinoReady(root);
+    var impalaReady = anyClusterImpalaReady(root);
+    var trinoChoice = root.querySelector('input[name="engine_choice"][data-engine-choice][value="trino"]');
+    var impalaChoice = root.querySelector('input[name="engine_choice"][data-engine-choice][value="impala"]');
+    if (!trinoChoice || !impalaChoice) {
+      return;
+    }
+    impalaChoice.disabled = !impalaReady;
+    if (impalaReady) {
+      impalaChoice.removeAttribute('aria-disabled');
+    } else {
+      impalaChoice.setAttribute('aria-disabled', 'true');
+    }
+    trinoChoice.disabled = !trinoReady;
+    if (trinoReady) {
+      trinoChoice.removeAttribute('aria-disabled');
+    } else {
+      trinoChoice.setAttribute('aria-disabled', 'true');
+      if (trinoChoice.checked && impalaChoice) {
+        trinoChoice.checked = false;
+        impalaChoice.checked = true;
+      }
+    }
+    if (!impalaReady && impalaChoice.checked && trinoReady) {
+      impalaChoice.checked = false;
+      trinoChoice.checked = true;
+    }
+  }
+  function forceEngine(root, value) {
+    Array.prototype.slice.call(root.querySelectorAll('input[name="engine_choice"][data-engine-choice]')).forEach(function (choice) {
+      choice.checked = choice.value === value;
+    });
+  }
   Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
     syncDiagnosisCluster(root);
+    syncEngineAvailability(root);
+    if (currentEngine(root) === 'trino' && !selectedClusterTrinoReady(root)) {
+      selectFirstTrinoReadyCluster(root);
+      syncEngineAvailability(root);
+    }
+    updateClusterOptionsForEngine(root);
+    syncEngine(root);
     var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
     if (selector) {
-      selector.addEventListener('change', function () { syncDiagnosisCluster(root); });
+      selector.addEventListener('change', function () {
+        syncDiagnosisCluster(root);
+        syncEngineAvailability(root);
+        if (currentEngine(root) === 'trino' && !selectedClusterTrinoReady(root)) {
+          forceEngine(root, 'impala');
+        }
+        syncEngine(root);
+        applyDiagnosisTarget(root);
+      });
     }
+  });
+  function currentEngine(root) {
+    var selected = root && root.querySelector('input[name="engine_choice"][data-engine-choice]:checked');
+    return selected && selected.value === 'trino' ? 'trino' : 'impala';
+  }
+  function syncEngine(root) {
+    var engine = currentEngine(root);
+    updateClusterOptionsForEngine(root);
+    Array.prototype.slice.call(root.querySelectorAll('input[type="hidden"][name="engine"][data-engine-hidden]')).forEach(function (input) {
+      input.value = engine;
+    });
+    syncKnownQueryEngineCopy(root, engine);
+    if (engine === 'trino' && enforceTrinoWorkflow(root)) {
+      applyDiagnosisTarget(root);
+    }
+  }
+  function syncKnownQueryEngineCopy(root, engine) {
+    var form = root && root.querySelector('#analyze-form');
+    if (!form) {
+      return;
+    }
+    var copy = knownQueryCopy[engine] || knownQueryCopy.impala;
+    var label = form.querySelector('label[for="query_id"]');
+    var summary = form.querySelector('.info-popover summary');
+    var help = form.querySelector('.info-body');
+    var input = form.querySelector('input[name="query_id"]');
+    var button = form.querySelector('button[type="submit"]');
+    if (label) {
+      label.textContent = copy.label;
+    }
+    if (summary) {
+      summary.setAttribute('aria-label', copy.label + ' help');
+    }
+    if (help) {
+      help.textContent = copy.help;
+    }
+    if (input) {
+      input.setAttribute('placeholder', copy.placeholder);
+    }
+    if (button && !button.disabled) {
+      button.textContent = copy.button;
+    }
+  }
+  Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
+    syncEngine(root);
+    Array.prototype.slice.call(root.querySelectorAll('input[name="engine_choice"][data-engine-choice]')).forEach(function (choice) {
+      choice.addEventListener('change', function () {
+        if (choice.value === 'trino' && choice.checked) {
+          selectFirstTrinoReadyCluster(root);
+          syncEngineAvailability(root);
+        } else if (choice.value === 'impala' && choice.checked) {
+          updateClusterOptionsForEngine(root);
+        }
+        syncEngine(root);
+        applyDiagnosisTarget(root);
+      });
+    });
   });
   function currentDiagnosisTarget(root) {
     var workflow = workflowSelection(root);
@@ -478,21 +734,33 @@ document.addEventListener('DOMContentLoaded', function () {
   var pollFailureCount = 0;
   function runButtonsForJobKind(kind) {
     var selector = '';
-    if (kind === 'batch') {
+    if (kind === 'batch' || kind === 'trino_recent') {
       selector = '#batch-form button[type="submit"]';
     } else if (kind === 'running') {
       selector = '#running-form button[type="submit"]';
-    } else if (kind === 'query') {
+    } else if (kind === 'query' || kind === 'trino_query') {
       selector = '#analyze-form button[type="submit"]';
     }
     return selector ? Array.prototype.slice.call(document.querySelectorAll(selector)) : [];
   }
   function restoreRunButtons(kind) {
-    var label = kind === 'query' ? 'Run' : 'Run scan';
+    var label = kind === 'trino_query' ? 'Run Trino Beta' : kind === 'query' ? 'Run' : 'Run scan';
     runButtonsForJobKind(kind).forEach(function (button) {
       button.disabled = false;
       button.textContent = label;
     });
+  }
+  function jobPanelTitle(kind, status) {
+    if (kind === 'trino_query' || kind === 'trino_recent') {
+      if (status === 'ok') { return 'Trino Beta complete'; }
+      if (status === 'cancelled') { return 'Trino Beta stopped'; }
+      if (status === 'failed') { return 'Trino Beta failed'; }
+      return 'Trino Beta running';
+    }
+    if (status === 'ok') { return 'Analysis complete'; }
+    if (status === 'cancelled') { return 'Analysis stopped'; }
+    if (status === 'failed') { return 'Analysis failed'; }
+    return 'Analysis running';
   }
   function clearPollingUnavailable() {
     if (errorSlot && errorSlot.getAttribute('data-polling-unavailable') === 'true') {
@@ -501,12 +769,77 @@ document.addEventListener('DOMContentLoaded', function () {
       errorSlot.removeAttribute('data-polling-unavailable');
     }
   }
+  function appendTextElement(parent, tagName, className, text) {
+    var element = document.createElement(tagName);
+    if (className) {
+      element.className = className;
+    }
+    element.textContent = text || '';
+    parent.appendChild(element);
+    return element;
+  }
+  function appendErrorMeta(meta, label, value) {
+    if (!value) {
+      return;
+    }
+    var row = document.createElement('div');
+    appendTextElement(row, 'span', '', label);
+    appendTextElement(row, 'strong', '', value);
+    meta.appendChild(row);
+  }
+  function renderClientErrorInfoBody(target, info) {
+    if (!target) {
+      return;
+    }
+    var payload = info || {};
+    target.textContent = '';
+    appendTextElement(target, 'strong', '', payload.title || 'Safe failure details');
+    appendTextElement(
+      target,
+      'p',
+      'error-summary',
+      payload.message || 'The request failed before Query Doctor could render a trusted result.'
+    );
+    var meta = document.createElement('div');
+    meta.className = 'error-meta';
+    appendErrorMeta(meta, 'Reason', payload.reason_code || 'web.client_error');
+    appendErrorMeta(meta, 'Stage', payload.stage || 'Job status polling');
+    if (meta.childNodes.length) {
+      target.appendChild(meta);
+    }
+    var details = Array.isArray(payload.details) ? payload.details : [];
+    if (details.length) {
+      var list = document.createElement('ul');
+      list.className = 'error-detail-list';
+      details.slice(0, 5).forEach(function (detail) {
+        appendTextElement(list, 'li', '', String(detail || ''));
+      });
+      target.appendChild(list);
+    }
+    var nextStep = appendTextElement(target, 'p', 'error-next-step', '');
+    appendTextElement(nextStep, 'strong', '', 'Next step:');
+    nextStep.appendChild(document.createTextNode(' ' + (
+      payload.next_step || 'Review the selected inputs and local configuration, then retry.'
+    )));
+    appendTextElement(
+      target,
+      'p',
+      'error-boundary-note',
+      payload.footer || 'Unsafe details remain hidden.'
+    );
+  }
   function showPollingUnavailable() {
     if (title) { title.textContent = 'Scan status unavailable'; }
     if (errorSlot) {
       errorSlot.hidden = false;
       errorSlot.setAttribute('data-polling-unavailable', 'true');
-      errorSlot.textContent = 'Scan status is unavailable because the local Query Doctor web server is not responding. Restart Query Doctor or refresh this page after the server is back.';
+      renderClientErrorInfoBody(errorSlot, {
+        title: 'Job status unavailable',
+        message: 'Scan status is unavailable because the local Query Doctor web server is not responding.',
+        reason_code: 'web.client_polling_unavailable',
+        stage: 'Job status polling',
+        next_step: 'Restart Query Doctor or refresh this page after the server is back.'
+      });
     }
   }
   function poll() {
@@ -519,7 +852,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var runningProgressSlot = document.getElementById('batch-progress-slot');
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
         if (data.status === 'ok') {
-          if (title) { title.textContent = 'Analysis complete'; }
+          if (title) { title.textContent = jobPanelTitle(data.kind, data.status); }
           restoreRunButtons(data.kind);
           if (resultSlot && !resultSlot.querySelector('#recent-results')) {
             resultSlot.innerHTML = data.result_html || '';
@@ -527,11 +860,30 @@ document.addEventListener('DOMContentLoaded', function () {
           return;
         }
         if (data.status === 'failed' || data.status === 'cancelled') {
-          if (title) { title.textContent = data.status === 'cancelled' ? 'Analysis stopped' : 'Analysis failed'; }
+          if (title) { title.textContent = jobPanelTitle(data.kind, data.status); }
           restoreRunButtons(data.kind);
           if (errorSlot) {
             errorSlot.hidden = false;
-            errorSlot.textContent = data.error || (data.status === 'cancelled' ? 'Job stopped by user.' : 'Analysis failed.');
+            if (data.error_html) {
+              errorSlot.innerHTML = data.error_html;
+            } else {
+              renderClientErrorInfoBody(errorSlot, {
+                title: data.status === 'cancelled' ? 'Job stopped' : 'Safe failure details',
+                message: data.error || (
+                  data.status === 'cancelled' ? 'Job stopped by user.' : 'Analysis failed.'
+                ),
+                reason_code: data.error_info && data.error_info.reason_code
+                  ? data.error_info.reason_code
+                  : 'web.job_status_failed',
+                stage: data.error_info && data.error_info.stage
+                  ? data.error_info.stage
+                  : (data.stage || 'Job status polling'),
+                next_step: data.error_info && data.error_info.next_step
+                  ? data.error_info.next_step
+                  : 'Review the selected inputs and local configuration, then retry.',
+                details: data.error_info && data.error_info.details ? data.error_info.details : []
+              });
+            }
           }
           return;
         }

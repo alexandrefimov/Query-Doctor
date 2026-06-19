@@ -19,7 +19,8 @@ from query_doctor.web.batch_scan import (
     validate_batch_config_for_settings,
 )
 from query_doctor.web.config import metadata_configured
-from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.form_helpers import first_form_value
+from query_doctor.web.job_errors import unexpected_job_failure_error
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import (
     WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
@@ -32,15 +33,14 @@ from query_doctor.web.subprocesses import (
     effective_subprocess_env,
     preflight_web_metadata_batch,
     run_subprocess,
-    subprocess_failure_message,
+    subprocess_failure_web_error,
 )
+from query_doctor.web.trino_beta_query import ENGINE_TRINO
+from query_doctor.web.trino_recent import run_trino_recent_scan
 from query_doctor.web.ui.running import render_running_queries_page
 from query_doctor.web.ui.pages import render_batch_page
 from query_doctor.web.ui.recent_scan_results import render_batch_card
-
-
-def sanitize_for_display(value: object) -> str:
-    return sanitize_browser_error_text(value)
+from query_doctor.web.ui.trino import render_trino_recent_scan_result
 
 
 def start_batch_job(
@@ -54,21 +54,31 @@ def start_batch_job(
         selected_settings = settings_for_cluster_key(
             settings, selected_cluster_key_from_mapping(form, settings)
         )
+        requested_engine = first_form_value(form, "engine")
         config = parse_batch_run_config(
             form,
             settings=selected_settings,
-            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
+            default_metadata_top_limit=0
+            if requested_engine == ENGINE_TRINO
+            else WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
             if metadata_configured(selected_settings)
             else 0,
             default_parallelism=50,
         )
         validate_batch_config_for_settings(config, selected_settings)
+        if config.engine == ENGINE_TRINO:
+            job = job_store.create_trino_recent(form_values_from_config(config))
+            thread = threading.Thread(
+                target=run_trino_recent_job,
+                args=(job.job_id, config, selected_settings, job_store),
+                daemon=True,
+            )
+            thread.start()
+            return 303, f"/jobs/{job.job_id}"
         if config.metadata_top_limit > 0:
             preflight_web_metadata_batch(selected_settings, runner=runner)
     except WebError as exc:
-        return 400, render_batch_page(
-            settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form)
-        )
+        return 400, render_batch_page(settings, error=exc, form_values=form_values_from_form(form))
 
     job = job_store.create_batch(form_values_from_config(config))
     thread = threading.Thread(
@@ -91,10 +101,13 @@ def start_running_job(
         selected_settings = settings_for_cluster_key(
             settings, selected_cluster_key_from_mapping(form, settings)
         )
+        requested_engine = first_form_value(form, "engine")
         config = parse_running_run_config(
             form,
             settings=selected_settings,
-            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
+            default_metadata_top_limit=0
+            if requested_engine == ENGINE_TRINO
+            else WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
             if metadata_configured(selected_settings)
             else 0,
             default_parallelism=50,
@@ -105,7 +118,7 @@ def start_running_job(
     except WebError as exc:
         return 400, render_running_queries_page(
             settings,
-            error=sanitize_for_display(exc),
+            error=exc,
             form_values=form_values_from_form(form),
         )
 
@@ -140,11 +153,17 @@ def run_batch_job(
         if job_store.cancel_requested(job_id):
             return
         if completed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor recent scan", completed))
+            raise subprocess_failure_web_error("Query Doctor recent scan", completed)
         job_store.update_stage(job_id, 2)
         summary_path = out_dir / "batch_summary.json"
         if not summary_path.is_file():
-            raise WebError("Batch run completed but batch_summary.json was not created.")
+            raise WebError(
+                "Batch run completed but batch_summary.json was not created.",
+                title="Batch summary is missing",
+                reason_code="impala.batch_summary_missing",
+                stage="Checking Recent scan artifacts",
+                next_step="Retry the scan and check terminal diagnostics if it fails again.",
+            )
         job = job_store.get(job_id)
         if job is not None and job.kind == "running":
             job_store.set_latest_running_summary(summary_path)
@@ -162,7 +181,30 @@ def run_batch_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(
-            job_id,
-            "Unexpected recent scan failure. Details are hidden because they may contain sensitive data.",
+        fallback_kind = "running" if config.only_running else "batch"
+        job_store.fail(job_id, unexpected_job_failure_error(fallback_kind))
+
+
+def run_trino_recent_job(
+    job_id: str,
+    config: BatchRunConfig,
+    settings: WebSettings,
+    job_store: WebJobStore,
+) -> None:
+    def progress(stage_index: int) -> None:
+        job_store.update_stage(job_id, stage_index)
+
+    try:
+        result = run_trino_recent_scan(
+            config,
+            settings,
+            progress=progress,
+            cancel_check=lambda: job_store.cancel_requested(job_id),
         )
+        if job_store.cancel_requested(job_id):
+            return
+        job_store.complete_html(job_id, render_trino_recent_scan_result(result))
+    except WebError as exc:
+        job_store.fail(job_id, exc)
+    except Exception:  # pragma: no cover - defensive UI sanitization.
+        job_store.fail(job_id, unexpected_job_failure_error("trino_recent"))

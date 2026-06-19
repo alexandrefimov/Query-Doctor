@@ -25,6 +25,7 @@ ONE_PROFILE_SMOKE_SCRIPT = "scripts/installed_one_profile_smoke.py"
 README_QUICKSTART_SMOKE_SCRIPT = "scripts/installed_readme_quickstart_smoke.py"
 WEB_E2E_SMOKE_SCRIPT = "scripts/installed_web_e2e_smoke.py"
 IMPALA_WEB_UI_EXPORTS_SMOKE_SCRIPT = "scripts/installed_impala_web_ui_exports_smoke.py"
+TRINO_BETA_WEB_SMOKE_SCRIPT = "scripts/installed_trino_beta_web_smoke.py"
 DEFAULT_QUERY_ID = "1111111111111111:2222222222222222"
 PROFILE_FIXTURE = ROOT / "tests" / "fixtures" / "mixed_stats_runtime_case" / "profile_digest.md"
 OPTIMIZER_FIXTURE = (
@@ -818,6 +819,32 @@ def smoke_trino_compact(
     print_ok("Trino local compact import and diagnosis paths")
 
 
+def smoke_trino_beta_web(
+    bin_dir: Path,
+    work_dir: Path,
+    env: dict[str, str],
+    timeout_sec: float,
+) -> None:
+    run_command(
+        [
+            str(installed_executable(bin_dir, "python")),
+            str(ROOT / TRINO_BETA_WEB_SMOKE_SCRIPT),
+            "--bin-dir",
+            str(bin_dir),
+            "--work-dir",
+            str(work_dir / "query-doctor-trino-beta-web"),
+            "--replace-work-dir",
+            "--timeout-sec",
+            str(timeout_sec),
+        ],
+        cwd=work_dir,
+        env=env,
+        timeout_sec=timeout_sec,
+        label="installed Trino Beta web smoke",
+    )
+    print_ok("Trino Beta web Recent and One Query ID paths")
+
+
 def smoke_spark_compact(
     bin_dir: Path,
     work_dir: Path,
@@ -918,6 +945,7 @@ def run_smoke(args: argparse.Namespace, work_dir: Path) -> None:
     smoke_impala_metadata_dry_run(bin_dir, work_dir, env, args.timeout_sec)
     smoke_direct_impala(bin_dir, work_dir, env, args.timeout_sec, args.query_id)
     smoke_trino_compact(bin_dir, work_dir, env, args.timeout_sec)
+    smoke_trino_beta_web(bin_dir, work_dir, env, args.timeout_sec)
     smoke_spark_compact(bin_dir, work_dir, env, args.timeout_sec)
 
 

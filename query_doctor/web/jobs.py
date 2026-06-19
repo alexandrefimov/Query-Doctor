@@ -11,11 +11,17 @@ from typing import Callable
 
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.error_contract import (
+    web_error_info_from_error,
+    web_error_info_payload,
+)
 from query_doctor.web.job_progress import (
     BATCH_REPORT_STAGES,
     BATCH_STAGES,
     LLM_ACTIONS_STAGES,
     OPTIMIZED_QUERY_STAGES,
+    TRINO_RECENT_STAGES,
+    TRINO_QUERY_STAGES,
     WEB_STAGES,
     progress_view_from_snapshot,
     progress_view_payload as job_progress_view_payload,
@@ -25,6 +31,7 @@ from query_doctor.web.models import (
     WebJobSnapshot,
     WebQueryAnalysisResult,
     WebResult,
+    WebTrinoQueryAnalysisResult,
     batch_progress_path,
 )
 from query_doctor.web.ui.recent_scan_progress import (
@@ -37,6 +44,8 @@ from query_doctor.web.ui.specific_query import (
     render_specific_query_result,
     render_specific_query_results,
 )
+from query_doctor.web.ui.errors import render_error_info_body
+from query_doctor.web.ui.trino import render_trino_query_analysis_result
 
 
 TERMINAL_JOB_STATUSES = {"ok", "failed", "cancelled"}
@@ -51,10 +60,16 @@ def sanitize_job_error(value: object) -> str:
 def render_query_analysis_output(result: object) -> list[str]:
     if isinstance(result, WebQueryAnalysisResult):
         return render_specific_query_result(result)
+    if isinstance(result, WebTrinoQueryAnalysisResult):
+        return [render_trino_query_analysis_result(result)]
     return render_result(result)
 
 
 def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
+    if kind == "trino_query":
+        return TRINO_QUERY_STAGES
+    if kind == "trino_recent":
+        return TRINO_RECENT_STAGES
     if kind in {"batch", "running"}:
         return BATCH_STAGES
     if kind in {"batch_report", "query_report", "batch_llm_report", "query_llm_report"}:
@@ -73,12 +88,21 @@ def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
 
 def render_job_status_json(job: WebJobSnapshot | None) -> str:
     if job is None:
+        info = web_error_info_from_error(
+            "Analysis job was not found.",
+            default_title="Job was not found",
+            default_reason_code="job.not_found",
+            default_next_step="Start a new analysis job from the Diagnose page.",
+        )
+        error_info = web_error_info_payload(info)
         payload = {
             "status": "failed",
             "stage": "Not found",
             "progress": 100,
             "progress_view": None,
             "error": "Analysis job was not found.",
+            "error_info": error_info,
+            "error_html": render_error_info_body(error_info),
             "result_html": "",
         }
     else:
@@ -88,6 +112,11 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
         else:
             progress = job.progress
             progress_view = job_progress_view_payload(progress_view_from_snapshot(job))
+        error_html = (
+            render_error_info_body(job.error_info or job.error)
+            if job.status in {"failed", "cancelled"}
+            else ""
+        )
         payload = {
             "status": job.status,
             "stage": job.stage_label,
@@ -95,6 +124,8 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "progress_view": progress_view,
             "kind": job.kind,
             "error": job.error,
+            "error_info": job.error_info,
+            "error_html": error_html,
             "result_html": job.result_html,
             "cancel_requested": job.cancel_requested,
             "progress_html": render_batch_progress_panel(job.batch_progress_path, job.status)
@@ -126,12 +157,15 @@ class WebJobStore:
         query_id: str,
         report_mode: str,
         form_values: dict[str, object] | None = None,
+        *,
+        kind: str = "query",
     ) -> WebJobSnapshot:
-        stage = WEB_STAGES[0]
+        stages = stages_for_job_kind(kind)
+        stage = stages[0]
         with self._lock:
             prior_result_html = (
                 "\n".join(render_specific_query_results(tuple(self._query_results)))
-                if self._query_results
+                if kind == "query" and self._query_results
                 else ""
             )
             job = WebJob(
@@ -141,6 +175,7 @@ class WebJobStore:
                 status="running",
                 stage_label=stage[1],
                 progress=stage[2],
+                kind=kind,
                 result_html=prior_result_html,
                 batch_form_values=dict(form_values) if form_values is not None else None,
             )
@@ -178,6 +213,22 @@ class WebJobStore:
             kind="running",
             batch_form_values=dict(form_values) if form_values is not None else None,
             batch_progress_path=batch_progress_path(job_id),
+        )
+        with self._lock:
+            self._store_job_locked(job)
+            return job.snapshot()
+
+    def create_trino_recent(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
+        stage = TRINO_RECENT_STAGES[0]
+        job = WebJob(
+            job_id=uuid.uuid4().hex,
+            query_id="trino recent scan",
+            report_mode="trino_recent",
+            status="running",
+            stage_label=stage[1],
+            progress=stage[2],
+            kind="trino_recent",
+            batch_form_values=dict(form_values) if form_values is not None else None,
         )
         with self._lock:
             self._store_job_locked(job)
@@ -388,7 +439,15 @@ class WebJobStore:
                 job.status = "cancelled"
                 job.stage_label = "Cancelled"
                 job.progress = 100
-                job.error = "Job stopped by user."
+                info = web_error_info_from_error(
+                    "Job stopped by user.",
+                    default_title="Job stopped",
+                    default_reason_code="job.cancelled",
+                    stage="Cancelled",
+                    default_next_step="Start a new job when you are ready to retry.",
+                )
+                job.error = info.message
+                job.error_info = web_error_info_payload(info)
                 job.result_html = ""
             job.updated_at = self._now()
             return job.snapshot()
@@ -427,15 +486,20 @@ class WebJobStore:
             job.progress = stage[2]
             job.updated_at = self._now()
 
-    def complete(self, job_id: str, result: WebResult | WebQueryAnalysisResult) -> None:
+    def complete(
+        self,
+        job_id: str,
+        result: WebResult | WebQueryAnalysisResult | WebTrinoQueryAnalysisResult,
+    ) -> None:
         with self._lock:
             self._prune_locked()
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
+            stages = stages_for_job_kind(job.kind)
             job.status = "ok"
-            job.stage_label = WEB_STAGES[-1][1]
-            job.progress = WEB_STAGES[-1][2]
+            job.stage_label = stages[-1][1]
+            job.progress = stages[-1][2]
             if isinstance(result, WebQueryAnalysisResult):
                 safe_case = dict(result.case)
                 safe_case.pop("case_index", None)
@@ -447,6 +511,7 @@ class WebJobStore:
             else:
                 job.result_html = "\n".join(render_query_analysis_output(result))
             job.error = ""
+            job.error_info = None
             job.updated_at = self._now()
             self._prune_locked()
 
@@ -462,6 +527,7 @@ class WebJobStore:
             job.progress = stages[-1][2]
             job.result_html = result_html
             job.error = ""
+            job.error_info = None
             job.updated_at = self._now()
             self._prune_locked()
 
@@ -471,10 +537,17 @@ class WebJobStore:
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
+            info = web_error_info_from_error(
+                error,
+                default_reason_code=default_job_error_reason_code(job.kind),
+                stage=job.stage_label,
+                default_next_step=default_job_error_next_step(job.kind),
+            )
             job.status = "failed"
             job.stage_label = "Failed"
             job.progress = 100
-            job.error = sanitize_job_error(error)
+            job.error = sanitize_job_error(info.message)
+            job.error_info = web_error_info_payload(info)
             job.updated_at = self._now()
             self._prune_locked()
 
@@ -511,3 +584,21 @@ class WebJobStore:
 
     def _now(self) -> float:
         return float(self._clock())
+
+
+def default_job_error_reason_code(kind: str) -> str:
+    safe_kind = "".join(
+        char for char in str(kind or "job").lower() if char.isalnum() or char == "_"
+    )
+    return f"{safe_kind or 'job'}.failed"
+
+
+def default_job_error_next_step(kind: str) -> str:
+    if kind in {"trino_query", "trino_recent"}:
+        return (
+            "Check the selected Trino Beta local source, source contracts, auth reference, "
+            "and coordinator reachability, then retry."
+        )
+    if kind in {"batch", "running"}:
+        return "Review the selected source, local config, credentials, and scan bounds, then retry."
+    return "Review the selected inputs and local configuration, then retry."

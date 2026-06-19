@@ -21,7 +21,11 @@ def configured_recent_scan_timezone(
         return ZoneInfo(name)
     except ZoneInfoNotFoundError as exc:
         raise WebError(
-            "recent_scan_timezone must be a valid IANA timezone name, such as UTC."
+            "recent_scan_timezone must be a valid IANA timezone name, such as UTC.",
+            title="Recent scan timezone is invalid",
+            reason_code="web.recent_scan_timezone_invalid",
+            stage="Checking Recent scan window",
+            next_step="Use a valid IANA timezone name such as UTC.",
         ) from exc
 
 

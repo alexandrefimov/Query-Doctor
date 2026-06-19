@@ -182,7 +182,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 set_duration(counters, "collection_seconds", event.get("seconds"))
         elif stage == "analyzer_scoring":
             if status == "started":
-                if states["collection"] != "failed":
+                if states["collection"] == "pending":
                     states["collection"] = "done"
                 states["analysis"] = "running"
                 counters["total"] = numeric_count(event.get("total"))
@@ -208,7 +208,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 counters["collection_done"] += 1
             elif status == "analysis_started" and states["analysis"] != "done":
                 counters["analysis_started"] += 1
-                if states["collection"] != "failed":
+                if states["collection"] == "pending":
                     states["collection"] = "done"
                 states["analysis"] = "running"
             elif status == "analysis_done":

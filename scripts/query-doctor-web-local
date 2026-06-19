@@ -157,6 +157,10 @@ if [[ "${QD_SKIP_KINIT:-0}" != "1" ]]; then
     export KRB5_PRINCIPAL="$explicit_principal"
   fi
   kinit -c "$KRB5CCNAME" -kt "$KEYTAB" "$principal"
+  python3 "$ROOT_DIR/scripts/refresh_trino_kerberos_caches.py" \
+    --config "$CONFIG" \
+    --keytab "$KEYTAB" \
+    --quiet
 fi
 
 cd "$ROOT_DIR"

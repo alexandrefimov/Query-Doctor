@@ -39,7 +39,8 @@ SECONDARY_QUERY_GROUPS = tuple(key for key in QUERY_GROUPS if key not in PRIMARY
 FREQUENT_SHORT_WORKLOAD_P95_MAX_SEC = 60.0
 
 
-def batch_table_columns(query_group: str) -> tuple[str, ...]:
+def batch_table_columns(query_group: str, *, language: str = "en") -> tuple[str, ...]:
+    del language
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
         return (
@@ -53,7 +54,7 @@ def batch_table_columns(query_group: str) -> tuple[str, ...]:
             "Confidence",
             "Rewrite support",
         )
-    if normalized == "stats":
+    elif normalized == "stats":
         return (
             "Rank",
             "Finding",
@@ -65,7 +66,7 @@ def batch_table_columns(query_group: str) -> tuple[str, ...]:
             "Speed benefit",
             "Confidence",
         )
-    if normalized in {"workloads", "regressions", "frequent_short"}:
+    elif normalized in {"workloads", "regressions", "frequent_short"}:
         return (
             "Rank",
             "Finding",
@@ -93,9 +94,10 @@ def batch_table_column_count(query_group: str) -> int:
     return len(batch_table_columns(query_group))
 
 
-def batch_table_head(query_group: str) -> str:
+def batch_table_head(query_group: str, *, language: str = "en") -> str:
     headers = "".join(
-        f"<th>{html.escape(label)}</th>" for label in batch_table_columns(query_group)
+        f"<th>{html.escape(label)}</th>"
+        for label in batch_table_columns(query_group, language=language)
     )
     return f"<thead><tr>{headers}</tr></thead>"
 
@@ -271,6 +273,7 @@ def render_query_group_switcher(
     active_group: str,
     *,
     only_with_spills: bool = False,
+    language: str = "en",
 ) -> str:
     rows_for_counts = filter_rows_by_spills(rows, only_with_spills=only_with_spills)
     counts = {
@@ -282,6 +285,7 @@ def render_query_group_switcher(
         active_group,
         counts,
         only_with_spills=only_with_spills,
+        language=language,
     )
     return (
         '<div class="batch-query-groups">'
@@ -296,7 +300,9 @@ def query_group_links(
     counts: dict[str, int],
     *,
     only_with_spills: bool = False,
+    language: str = "en",
 ) -> list[str]:
+    del language
     links = []
     for key in keys:
         label, _severities = QUERY_GROUPS[key]
@@ -307,7 +313,7 @@ def query_group_links(
             if key == active_group
             else "batch-filter-link"
         )
-        href = f"?query_group={html.escape(key, quote=True)}"
+        href = f"/?query_group={html.escape(key, quote=True)}"
         if only_with_spills:
             href += "&only_with_spills=on"
         href += "#recent-results"
@@ -344,9 +350,18 @@ def render_result_filters(
     *,
     only_with_spills: bool = False,
     summary_text: str = "",
+    language: str = "en",
 ) -> str:
-    switcher = render_query_group_switcher(rows, active_group, only_with_spills=only_with_spills)
-    spill_toggle = render_spill_filter_toggle(active_group, only_with_spills=only_with_spills)
+    del language
+    switcher = render_query_group_switcher(
+        rows,
+        active_group,
+        only_with_spills=only_with_spills,
+    )
+    spill_toggle = render_spill_filter_toggle(
+        active_group,
+        only_with_spills=only_with_spills,
+    )
     summary_html = (
         f'<span class="batch-result-summary">{html.escape(summary_text)}</span>'
         if summary_text
@@ -367,8 +382,11 @@ def render_result_filters(
     )
 
 
-def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = False) -> str:
-    href = f"?query_group={html.escape(normalize_query_group(active_group), quote=True)}"
+def render_spill_filter_toggle(
+    active_group: str, *, only_with_spills: bool = False, language: str = "en"
+) -> str:
+    del language
+    href = f"/?query_group={html.escape(normalize_query_group(active_group), quote=True)}"
     active_class = " batch-spill-toggle--active" if only_with_spills else ""
     if not only_with_spills:
         href += "&only_with_spills=on"
@@ -386,7 +404,9 @@ def render_workload_followup_shortlist(
     *,
     workload_base_path: str = "/batch/workload",
     limit: int = 3,
+    language: str = "en",
 ) -> str:
+    del language
     selected = entries[: max(0, limit)]
     if not selected:
         return ""
@@ -404,8 +424,8 @@ def render_workload_followup_shortlist(
         "<p>Open repeated patterns when one query row is not enough.</p>"
         f"<ul>{rows}</ul>"
         '<nav class="workload-followup-links" aria-label="Workload result views">'
-        '<a href="?query_group=workloads#recent-results">Repeated workloads</a>'
-        '<a href="?query_group=regressions#recent-results">Regressed workloads</a>'
+        '<a href="/?query_group=workloads#recent-results">Repeated workloads</a>'
+        '<a href="/?query_group=regressions#recent-results">Regressed workloads</a>'
         "</nav>"
         "</div>"
         "</div>"
@@ -416,7 +436,9 @@ def render_workload_followup_shortlist_item(
     entry: RecentScanWorkloadActionQueueEntryView,
     *,
     workload_base_path: str,
+    language: str = "en",
 ) -> str:
+    del language
     href = workload_href(entry.fingerprint, workload_base_path=workload_base_path)
     return (
         "<li>"

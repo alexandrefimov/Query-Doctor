@@ -6,7 +6,7 @@ import html
 from typing import Any
 
 from query_doctor.optimizer.analysis import OptimizerAnalysis
-from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.ui.errors import render_error_panel
 from query_doctor.web.ui.pages import render_page
 
 
@@ -55,13 +55,10 @@ def render_optimizer_panel() -> str:
 
 
 def render_optimizer_error_panel(error: object) -> str:
-    safe_error = sanitize_browser_error_text(error, max_chars=None)
-    return (
-        '<section class="error-card" role="alert">'
-        "<strong>Safe optimizer state</strong>"
-        f"{html.escape(safe_error)}<br>"
-        "Submitted SQL is not displayed back, and unvalidated optimizer output is hidden."
-        "</section>"
+    return render_error_panel(
+        error,
+        default_title="Safe optimizer state",
+        footer="Submitted SQL is not displayed back, and unvalidated optimizer output is hidden.",
     )
 
 

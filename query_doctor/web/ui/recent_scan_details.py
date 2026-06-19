@@ -37,6 +37,7 @@ from query_doctor.web.ui.html_helpers import (
     report_badge,
     status_badge,
 )
+from query_doctor.web.ui.diagnostic_i18n import localize_diagnostic_text
 from query_doctor.web.ui.i18n import text as ui_text
 from query_doctor.web.ui.action_candidates import (
     render_action_candidate_decision_findings,
@@ -85,23 +86,8 @@ def render_recent_scan_case_detail_view(
     llm_enabled: bool = True,
     language: str = "en",
 ) -> str:
-    localized_workflow_title = ui_text(
-        language,
-        workflow_title,
-        {
-            "Finished Queries": "Завершенные запросы",
-            "Running Queries": "Выполняющиеся запросы",
-        }.get(workflow_title, workflow_title),
-    )
-    safe_workflow_title = html.escape(localized_workflow_title)
-    details_title = ui_text(
-        language,
-        f"{localized_workflow_title} details",
-        {
-            "Finished Queries": "Детали завершенного запроса",
-            "Running Queries": "Детали выполняющегося запроса",
-        }.get(workflow_title, f"Детали: {localized_workflow_title}"),
-    )
+    safe_workflow_title = html.escape(workflow_title)
+    details_title = f"{workflow_title} details"
     safe_details_title = html.escape(details_title)
     safe_list_href = html.escape(list_href, quote=True)
     escaped_case_id_for_url = html.escape(view.case_id, quote=True)
@@ -135,7 +121,7 @@ def render_recent_scan_case_detail_view(
         f"<p>{html.escape(ui_text(language, 'Use the verdict to decide priority, then read the recommended change and verification path before opening diagnostics.', 'Используйте вердикт для приоритета, затем смотрите рекомендуемое изменение и способ проверки до раскрытия диагностики.'))}</p></div>"
         '<div class="batch-head-actions">'
         f"{render_owner_raw_source_link(owner_raw_source_href, language=language)}"
-        f'<a class="button primary" href="/#new-scan" data-open-new-scan>{html.escape(ui_text(language, "New scan", "Новый скан"))}</a>'
+        '<a class="button primary" href="/#new-scan" data-open-new-scan>New scan</a>'
         f'<span class="badge blue">{html.escape(view.case_id)}</span></div></div>'
         f"{render_case_verdict(view, language=language)}"
         f"{action_plan_html}"
@@ -150,11 +136,12 @@ def report_generation_enabled(view: RecentScanCaseDetailView) -> bool:
 
 
 def render_owner_raw_source_link(href: str, *, language: str = "en") -> str:
+    del language
     if not href:
         return ""
     return (
         f'<a class="button secondary owner-raw-source-link" href="{html.escape(href, quote=True)}">'
-        f"{html.escape(ui_text(language, 'Owner raw source', 'Сырой SQL владельца'))}</a>"
+        "Owner raw source</a>"
     )
 
 
@@ -179,9 +166,9 @@ def render_case_verdict(view: RecentScanCaseDetailView, *, language: str = "en")
         '<section id="case-overview" class="case-verdict" aria-label="Case verdict">'
         '<div class="case-verdict-head">'
         "<div>"
-        f'<span class="case-verdict-label">{html.escape(ui_text(language, "Verdict", "Вердикт"))}</span>'
+        '<span class="case-verdict-label">Verdict</span>'
         f'<h2 class="case-verdict-title">{escape_value(title)}</h2>'
-        f"{render_case_verdict_signal_detail(signal_detail)}"
+        f"{render_case_verdict_signal_detail(signal_detail, language=language)}"
         "</div>"
         f"{verdict_priority_badge(view)}"
         "</div>"
@@ -201,17 +188,23 @@ def case_verdict_title_parts(value: Any) -> tuple[Any, Any]:
     return title, detail
 
 
-def render_case_verdict_signal_detail(value: Any) -> str:
+def render_case_verdict_signal_detail(value: Any, *, language: str = "en") -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    return f'<p class="case-verdict-signal">{escape_value(text)}</p>'
+    return (
+        f'<p class="case-verdict-signal">'
+        f"{escape_value(localize_diagnostic_text(text, language))}</p>"
+    )
 
 
 def render_case_verdict_meta(
     view: RecentScanCaseDetailView,
     facts: tuple[RecentScanDiagnosticFactView, ...],
+    *,
+    language: str = "en",
 ) -> str:
+    del language
     items = [
         render_case_verdict_meta_item("Query ID", view.query_id, "query"),
         *(render_case_verdict_meta_item(fact.label, fact.value) for fact in facts),
@@ -219,7 +212,10 @@ def render_case_verdict_meta(
     return f'<div class="case-verdict-meta" aria-label="Case summary">{"".join(items)}</div>'
 
 
-def render_case_verdict_meta_item(label: str, value: Any, kind: str = "text") -> str:
+def render_case_verdict_meta_item(
+    label: str, value: Any, kind: str = "text", *, language: str = "en"
+) -> str:
+    del language
     class_name = "case-verdict-meta-item"
     if kind == "query":
         class_name += " case-verdict-meta-item--query"
@@ -241,7 +237,8 @@ def diagnostic_fact_value(
     return fact.value if fact else default
 
 
-def verdict_priority_badge(view: RecentScanCaseDetailView) -> str:
+def verdict_priority_badge(view: RecentScanCaseDetailView, *, language: str = "en") -> str:
+    del language
     priority_fact = diagnostic_fact_by_id(view.diagnostic_facts, "priority")
     severity = (
         str(priority_fact.severity if priority_fact is not None else view.score_severity or "")
@@ -269,7 +266,8 @@ def compact_verdict_priority_badge_value(value: Any) -> Any:
     return value
 
 
-def render_case_verdict_chips(view: RecentScanCaseDetailView) -> str:
+def render_case_verdict_chips(view: RecentScanCaseDetailView, *, language: str = "en") -> str:
+    del language
     chips = verdict_chip_facts(view.diagnostic_facts)
     rendered = "".join(
         '<span class="case-verdict-chip">'
@@ -280,7 +278,10 @@ def render_case_verdict_chips(view: RecentScanCaseDetailView) -> str:
     return f'<div class="case-verdict-chips">{rendered}</div>' if rendered else ""
 
 
-def render_case_verdict_chip_label(fact: RecentScanDiagnosticFactView) -> str:
+def render_case_verdict_chip_label(
+    fact: RecentScanDiagnosticFactView, *, language: str = "en"
+) -> str:
+    del language
     safe_label = html.escape(fact.label)
     if fact.source_anchor:
         safe_anchor = html.escape(f"#{fact.source_anchor}", quote=True)
@@ -296,7 +297,7 @@ def render_case_status_summary(
         present_recent_scan_status_summary(
             view, report_label="LLM report" if llm_enabled else "Python report"
         ),
-        technical_details_html=render_technical_details(view),
+        technical_details_html=render_technical_details(view, language=language),
         language=language,
     )
 
@@ -308,13 +309,13 @@ def render_case_status_summary_view(
     language: str = "en",
 ) -> str:
     contents = render_case_status_summary_contents(
-        view, technical_details_html=technical_details_html
+        view, technical_details_html=technical_details_html, language=language
     )
     return (
         '<section id="pipeline-status" class="pipeline-status-section" '
         'aria-label="Pipeline status">'
         '<details class="panel docs-panel pipeline-status-details">'
-        f"<summary>{html.escape(ui_text(language, 'Pipeline status', 'Статус обработки'))}</summary>"
+        "<summary>Pipeline status</summary>"
         '<div class="report-body">'
         f"{contents}"
         "</div>"
@@ -327,7 +328,9 @@ def render_case_status_summary_contents(
     view: RecentScanStatusSummaryView,
     *,
     technical_details_html: str = "",
+    language: str = "en",
 ) -> str:
+    del language
     cards = "".join(
         '<div class="case-summary-card">'
         f"<span>{html.escape(card.label)}</span><strong>{render_case_status_card_value(card)}</strong>"
@@ -340,7 +343,8 @@ def render_case_status_summary_contents(
     )
 
 
-def render_case_status_card_value(card: RecentScanStatusCardView) -> str:
+def render_case_status_card_value(card: RecentScanStatusCardView, *, language: str = "en") -> str:
+    del language
     if card.value_kind == "status":
         return status_badge(card.value)
     if card.value_kind == "report":
@@ -358,7 +362,7 @@ def render_case_diagnostics(
         '<section id="diagnostics" class="diagnostics-section" '
         'aria-label="Diagnostics and evidence">'
         '<details class="panel docs-panel diagnostics-details">'
-        f"<summary>{html.escape(ui_text(language, 'Diagnostics and evidence', 'Диагностика и доказательства'))}</summary>"
+        "<summary>Diagnostics and evidence</summary>"
         '<div class="report-body diagnostics-body diagnostics-body--flat">'
         f"{render_source_limitations_section(view, language=language)}"
         f"{render_diagnostic_questions_section(view, language=language)}"
@@ -386,13 +390,16 @@ def render_source_limitations_section(
 ) -> str:
     if not view.source_limitations:
         return ""
-    items = "".join(f"<li>{escape_value(item)}</li>" for item in view.source_limitations)
+    items = "".join(
+        f"<li>{escape_value(localize_diagnostic_text(item, language))}</li>"
+        for item in view.source_limitations
+    )
     return (
         '<section id="source-limitations" class="diagnostics-subsection" '
         'aria-label="Source limitations">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Source limitations", "Ограничения источника"))}</h2>'
+        '<h2 class="section-title">Source limitations</h2>'
         '<ul class="reason-list">'
-        f'<li class="reason-card"><strong>{html.escape(ui_text(language, "Direct Impala context", "Контекст Direct Impala"))}</strong>'
+        '<li class="reason-card"><strong>Direct Impala context</strong>'
         f"<ul>{items}</ul></li>"
         "</ul>"
         "</section>"
@@ -404,11 +411,13 @@ def render_diagnostic_questions_view(
 ) -> str:
     if not view.groups:
         return ""
-    groups = "".join(render_diagnostic_question_group(group) for group in view.groups)
+    groups = "".join(
+        render_diagnostic_question_group(group, language=language) for group in view.groups
+    )
     return (
         '<section id="diagnostic-questions" class="diagnostics-subsection diagnostic-questions" '
         'aria-label="Coverage checks">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Coverage checks", "Проверки покрытия"))}</h2>'
+        '<h2 class="section-title">Coverage checks</h2>'
         '<p class="diagnostic-questions-intro">'
         f"{html.escape(ui_text(language, 'Use these grouped facts to check coverage, limitations, and supporting context behind the verdict and recommendation.', 'Используйте эти сгруппированные факты для проверки покрытия, ограничений и поддерживающего контекста за вердиктом и рекомендацией.'))}"
         "</p>"
@@ -417,7 +426,10 @@ def render_diagnostic_questions_view(
     )
 
 
-def render_diagnostic_question_group(group: RecentScanDiagnosticQuestionGroupView) -> str:
+def render_diagnostic_question_group(
+    group: RecentScanDiagnosticQuestionGroupView, *, language: str = "en"
+) -> str:
+    del language
     facts = "".join(render_diagnostic_question_fact(fact) for fact in group.facts)
     return (
         '<article class="diagnostic-question-card">'
@@ -428,7 +440,10 @@ def render_diagnostic_question_group(group: RecentScanDiagnosticQuestionGroupVie
     )
 
 
-def render_diagnostic_question_fact(fact: RecentScanDiagnosticFactView) -> str:
+def render_diagnostic_question_fact(
+    fact: RecentScanDiagnosticFactView, *, language: str = "en"
+) -> str:
+    del language
     label = html.escape(fact.label)
     if fact.source_anchor:
         anchor = html.escape(f"#{fact.source_anchor}", quote=True)
@@ -451,8 +466,8 @@ def render_pipeline_diagnostics_section(
     return (
         '<section id="pipeline-status" class="diagnostics-subsection" '
         'aria-label="Pipeline status">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Pipeline", "Обработка"))}</h2>'
-        f"{render_case_status_summary_contents(status, technical_details_html=render_technical_details(view))}"
+        '<h2 class="section-title">Pipeline</h2>'
+        f"{render_case_status_summary_contents(status, technical_details_html=render_technical_details(view, language=language), language=language)}"
         "</section>"
     )
 
@@ -468,7 +483,7 @@ def render_runtime_diagnostics_section(
     return (
         '<section id="runtime-evidence" class="diagnostics-subsection" '
         'aria-label="Runtime evidence">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Runtime", "Runtime"))}</h2>'
+        '<h2 class="section-title">Runtime</h2>'
         f"{runtime_verdict_html}"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         '<div class="analysis-details-body">'
@@ -491,7 +506,7 @@ def render_metrics_diagnostics_section(
     return (
         '<section id="metrics-evidence" class="diagnostics-subsection" '
         'aria-label="Runtime metrics evidence">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Metrics", "Метрики"))}</h2>'
+        '<h2 class="section-title">Metrics</h2>'
         '<div class="analysis-details-body">'
         f"{metrics_html}"
         "</div>"
@@ -505,7 +520,7 @@ def render_metadata_diagnostics_section(
     return (
         '<section id="metadata-evidence" class="diagnostics-subsection" '
         'aria-label="Metadata evidence">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Metadata", "Метаданные"))}</h2>'
+        '<h2 class="section-title">Metadata</h2>'
         '<div class="analysis-details-body">'
         f"{render_metadata_facts_section(view.metadata)}"
         "</div>"
@@ -519,8 +534,8 @@ def render_score_diagnostics_section(
     return (
         '<section id="score-evidence" class="diagnostics-subsection findings-panel" '
         'aria-label="Score evidence">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Score", "Оценка"))}</h2>'
-        f"{render_score_reason_explanations(view)}"
+        '<h2 class="section-title">Score</h2>'
+        f"{render_score_reason_explanations(view, language=language)}"
         "</section>"
     )
 
@@ -549,22 +564,22 @@ def render_case_action_plan(
         action_cards = (
             '<ul class="reason-list action-candidate-list">'
             '<li class="reason-card action-candidate-card action-candidate-card--primary">'
-            f"<strong>{html.escape(ui_text(language, 'No supported change direction', 'Нет поддержанного направления изменения'))}</strong>"
+            "<strong>No supported change direction</strong>"
             '<div class="action-candidate-sections">'
             '<section class="action-candidate-section action-candidate-section--why">'
-            f"<span>{html.escape(ui_text(language, 'Why this query matters', 'Почему запрос важен'))}</span>"
+            "<span>Why this query matters</span>"
             f"<p>{no_action_why}</p>"
             "</section>"
             '<section class="action-candidate-section action-candidate-section--locations">'
-            f"<span>{html.escape(ui_text(language, 'Where to inspect', 'Где проверить'))}</span>"
+            "<span>Where to inspect</span>"
             f"<p>{html.escape(ui_text(language, 'Use Diagnostics only to review source coverage and limitations.', 'Используйте Диагностику только для проверки покрытия источников и ограничений.'))}</p>"
             "</section>"
             '<section class="action-candidate-section action-candidate-section--change">'
-            f"<span>{html.escape(ui_text(language, 'What to try', 'Что попробовать'))}</span>"
+            "<span>What to try</span>"
             f"<p>{html.escape(ui_text(language, 'Do not change SQL, stats, or runtime settings based on this case alone.', 'Не меняйте SQL, статистику или runtime-настройки только на основании этого кейса.'))}</p>"
             "</section>"
             '<section class="action-candidate-section action-candidate-section--verify">'
-            f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
+            "<span>How to verify</span>"
             f"<p>{html.escape(ui_text(language, 'Confirm the next comparable rerun remains below suspicious thresholds.', 'Подтвердите, что следующий сопоставимый повторный запуск остается ниже подозрительных порогов.'))}</p>"
             "</section>"
             "</div>"
@@ -581,7 +596,7 @@ def render_case_action_plan(
     return (
         '<section id="action-plan" class="panel docs-panel action-plan-panel" '
         'aria-label="Recommended change">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Recommended change", "Рекомендуемое изменение"))}</h2>'
+        '<h2 class="section-title">Recommended change</h2>'
         '<div class="report-body">'
         '<p class="action-plan-intro">'
         f"{html.escape(ui_text(language, 'Start with the primary path: why this query matters, where to inspect, what to try, and how to verify a comparable rerun.', 'Начните с основного пути: почему запрос важен, где проверить, что попробовать и как проверить сопоставимый повторный запуск.'))}"
@@ -604,11 +619,7 @@ def render_optimizer_decision_guidance(
     if view is None:
         return ""
     if trusted_optimizer_recommendations:
-        title = ui_text(
-            language,
-            "Optimizer recommendations",
-            "Рекомендации optimizer",
-        )
+        title = "Optimizer recommendations"
         what = render_optimizer_guidance_points(trusted_optimizer_recommendations)
         source = ui_text(
             language,
@@ -621,11 +632,7 @@ def render_optimizer_decision_guidance(
             "Используйте те же comparable-rerun проверки из основной рекомендации.",
         )
     elif optimizer_manual_guidance:
-        title = ui_text(
-            language,
-            "Manual optimizer review",
-            "Ручная optimizer-проверка",
-        )
+        title = "Manual optimizer review"
         what = render_optimizer_guidance_points(optimizer_manual_guidance)
         source = ui_text(
             language,
@@ -638,11 +645,7 @@ def render_optimizer_decision_guidance(
             "Проверьте любой human rewrite перед использованием, затем сравните rerun.",
         )
     elif trusted_optimized_query:
-        title = ui_text(
-            language,
-            "Validated optimizer draft available",
-            "Доступен валидированный optimizer draft",
-        )
+        title = "Validated optimizer draft available"
         output_label = optimizer_output_label(view.output_kind, language=language)
         what = (
             "<p>"
@@ -673,21 +676,21 @@ def render_optimizer_decision_guidance(
         f"<strong>{html.escape(title)}</strong>"
         '<div class="action-candidate-sections">'
         '<section class="action-candidate-section action-candidate-section--why">'
-        f"<span>{html.escape(ui_text(language, 'Source', 'Источник'))}</span>"
+        "<span>Source</span>"
         f"<p>{html.escape(source)}</p>"
         "</section>"
         '<section class="action-candidate-section action-candidate-section--change">'
-        f"<span>{html.escape(ui_text(language, 'What to review', 'Что проверить'))}</span>"
+        "<span>What to review</span>"
         f"{what}"
         "</section>"
         '<section class="action-candidate-section action-candidate-section--verify">'
-        f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
+        "<span>How to verify</span>"
         f"<p>{html.escape(verify)}</p>"
         "</section>"
         "</div>"
         '<p class="helper action-optimizer-link">'
         f'<a href="#{OPTIMIZER_RESULT_ANCHOR_ID}">'
-        f"{html.escape(ui_text(language, 'Open optimizer result', 'Открыть optimizer result'))}"
+        "Open optimizer result"
         "</a>"
         "</p>"
         "</li>"
@@ -707,13 +710,18 @@ def render_optimizer_guidance_points(text: str, *, max_items: int = 4) -> str:
     return '<ul class="action-optimizer-point-list">' + "".join(items) + "</ul>"
 
 
-def render_technical_details(view: RecentScanCaseDetailView) -> str:
-    return render_technical_details_view(present_recent_scan_technical_details(view))
+def render_technical_details(view: RecentScanCaseDetailView, *, language: str = "en") -> str:
+    return render_technical_details_view(
+        present_recent_scan_technical_details(view), language=language
+    )
 
 
-def render_technical_details_view(view: RecentScanTechnicalDetailsView) -> str:
+def render_technical_details_view(
+    view: RecentScanTechnicalDetailsView, *, language: str = "en"
+) -> str:
     if not view.fields:
         return ""
+    del language
     rows = metadata_rows(list(view.fields))
     return (
         '<details class="analysis-subdetails technical-details">'
@@ -723,25 +731,36 @@ def render_technical_details_view(view: RecentScanTechnicalDetailsView) -> str:
     )
 
 
-def render_score_reason_explanations(view: RecentScanCaseDetailView) -> str:
-    return render_score_reason_explanations_view(present_recent_scan_score_reasons(view))
+def render_score_reason_explanations(
+    view: RecentScanCaseDetailView, *, language: str = "en"
+) -> str:
+    return render_score_reason_explanations_view(
+        present_recent_scan_score_reasons(view), language=language
+    )
 
 
-def render_score_reason_explanations_view(view: RecentScanScoreReasonsView) -> str:
+def render_score_reason_explanations_view(
+    view: RecentScanScoreReasonsView, *, language: str = "en"
+) -> str:
     if not view.reasons:
         reason_cards = (
-            '<li class="reason-card"><strong>No positive deterministic score reasons</strong>'
-            "<p>Batch score does not contain a suspicious analyzer signal for this case.</p></li>"
+            '<li class="reason-card"><strong>No positive deterministic score reasons</strong><p>'
+            f"{html.escape(localize_diagnostic_text('Batch score does not contain a suspicious analyzer signal for this case.', language))}"
+            "</p></li>"
         )
     else:
-        reason_cards = "".join(render_score_reason_card_view(reason) for reason in view.reasons)
+        reason_cards = "".join(
+            render_score_reason_card_view(reason, language=language) for reason in view.reasons
+        )
     return f'<ul class="reason-list findings-list" aria-label="Why this query is suspicious">{reason_cards}</ul>'
 
 
-def render_score_reason_card_view(reason: RecentScanScoreReasonView) -> str:
+def render_score_reason_card_view(
+    reason: RecentScanScoreReasonView, *, language: str = "en"
+) -> str:
     return (
         '<li class="reason-card">'
         f"<strong>{html.escape(reason.title)}</strong>"
-        f"<p>{html.escape(reason.explanation)}</p>"
+        f"<p>{html.escape(localize_diagnostic_text(reason.explanation, language))}</p>"
         "</li>"
     )

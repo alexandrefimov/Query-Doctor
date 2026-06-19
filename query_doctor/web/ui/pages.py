@@ -5,7 +5,6 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.ui.home import render_no_reports_note, render_run_panel, render_trust_strip
 from query_doctor.web.ui.layout import (
     render_app_footer,
@@ -24,6 +23,7 @@ from query_doctor.web.ui.llm_actions import present_optimized_query_action
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
 from query_doctor.web.ui.i18n import normalize_ui_language
+from query_doctor.web.ui.errors import render_error_panel as render_safe_error_panel
 from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
 from query_doctor.web.ui.recent_scan_form import render_batch_run_panel
 from query_doctor.web.ui.recent_scan_results import render_batch_card
@@ -74,14 +74,7 @@ def render_page(
 
 
 def render_error_panel(error: object) -> str:
-    safe_error = sanitize_browser_error_text(error, max_chars=None)
-    return (
-        '<section class="error-card" role="alert">'
-        "<strong>Safe inspection state</strong>"
-        f"{html.escape(safe_error)}<br>"
-        "Unvalidated or partial report output is hidden."
-        "</section>"
-    )
+    return render_safe_error_panel(error)
 
 
 def render_readme_page(settings: Any) -> str:
@@ -185,6 +178,11 @@ def render_batch_page(
         sections.append(render_job_panel(job, result_html_override=result_html))
     if batch_card:
         sections.append(batch_card)
+    from query_doctor.web.ui.trino_demo import render_trino_demo_sections
+
+    trino_demo_sections = render_trino_demo_sections(settings)
+    if trino_demo_sections:
+        sections.append(trino_demo_sections)
     return render_page(
         settings,
         active_nav="batch",
@@ -292,4 +290,8 @@ def render_batch_case_report_page(
 def render_query_output(result: Any) -> list[str]:
     if hasattr(result, "case"):
         return render_specific_query_result(result)
+    if hasattr(result, "diagnosis"):
+        from query_doctor.web.ui.trino import render_trino_query_analysis_result
+
+        return [render_trino_query_analysis_result(result)]
     return render_result(result)

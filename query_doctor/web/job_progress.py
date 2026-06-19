@@ -44,6 +44,22 @@ WEB_PROGRESS_STEPS = (
     JobProgressStep("Preparing deterministic result", ("Preparing deterministic result",), 90),
     JobProgressStep("Done", ("Done",), 100),
 )
+TRINO_QUERY_PROGRESS_STEPS = (
+    JobProgressStep("Checking Trino Query ID", ("Checking Trino Query ID",), 4),
+    JobProgressStep("Reading bounded QueryInfo", ("Reading bounded QueryInfo",), 24),
+    JobProgressStep("Validating raw-free boundary", ("Validating raw-free boundary",), 56),
+    JobProgressStep("Building compact diagnosis", ("Building compact diagnosis",), 76),
+    JobProgressStep("Preparing beta result", ("Preparing beta result",), 90),
+    JobProgressStep("Done", ("Done",), 100),
+)
+TRINO_RECENT_PROGRESS_STEPS = (
+    JobProgressStep("Checking Trino Recent contract", ("Checking Trino Recent contract",), 4),
+    JobProgressStep("Reading bounded query list", ("Reading bounded query list",), 24),
+    JobProgressStep("Selecting retained Query IDs", ("Selecting retained Query IDs",), 42),
+    JobProgressStep("Diagnosing selected QueryInfo", ("Diagnosing selected QueryInfo",), 68),
+    JobProgressStep("Preparing beta result", ("Preparing beta result",), 90),
+    JobProgressStep("Done", ("Done",), 100),
+)
 BATCH_PROGRESS_STEPS = (
     JobProgressStep("Checking recent scan parameters", ("Checking recent scan parameters",), 4),
     JobProgressStep("Running recent scan", ("Running recent scan",), 24),
@@ -71,6 +87,14 @@ LLM_ACTIONS_PROGRESS_STEPS = (
 
 WEB_STAGES = tuple(
     (index, step.stage_label, step.progress) for index, step in enumerate(WEB_PROGRESS_STEPS)
+)
+TRINO_QUERY_STAGES = tuple(
+    (index, step.stage_label, step.progress)
+    for index, step in enumerate(TRINO_QUERY_PROGRESS_STEPS)
+)
+TRINO_RECENT_STAGES = tuple(
+    (index, step.stage_label, step.progress)
+    for index, step in enumerate(TRINO_RECENT_PROGRESS_STEPS)
 )
 BATCH_STAGES = tuple(
     (index, step.stage_label, step.progress) for index, step in enumerate(BATCH_PROGRESS_STEPS)
@@ -166,6 +190,10 @@ def current_step_is_done(
 
 
 def progress_steps_for_job_kind(kind: str) -> tuple[JobProgressStep, ...]:
+    if kind == "trino_query":
+        return TRINO_QUERY_PROGRESS_STEPS
+    if kind == "trino_recent":
+        return TRINO_RECENT_PROGRESS_STEPS
     if kind in {"batch_report", "query_report", "batch_llm_report", "query_llm_report"}:
         return REPORT_PROGRESS_STEPS
     if kind in {"batch_optimized_query", "query_optimized_query"}:

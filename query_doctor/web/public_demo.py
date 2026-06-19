@@ -48,16 +48,34 @@ def prepare_public_demo_runtime(
 
             generate_demo_pack(demo_dir, overwrite=True)
         except ValueError as exc:
-            raise WebError(f"Public demo pack could not be generated: {exc}") from exc
+            raise WebError(
+                "Public demo pack could not be generated.",
+                title="Public demo pack generation failed",
+                reason_code="web.public_demo_generation_failed",
+                stage="Preparing public demo runtime",
+                next_step="Regenerate the synthetic demo pack or choose a writable demo output directory.",
+            ) from exc
         summary_path = demo_dir / SUMMARY_NAME
         generated = True
     else:
         if settings.batch_summary is None:
-            raise WebError("Public demo mode requires a generated synthetic demo pack.")
+            raise WebError(
+                "Public demo mode requires a generated synthetic demo pack.",
+                title="Public demo pack is not configured",
+                reason_code="web.public_demo_summary_missing",
+                stage="Preparing public demo runtime",
+                next_step="Generate the synthetic demo pack before starting public demo mode.",
+            )
         summary_path = settings.batch_summary.expanduser()
         demo_dir = summary_path.parent
         if not summary_path.is_file():
-            raise WebError("Public demo batch summary is not available.")
+            raise WebError(
+                "Public demo batch summary is not available.",
+                title="Public demo batch summary is unavailable",
+                reason_code="web.public_demo_summary_unavailable",
+                stage="Preparing public demo runtime",
+                next_step="Regenerate the synthetic demo pack or pass the generated batch summary.",
+            )
     action_outcomes_path = demo_dir / ACTION_OUTCOMES_NAME
     target_env[OUTCOME_PATH_ENV] = str(action_outcomes_path)
     return PublicDemoRuntime(

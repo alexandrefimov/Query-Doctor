@@ -10,6 +10,7 @@ from query_doctor.web.ui.recent_scan_progress import (
     batch_progress_view_payload,
     render_batch_progress_panel,
 )
+from query_doctor.web.ui.errors import render_error_info_body
 
 
 def render_pending_progress_panel() -> str:
@@ -49,7 +50,11 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         if job.status == "ok" or getattr(job, "kind", "") == "query"
         else ""
     )
-    error_html = html.escape(job.error) if job.status in {"failed", "cancelled"} else ""
+    error_html = (
+        render_error_info_body(getattr(job, "error_info", None) or job.error)
+        if job.status in {"failed", "cancelled"}
+        else ""
+    )
     error_hidden = "" if job.status in {"failed", "cancelled"} else " hidden"
     batch_progress_html = ""
     job_progress_html = ""
@@ -73,14 +78,7 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         current_stage = progress_view.current_stage
         progress_percent = progress_view.percent
         job_progress_html = render_job_progress_steps(progress_view)
-    if job.status == "ok":
-        title = "Analysis complete"
-    elif job.status == "cancelled":
-        title = "Analysis stopped"
-    elif job.status == "failed":
-        title = "Analysis failed"
-    else:
-        title = "Analysis running"
+    title = job_panel_title(getattr(job, "kind", ""), job.status)
     cancel_html = ""
     if job.status == "running":
         cancel_html = (
@@ -103,3 +101,22 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         f'<div id="job-result-slot">{result_html}</div>'
         "</section>"
     )
+
+
+def job_panel_title(kind: str, status: str) -> str:
+    labels = (
+        {
+            "ok": "Trino Beta complete",
+            "cancelled": "Trino Beta stopped",
+            "failed": "Trino Beta failed",
+            "running": "Trino Beta running",
+        }
+        if kind in {"trino_query", "trino_recent"}
+        else {
+            "ok": "Analysis complete",
+            "cancelled": "Analysis stopped",
+            "failed": "Analysis failed",
+            "running": "Analysis running",
+        }
+    )
+    return labels.get(status, labels["running"])

@@ -41,10 +41,10 @@ def render_specific_query_detail_for_request(
     try:
         ensure_complete_existing_case(case_dir)
     except WebError:
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     if not case_has_analyzer_facts(case_dir):
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
     return 200, render_specific_query_detail_page(
@@ -116,7 +116,7 @@ def render_specific_query_report_for_request(
     try:
         ensure_complete_existing_case(case_dir)
     except WebError:
-        message = WebError("Specific Query details are available after analysis completes.")
+        message = specific_query_details_unavailable_error()
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
     report = load_specific_query_trusted_report_artifact(
@@ -160,3 +160,23 @@ def render_specific_query_report_page(
         "</details>"
     )
     return render_page(settings, active_nav="query", show_run_panel=False, extra_sections=[section])
+
+
+def specific_query_details_unavailable_error() -> WebError:
+    return WebError(
+        "Specific Query details are available after analysis completes.",
+        title="Specific Query details are not ready",
+        reason_code="impala.query_details_unavailable",
+        stage="Checking Specific Query artifacts",
+        next_step="Run Query ID analysis for this query, then open Details again.",
+    )
+
+
+def specific_query_report_unavailable_error() -> WebError:
+    return WebError(
+        "Validated report is not available for this query.",
+        title="Validated report is not ready",
+        reason_code="impala.query_report_unavailable",
+        stage="Checking Specific Query trusted report",
+        next_step="Generate the validated report for this query, then retry the download.",
+    )

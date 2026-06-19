@@ -16,6 +16,38 @@ def web_settings() -> WebSettings:
     return WebSettings(config=Path(".query-doctor-cm.local.json"))
 
 
+def assert_structured_error_card(
+    body: str,
+    *,
+    reason_code: str,
+    stage: str,
+    next_step: str,
+) -> None:
+    assert 'class="error-card"' in body
+    assert "<span>Reason</span>" in body
+    assert f"<strong>{reason_code}</strong>" in body
+    assert "<span>Stage</span>" in body
+    assert f"<strong>{stage}</strong>" in body
+    assert "<strong>Next step:</strong>" in body
+    assert next_step in body
+    assert "web.error" not in body
+
+
+def assert_browser_error_raw_free(body: str) -> None:
+    for fragment in (
+        "SELECT secret_col",
+        "guarded_table",
+        "/tmp/query-doctor-secret",
+        "/Users/",
+        "case_dir",
+        "stdout",
+        "stderr",
+        "qwen3-coder",
+        "subprocess",
+    ):
+        assert fragment not in body
+
+
 def test_route_get_unknown_path_returns_none():
     response = route_get_request("/not-a-route", web_settings(), WebJobStore())
 
@@ -31,6 +63,7 @@ def test_route_get_unknown_job_status_returns_safe_json():
     assert response.status == 404
     assert response.content_type == "application/json; charset=utf-8"
     assert "Analysis job was not found" in response.body
+    assert "job.not_found" in response.body
     assert "/Users/" not in response.body
     assert "case_dir" not in response.body
 
@@ -221,6 +254,9 @@ def test_route_post_public_demo_blocks_all_allowed_actions(tmp_path, monkeypatch
         "/batch/case/case-001/outcome/stats_refresh_review.v1",
         "/running/case/case-001/case-actions",
         "/query/details/abc%3Adef/llm-actions",
+        "/trino/compact-diagnosis",
+        "/spark/compact-diagnosis",
+        "/jobs/0123456789abcdef0123456789abcdef/cancel",
     ):
         response = route_post_request(
             path,
@@ -233,9 +269,144 @@ def test_route_post_public_demo_blocks_all_allowed_actions(tmp_path, monkeypatch
         assert response is not None
         assert response.status == 403
         assert "Public demo is read-only" in response.body
+        assert_structured_error_card(
+            response.body,
+            reason_code="web.public_demo_read_only",
+            stage="Checking public demo request",
+            next_step="Use the synthetic demo pages without submitting write actions.",
+        )
         assert "subprocess" not in response.body
 
     assert not outcome_path.exists()
+
+
+def test_route_post_core_error_cards_are_structured_and_raw_free():
+    settings = web_settings()
+    cases = [
+        (
+            "/analyze",
+            {},
+            "web.query_id_required",
+            "Checking Query ID form",
+            "Paste one explicit Query ID",
+        ),
+        (
+            "/optimizer",
+            {"sql": [""]},
+            "web.optimizer_sql_required",
+            "Checking Query Optimizer input",
+            "Paste one read-only SELECT or WITH statement",
+        ),
+        (
+            "/batch/run",
+            {"parallelism": ["0"]},
+            "web.form_positive_integer_required",
+            "Checking form field parallelism",
+            "Correct the highlighted form value and retry.",
+        ),
+        (
+            "/running/run",
+            {"min_duration_sec": ["not-a-number"]},
+            "web.form_non_negative_number_required",
+            "Checking form field min_duration_sec",
+            "Correct the highlighted form value and retry.",
+        ),
+        (
+            "/trino/compact-diagnosis",
+            {"boundary_json": [""]},
+            "trino_compact.boundary_json_required",
+            "Checking Trino compact input",
+            "Paste one already raw-free Trino boundary JSON payload",
+        ),
+        (
+            "/spark/compact-diagnosis",
+            {"compact_json": [""]},
+            "spark_compact.compact_json_required",
+            "Checking Spark compact input",
+            "Paste one already raw-free Spark compact JSON payload",
+        ),
+        (
+            "/spark/compact-diagnosis",
+            {
+                "spark_compact_action": ["history_server"],
+                "history_server_url": [""],
+                "application_id": ["application_secret_selector"],
+            },
+            "spark_compact.history_server_url_required",
+            "Checking Spark compact input",
+            "Enter an explicit Spark History Server base URL",
+        ),
+    ]
+
+    def forbidden_runner(*args, **kwargs):
+        raise AssertionError("invalid form must not run subprocesses")
+
+    def forbidden_analysis(*args, **kwargs):
+        raise AssertionError("invalid form must not run analysis")
+
+    for path, form, reason_code, stage, next_step in cases:
+        response = route_post_request(
+            path,
+            form,
+            settings,
+            WebJobStore(),
+            analysis_func=forbidden_analysis,
+            runner=forbidden_runner,
+        )
+
+        assert response is not None
+        assert response.status == 400
+        assert_structured_error_card(
+            response.body,
+            reason_code=reason_code,
+            stage=stage,
+            next_step=next_step,
+        )
+        assert_browser_error_raw_free(response.body)
+
+
+def test_route_get_specific_query_and_job_errors_are_structured_and_raw_free(tmp_path):
+    settings = WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    cases = [
+        (
+            "/query/details/abc%3Adef",
+            404,
+            "impala.query_details_unavailable",
+            "Checking Specific Query artifacts",
+            "Run Query ID analysis for this query",
+        ),
+        (
+            "/query/details/abc%3Adef/report.md",
+            404,
+            "impala.query_report_unavailable",
+            "Checking Specific Query trusted report",
+            "Generate the validated report for this query",
+        ),
+        (
+            "/jobs/0123456789abcdef0123456789abcdef",
+            404,
+            "job.not_found",
+            "Checking analysis job",
+            "Start a new analysis job from the Diagnose page.",
+        ),
+    ]
+
+    for path, status, reason_code, stage, next_step in cases:
+        response = route_get_request(path, settings, WebJobStore())
+
+        assert response is not None
+        assert response.status == status
+        assert_structured_error_card(
+            response.body,
+            reason_code=reason_code,
+            stage=stage,
+            next_step=next_step,
+        )
+        assert str(tmp_path) not in response.body
+        assert_browser_error_raw_free(response.body)
 
 
 def test_route_post_batch_case_action_outcome_records_local_jsonl(tmp_path, monkeypatch):

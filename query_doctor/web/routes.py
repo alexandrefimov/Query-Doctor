@@ -33,6 +33,7 @@ from query_doctor.web.case_detail_context import (
 from query_doctor.web.case_files import expected_case_dir_for_query
 from query_doctor.web.form_helpers import first_form_value, form_flag_enabled
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
+from query_doctor.web.job_ids import WEB_JOB_ID_PATTERN
 from query_doctor.web.models import WebError, WebJobSnapshot, WebSettings
 from query_doctor.web.owner_raw_source import (
     OWNER_RAW_SOURCE_REASON_CASE_NOT_FOUND,
@@ -54,6 +55,7 @@ from query_doctor.web.specific_query_actions import (
 from query_doctor.web.specific_query_pages import (
     render_specific_query_detail_for_request,
     render_specific_query_report_for_request,
+    specific_query_report_unavailable_error,
 )
 from query_doctor.web.subprocesses import Runner
 from query_doctor.web.preview_surfaces import (
@@ -101,7 +103,7 @@ STATIC_ASSETS = {
     "/static/theme-bootstrap.js": ("theme-bootstrap.js", "application/javascript; charset=utf-8"),
 }
 REPORT_DOWNLOAD_CONTENT_TYPE = "text/markdown; charset=utf-8"
-JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
+JOB_CANCEL_POST_RE = re.compile(rf"/jobs/(?P<job_id>{WEB_JOB_ID_PATTERN})/cancel")
 BATCH_CASE_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|python-report|llm-report|optimized-query|validate-rewrite|llm-actions|case-actions)"
 )
@@ -468,7 +470,7 @@ def route_specific_query_report_markdown(
         validated_query_id, case_dir, report_variant=report_variant
     )
     if report is None:
-        message = WebError("Validated report is not available for this query.")
+        message = specific_query_report_unavailable_error()
         return WebRouteResponse.html(
             404, render_query_page(settings, query_id=validated_query_id, error=message)
         )
@@ -481,11 +483,11 @@ def route_job_get(
     settings: WebSettings,
     store: WebJobStore,
 ) -> WebRouteResponse | None:
-    match = re.fullmatch(r"/jobs/(?P<job_id>[0-9a-f]{32})/status", path)
+    match = re.fullmatch(rf"/jobs/(?P<job_id>{WEB_JOB_ID_PATTERN})/status", path)
     if match:
         job = store.get(match.group("job_id"))
         return WebRouteResponse.json(404 if job is None else 200, render_job_status_json(job))
-    match = re.fullmatch(r"/jobs/(?P<job_id>[0-9a-f]{32})", path)
+    match = re.fullmatch(rf"/jobs/(?P<job_id>{WEB_JOB_ID_PATTERN})", path)
     if not match:
         return None
     job = store.get(match.group("job_id"))
@@ -494,11 +496,11 @@ def route_job_get(
             404,
             render_batch_page(
                 batch_page_settings(settings, store),
-                error="Analysis job was not found.",
+                error=job_not_found_error(),
             ),
         )
     query = parse_qs(query_string, keep_blank_values=True)
-    if job.kind == "batch":
+    if job.kind in {"batch", "trino_recent"}:
         return WebRouteResponse.html(
             200,
             render_batch_page(
@@ -597,7 +599,7 @@ def route_post_request(
                 404,
                 render_batch_page(
                     batch_page_settings(settings, store),
-                    error="Analysis job was not found.",
+                    error=job_not_found_error(),
                 ),
             )
         return WebRouteResponse.redirect(f"/jobs/{job_id}")
@@ -631,11 +633,25 @@ def route_post_request(
 def public_demo_post_blocked_response(settings: WebSettings) -> WebRouteResponse:
     error = WebError(
         "Public demo is read-only. Collection, report generation, optimizer actions, "
-        "uploads, cancellations, and feedback writes are disabled for the hosted synthetic demo."
+        "uploads, cancellations, and feedback writes are disabled for the hosted synthetic demo.",
+        title="Public demo is read-only",
+        reason_code="web.public_demo_read_only",
+        stage="Checking public demo request",
+        next_step="Use the synthetic demo pages without submitting write actions.",
     )
     return WebRouteResponse.html(
         403,
         render_page(settings, active_nav="batch", show_run_panel=False, error=error),
+    )
+
+
+def job_not_found_error() -> WebError:
+    return WebError(
+        "Analysis job was not found.",
+        title="Job was not found",
+        reason_code="job.not_found",
+        stage="Checking analysis job",
+        next_step="Start a new analysis job from the Diagnose page.",
     )
 
 
@@ -668,7 +684,15 @@ def route_action_outcome_post(
         append_action_outcome(record)
     except (OSError, WebError) as exc:
         safe_error = (
-            WebError("Action outcome could not be saved.") if isinstance(exc, OSError) else exc
+            WebError(
+                "Action outcome could not be saved.",
+                title="Outcome save failed",
+                reason_code="web.action_outcome_save_failed",
+                stage="Saving recommendation outcome",
+                next_step="Check local write permissions for the outcome store and retry.",
+            )
+            if isinstance(exc, OSError)
+            else exc
         )
         return WebRouteResponse.html(
             400,

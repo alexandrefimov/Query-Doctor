@@ -256,6 +256,7 @@ class ReportActionView:
     job_kind: str
     progress_view: JobProgressView | None = None
     unavailable_reason: str = ""
+    error_info: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

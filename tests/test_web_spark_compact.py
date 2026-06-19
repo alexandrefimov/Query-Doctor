@@ -251,7 +251,9 @@ def test_spark_history_web_post_rejects_credentials_without_echoing_values():
 
     assert response is not None
     assert response.status == 400
-    assert "Safe Spark compact state" in response.body
+    assert "Spark History Server collection failed" in response.body
+    assert "spark_compact.history_url_credentials_rejected" in response.body
+    assert "Collecting Spark History Server compact summary" in response.body
     assert "must not contain credentials" in response.body
     for fragment in (
         "user:secret",
@@ -288,7 +290,9 @@ def test_spark_history_web_post_hides_unexpected_collector_error_text(monkeypatc
     assert response is not None
     assert response.status == 400
     assert "Spark History Server compact collection failed safely." in response.body
-    assert "Safe Spark compact state" in response.body
+    assert "Spark History Server collection failed" in response.body
+    assert "spark_compact.history_server_collection_failed" in response.body
+    assert "Collecting Spark History Server compact summary" in response.body
     for fragment in (
         "request failed",
         "spark-history.example.invalid",

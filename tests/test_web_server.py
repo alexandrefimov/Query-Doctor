@@ -600,6 +600,7 @@ def test_batch_case_detail_action_context_centralizes_action_state(tmp_path):
     assert context.case_dir == case_dir
     assert context.report_allowed is True
     assert context.source_sql_available is True
+    assert context.optimizer_allowed is True
     assert context.report_running is False
     assert context.optimizer_running is False
     assert context.job_source == "batch"
@@ -609,6 +610,7 @@ def test_batch_case_detail_action_context_centralizes_action_state(tmp_path):
 
     assert running_context.report_running is True
     assert running_context.optimizer_running is True
+    assert running_context.optimizer_allowed is True
 
     blocked_state = module.server_owned_case_required_report_state()
     blocked_state["error"] = "mutated"
@@ -668,6 +670,7 @@ def test_web_batch_clean_details_hide_optimizer_action(tmp_path):
 
     assert context.report_allowed is False
     assert context.source_sql_available is False
+    assert context.optimizer_allowed is False
     assert render_context.optimized_query_state["status"] == "hidden"
     assert status == 400
     assert calls == []
@@ -677,6 +680,148 @@ def test_web_batch_clean_details_hide_optimizer_action(tmp_path):
         assert "Generate report + optimizer" not in rendered
         assert "SELECT secret_col" not in rendered
         assert str(case_dir) not in rendered
+
+
+def test_web_batch_guidance_only_optimizer_action_is_unavailable(tmp_path):
+    module = load_web_module()
+    summary = tmp_path / "batch_summary.json"
+    case_dir = tmp_path / "cases" / "case-001" / "abc"
+    case_dir.mkdir(parents=True)
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    (case_dir / "original_query.sql").write_text(
+        "SELECT secret_col FROM db.source_table WHERE secret_flag = 1",
+        encoding="utf-8",
+    )
+    summary.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "case_index": 1,
+                        "query_id": "abc...000001",
+                        "score": 22,
+                        "score_severity": "suspicious",
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                        "metadata_status": "not_requested",
+                        "score_reasons": ["cardinality estimate anomalies: 5"],
+                        "case_dir": "cases/case-001/abc",
+                        "optimizer_rewrite_support": {
+                            "status": "guidance_only",
+                            "label": "Guidance only",
+                            "reason": "SQL shape exceeds current safe draft thresholds",
+                            "risk_mode": "recommendations_only",
+                            "risk_reasons": [
+                                "cte_body_validation_not_proven",
+                                "too_many_ctes_for_safe_rewrite",
+                            ],
+                            "draft_eligibility": "disabled_by_safety_thresholds",
+                            "draft_eligibility_label": "Draft disabled by safety thresholds",
+                            "rewriteability_bucket": "human_review_only",
+                            "rewriteability_label": "Human review only",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary)
+    store = module.WebJobStore()
+    calls = []
+
+    def fake_runner(cmd, **_kwargs):
+        calls.append(cmd)
+        raise AssertionError("runner should not be called")
+
+    context = module.build_batch_case_detail_action_context(settings, "case-001", store)
+    render_context = module.build_batch_case_detail_render_context(
+        settings, "case-001", context.case, store
+    )
+    body = module.render_batch_case_detail_for_request(settings, "case-001", context.case, store)
+    optimizer_status, optimizer_body = module.start_batch_case_optimized_query_job(
+        "case-001", settings, store, runner=fake_runner
+    )
+    combined_status, combined_body = module.start_batch_case_llm_actions_job(
+        "case-001", settings, store, runner=fake_runner
+    )
+
+    assert context.report_allowed is True
+    assert context.source_sql_available is True
+    assert context.optimizer_allowed is False
+    assert render_context.optimized_query_state["status"] == "unavailable"
+    assert (
+        render_context.optimized_query_state["unavailable_reason"]
+        == "Trusted SQL draft generation is disabled for this query shape by safety and "
+        "validation guardrails. Use the query-shape review areas instead."
+    )
+    assert optimizer_status == 400
+    assert combined_status == 400
+    assert calls == []
+    for rendered in (body, optimizer_body, combined_body):
+        assert "Query LLM optimizer" in rendered
+        assert "Trusted SQL draft generation is disabled for this query shape" in rendered
+        assert 'aria-label="Unavailable actions"' in rendered
+        assert "Run Query LLM optimizer" not in rendered
+        assert "Generate Python report + optimizer" not in rendered
+        assert "SELECT secret_col" not in rendered
+        assert "secret_flag" not in rendered
+        assert str(case_dir) not in rendered
+
+
+def test_web_batch_legacy_draft_ready_optimizer_status_allows_action(tmp_path):
+    module = load_web_module()
+    summary = tmp_path / "batch_summary.json"
+    case_dir = tmp_path / "cases" / "case-001" / "abc"
+    case_dir.mkdir(parents=True)
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    (case_dir / "original_query.sql").write_text(
+        "SELECT secret_col FROM db.source_table WHERE secret_flag = 1",
+        encoding="utf-8",
+    )
+    summary.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "case_index": 1,
+                        "query_id": "abc...000001",
+                        "score": 22,
+                        "score_severity": "suspicious",
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                        "score_reasons": ["cardinality estimate anomalies: 5"],
+                        "case_dir": "cases/case-001/abc",
+                        "optimizer_rewrite_support": {
+                            "status": "recipe_detected",
+                            "label": "Rewrite recipe detected",
+                            "reason": "Optimizer run and validation required",
+                            "rewriteability_bucket": "safe_material_draft",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary)
+    store = module.WebJobStore()
+
+    context = module.build_batch_case_detail_action_context(settings, "case-001", store)
+    render_context = module.build_batch_case_detail_render_context(
+        settings, "case-001", context.case, store
+    )
+    body = module.render_batch_case_detail_for_request(settings, "case-001", context.case, store)
+
+    assert context.source_sql_available is True
+    assert context.optimizer_allowed is True
+    assert render_context.optimized_query_state["status"] == "not_run"
+    assert "Run Query LLM optimizer" in body
+    assert "not eligible for an optimizer job" not in body
+    assert "SELECT secret_col" not in body
+    assert str(case_dir) not in body
 
 
 def test_batch_case_detail_render_context_returns_typed_safe_view(tmp_path):
@@ -783,6 +928,7 @@ def test_specific_query_detail_action_context_centralizes_action_state(tmp_path)
     assert context.analyzer_facts_available is True
     assert context.report_allowed is True
     assert context.source_sql_available is True
+    assert context.optimizer_allowed is False
     assert context.report_running is False
     assert context.optimizer_running is False
 
@@ -791,6 +937,7 @@ def test_specific_query_detail_action_context_centralizes_action_state(tmp_path)
 
     assert running_context.report_running is True
     assert running_context.optimizer_running is True
+    assert running_context.optimizer_allowed is False
 
 
 def test_web_specific_query_clean_details_hide_report_and_optimizer_actions(tmp_path):
@@ -836,6 +983,7 @@ def test_web_specific_query_clean_details_hide_report_and_optimizer_actions(tmp_
     assert action_context.case["score_severity"] == "clean"
     assert action_context.report_allowed is False
     assert action_context.source_sql_available is False
+    assert action_context.optimizer_allowed is False
     assert render_context.optimized_query_state["status"] == "hidden"
     assert page_status == 200
     assert report_status == 400
@@ -850,6 +998,67 @@ def test_web_specific_query_clean_details_hide_report_and_optimizer_actions(tmp_
         assert "Generate Python report + optimizer" not in rendered
         assert 'action="/query/details/abc%3Adef/optimized-query"' not in rendered
         assert 'action="/query/details/abc%3Adef/llm-actions"' not in rendered
+        assert "SELECT secret_col" not in rendered
+        assert "secret_flag" not in rendered
+        assert str(case_dir) not in rendered
+
+
+def test_web_specific_query_not_candidate_optimizer_action_is_unavailable(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    write_complete_collected_case(case_dir)
+    (case_dir / "analysis_facts.md").write_text("- Cardinality anomalies: 2\n", encoding="utf-8")
+    (case_dir / "original_query.sql").write_text(
+        "SELECT secret_col FROM db.source_table WHERE secret_flag = 1",
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    store = module.WebJobStore()
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        raise AssertionError("runner should not be called")
+
+    action_context = module.build_specific_query_detail_action_context("abc:def", case_dir, store)
+    render_context = module.build_specific_query_detail_render_context(
+        settings, "abc:def", case_dir, store
+    )
+    page_status, page_body = module.render_specific_query_detail_for_request(
+        settings, "abc:def", store
+    )
+    optimizer_status, optimizer_body = module.start_specific_query_optimized_query_job(
+        "abc:def", settings, store, runner=fake_runner
+    )
+    combined_status, combined_body = module.start_specific_query_llm_actions_job(
+        "abc:def", settings, store, runner=fake_runner
+    )
+
+    assert action_context.case["score_severity"] == "suspicious"
+    assert action_context.source_sql_available is True
+    assert action_context.optimizer_allowed is False
+    assert render_context.optimized_query_state["status"] == "unavailable"
+    assert (
+        render_context.optimized_query_state["unavailable_reason"]
+        == "Query Doctor already classified this query shape as not eligible for an "
+        "optimizer job. Use the query-shape review areas instead."
+    )
+    assert page_status == 200
+    assert optimizer_status == 400
+    assert combined_status == 200
+    assert calls == []
+    for rendered in (page_body, optimizer_body, combined_body):
+        assert "Query LLM optimizer" in rendered
+        assert "not eligible for an optimizer job" in rendered
+        assert 'aria-label="Unavailable actions"' in rendered
+        assert "Run Query LLM optimizer" not in rendered
+        assert "Generate Python report + optimizer" not in rendered
         assert "SELECT secret_col" not in rendered
         assert "secret_flag" not in rendered
         assert str(case_dir) not in rendered
@@ -1361,6 +1570,41 @@ def test_web_cli_main_quickstart_corpus_ignores_invalid_default_config(
     assert "listening on http://127.0.0.1:8765" in captured.out
 
 
+def test_web_cli_main_batch_summary_ignores_invalid_default_config(monkeypatch, tmp_path, capsys):
+    from query_doctor.cli import web as web_cli
+
+    summary = tmp_path / "batch_summary.json"
+    summary.write_text(json.dumps({"selected_count": 0, "cases": []}), encoding="utf-8")
+    (tmp_path / web_cli.cm_collector.DEFAULT_LOCAL_CONFIG_NAME).write_text(
+        json.dumps({"future_config_field": True}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    seen: dict[str, object] = {}
+
+    class FakeServer:
+        def __init__(self, address, handler):
+            seen["address"] = address
+            seen["handler"] = handler
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            seen["closed"] = True
+
+    monkeypatch.setattr(web_cli, "ThreadingHTTPServer", FakeServer)
+
+    result = web_cli.main(["--batch-summary", str(summary), "--no-llm"])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert seen["address"] == ("127.0.0.1", 8765)
+    assert seen["closed"] is True
+    assert "Unknown config field" not in captured.err
+    assert "listening on http://127.0.0.1:8765" in captured.out
+
+
 def test_web_cli_main_quickstart_corpus_keeps_explicit_config_strict(monkeypatch, tmp_path, capsys):
     from query_doctor.cli import web as web_cli
 
@@ -1391,12 +1635,14 @@ def test_public_demo_validation_requires_batch_summary_and_no_llm(tmp_path):
             module.WebSettings(config=config, public_demo=True, no_llm=True)
         )
     assert "--batch-summary" in str(exc.value)
+    assert exc.value.reason_code == "web.public_demo_summary_missing"
 
     with pytest.raises(module.WebError) as exc:
         module.validate_public_demo_settings(
             module.WebSettings(config=config, batch_summary=summary, public_demo=True)
         )
     assert "--no-llm" in str(exc.value)
+    assert exc.value.reason_code == "web.public_demo_llm_not_allowed"
 
     module.validate_public_demo_settings(
         module.WebSettings(config=config, batch_summary=summary, public_demo=True, no_llm=True)
@@ -1420,6 +1666,7 @@ def test_public_demo_validation_rejects_external_source_settings(tmp_path):
         )
 
     assert "must not load" in str(exc.value)
+    assert exc.value.reason_code == "web.public_demo_external_source_rejected"
 
 
 def test_public_demo_settings_ignore_default_local_config_discovery(tmp_path):
@@ -1482,6 +1729,48 @@ def test_public_demo_runtime_generates_pack_and_action_outcome_env(tmp_path):
     assert runtime.action_outcomes_path.is_file()
     assert env["QUERY_DOCTOR_ACTION_OUTCOMES_PATH"] == str(runtime.action_outcomes_path)
     module.validate_public_demo_settings(runtime.settings)
+
+
+def test_public_demo_runtime_generation_failure_hides_local_path(tmp_path, monkeypatch):
+    module = load_web_module()
+    from query_doctor.cli import demo_data
+
+    private_dir = tmp_path / "private-demo-output"
+
+    def fail_generate_demo_pack(path, *, overwrite):
+        raise ValueError(f"cannot write demo pack under {path}")
+
+    monkeypatch.setattr(demo_data, "generate_demo_pack", fail_generate_demo_pack)
+    settings = module.build_web_settings(module.parse_args(["--public-demo"]), cwd=tmp_path)
+
+    with pytest.raises(module.WebError) as exc:
+        module.prepare_public_demo_runtime(settings, out_dir=private_dir, env={})
+
+    assert str(exc.value) == "Public demo pack could not be generated."
+    assert str(private_dir) not in str(exc.value)
+    assert exc.value.reason_code == "web.public_demo_generation_failed"
+    assert exc.value.stage == "Preparing public demo runtime"
+
+
+def test_web_form_numeric_errors_include_safe_reason_code():
+    module = load_web_module()
+
+    with pytest.raises(module.WebError) as exc:
+        module.parse_positive_form_int(
+            {"recent_window_minutes": ["0"]}, "recent_window_minutes", default=60
+        )
+
+    assert str(exc.value) == "recent_window_minutes must be a positive integer."
+    assert exc.value.reason_code == "web.form_positive_integer_required"
+    assert exc.value.stage == "Checking form field recent_window_minutes"
+
+    with pytest.raises(module.WebError) as exc:
+        module.parse_non_negative_form_float(
+            {"min_duration_sec": ["nan"]}, "min_duration_sec", default=0
+        )
+
+    assert exc.value.reason_code == "web.form_finite_number_required"
+    assert exc.value.stage == "Checking form field min_duration_sec"
 
 
 def test_web_startup_validation_accepts_direct_impala_profile_source_without_cm(tmp_path):
@@ -1565,8 +1854,9 @@ def test_web_settings_cli_corpus_dir_overrides_config(tmp_path):
 def test_web_startup_validation_rejects_missing_manual_profile_dir(tmp_path):
     module = load_web_module()
     path = tmp_path / "manual-profile-config.json"
+    missing_profile_dir = tmp_path / "missing-profile-inbox"
     path.write_text(
-        json.dumps({"manual_profile_dir": str(tmp_path / "missing-profile-inbox")}),
+        json.dumps({"manual_profile_dir": str(missing_profile_dir)}),
         encoding="utf-8",
     )
 
@@ -1574,6 +1864,8 @@ def test_web_startup_validation_rejects_missing_manual_profile_dir(tmp_path):
         module.validate_web_startup_config(path, cwd=tmp_path, env={})
 
     assert "manual_profile_dir" in str(exc.value)
+    assert str(missing_profile_dir) not in str(exc.value)
+    assert exc.value.reason_code == "web.manual_profile_dir_unreadable"
 
 
 def test_web_startup_validation_requires_impala_hosts_for_direct_source(tmp_path):
@@ -1584,6 +1876,8 @@ def test_web_startup_validation_requires_impala_hosts_for_direct_source(tmp_path
         module.validate_web_startup_config(path, cwd=tmp_path, env={})
 
     assert "impala_profile_hosts" in str(exc.value)
+    assert exc.value.reason_code == "impala.direct_profile_host_missing"
+    assert exc.value.stage == "Checking web startup source config"
 
 
 def test_web_startup_validation_rejects_secret_config_fields(tmp_path):
@@ -1603,6 +1897,10 @@ def test_web_startup_validation_checks_ca_bundle(tmp_path):
         module.validate_web_startup_config(path, cwd=tmp_path, env={"CM_TOKEN": "secret-token"})
 
     assert "ca_bundle" in str(exc.value)
+    assert str(missing_ca) not in str(exc.value)
+    assert exc.value.reason_code == "impala.cm_ca_bundle_unreadable"
+    assert exc.value.stage == "Checking web startup TLS config"
+    assert "Fix the configured CM ca_bundle" in str(exc.value.next_step)
 
     ca_bundle = tmp_path / "ca.pem"
     ca_bundle.write_text("CERT", encoding="utf-8")
@@ -2076,6 +2374,114 @@ def test_detail_progress_renderers_prefer_server_owned_progress_view():
     assert 'style="width:100%"' not in combined_html
 
 
+def test_action_presenters_keep_only_route_safe_job_ids():
+    from query_doctor.web.presenters.recent_scan import present_report_action
+    from query_doctor.web.ui.llm_actions import present_optimized_query_action
+
+    job_id = "0123456789abcdef0123456789abcdef"
+
+    report_view = present_report_action({"status": "running", "job_id": job_id})
+    optimizer_view = present_optimized_query_action({"status": "running", "job_id": job_id})
+
+    assert report_view.job_id == job_id
+    assert optimizer_view.job_id == job_id
+    assert present_report_action({"status": "running", "job_id": "host_01"}).job_id == ""
+    assert present_optimized_query_action({"status": "running", "job_id": "bad:e2e"}).job_id == ""
+
+
+def test_detail_progress_renderers_do_not_poll_display_safe_job_ids():
+    from query_doctor.web.job_progress import (
+        BATCH_REPORT_STAGES,
+        LLM_ACTIONS_STAGES,
+        OPTIMIZED_QUERY_STAGES,
+        progress_view_for_job,
+    )
+    from query_doctor.web.presenters.recent_scan_models import ReportActionView
+    from query_doctor.web.ui.llm_actions import (
+        OptimizedQueryActionView,
+        render_llm_actions_job_progress,
+        render_optimized_query_progress,
+    )
+    from query_doctor.web.ui.report_actions import render_llm_report_progress
+
+    unsafe_job_id = "host_01"
+    report_view = ReportActionView(
+        status="running",
+        running=True,
+        trusted=False,
+        partial_untrusted=False,
+        error="",
+        job_id=unsafe_job_id,
+        stage_label="Generating validated report",
+        progress=38,
+        note="",
+        button_label="Generating LLM report",
+        button_disabled=True,
+        show_open_link=False,
+        job_kind="batch_report",
+        progress_view=progress_view_for_job(
+            "batch_report",
+            BATCH_REPORT_STAGES[1][1],
+            BATCH_REPORT_STAGES[1][2],
+        ),
+    )
+    report_html = render_llm_report_progress(report_view)
+
+    assert "Generating validated report" in report_html
+    assert "data-report-job-status-url" not in report_html
+    assert "/jobs/host_01" not in report_html
+
+    optimizer_view = OptimizedQueryActionView(
+        status="running",
+        job_id=unsafe_job_id,
+        job_kind="batch_optimized_query",
+        stage_label="Generating optimizer draft",
+        error="",
+        output_kind="sql_draft",
+        source_available=True,
+        fallback_reason="",
+        risk_mode="",
+        risk_reasons=(),
+        source_scope="",
+        progress_view=progress_view_for_job(
+            "batch_optimized_query",
+            OPTIMIZED_QUERY_STAGES[1][1],
+            OPTIMIZED_QUERY_STAGES[1][2],
+        ),
+    )
+    optimizer_html = render_optimized_query_progress(optimizer_view)
+
+    assert "Generating optimizer draft" in optimizer_html
+    assert "data-optimizer-job-status-url" not in optimizer_html
+    assert "/jobs/host_01" not in optimizer_html
+
+    combined_report_view = ReportActionView(
+        status="running",
+        running=True,
+        trusted=False,
+        partial_untrusted=False,
+        error="",
+        job_id=unsafe_job_id,
+        stage_label="Generating optimizer draft",
+        progress=72,
+        note="",
+        button_label="Generating LLM report",
+        button_disabled=True,
+        show_open_link=False,
+        job_kind="batch_llm_actions",
+        progress_view=progress_view_for_job(
+            "batch_llm_actions",
+            LLM_ACTIONS_STAGES[2][1],
+            LLM_ACTIONS_STAGES[2][2],
+        ),
+    )
+    combined_html = render_llm_actions_job_progress(combined_report_view, optimizer_view)
+
+    assert "Generating optimizer draft" in combined_html
+    assert "data-report-job-status-url" not in combined_html
+    assert "/jobs/host_01" not in combined_html
+
+
 def test_render_optimized_query_progress_fails_closed_without_progress_view():
     from query_doctor.web.ui.llm_actions import (
         OptimizedQueryActionView,
@@ -2254,7 +2660,33 @@ def test_web_job_cancel_marks_safe_terminal_status_and_blocks_late_completion():
     assert "late unsafe result" not in payload["result_html"]
 
 
-def test_web_batch_job_unexpected_exception_uses_raw_free_fallback(monkeypatch):
+@pytest.mark.parametrize(
+    ("config", "create_job", "expected_reason", "expected_title", "expected_next_step"),
+    (
+        (
+            None,
+            "create_batch",
+            "batch.unexpected_failure",
+            "Recent scan failed unexpectedly",
+            "Review the selected source, local config, credentials, and scan bounds, then retry.",
+        ),
+        (
+            {"only_running": True},
+            "create_running_batch",
+            "running.unexpected_failure",
+            "Running scan failed unexpectedly",
+            "Review the selected source, local config, credentials, and scan bounds, then retry.",
+        ),
+    ),
+)
+def test_web_batch_job_unexpected_exception_uses_structured_raw_free_fallback(
+    monkeypatch,
+    config,
+    create_job,
+    expected_reason,
+    expected_title,
+    expected_next_step,
+):
     module = load_web_module()
     from query_doctor.web import batch_jobs
 
@@ -2276,11 +2708,11 @@ def test_web_batch_job_unexpected_exception_uses_raw_free_fallback(monkeypatch):
 
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
     store = module.WebJobStore()
-    job = store.create_batch({"scan_target": "finished"})
+    job = getattr(store, create_job)({"scan_target": "running" if config else "finished"})
 
     module.run_batch_job(
         job.job_id,
-        module.BatchRunConfig(metadata_top_limit=0),
+        module.BatchRunConfig(metadata_top_limit=0, **(config or {})),
         settings,
         store,
         fail_if_called,
@@ -2293,16 +2725,276 @@ def test_web_batch_job_unexpected_exception_uses_raw_free_fallback(monkeypatch):
     assert snapshot.progress == 100
     assert snapshot.result_html == ""
     assert snapshot.error == (
-        "Unexpected recent scan failure. Details are hidden because they may contain sensitive data."
+        f"{expected_title}. Internal exception details are hidden because "
+        "they may contain sensitive data."
     )
 
     payload = json.loads(module.render_job_status_json(snapshot))
     serialized = json.dumps(payload, ensure_ascii=False)
     assert payload["status"] == "failed"
     assert payload["error"] == snapshot.error
+    assert payload["error_info"]["title"] == expected_title
+    assert payload["error_info"]["reason_code"] == expected_reason
+    assert payload["error_info"]["stage"] == "Running recent scan"
+    assert payload["error_info"]["next_step"] == expected_next_step
+    assert (
+        "The failing internal step did not raise a classified web error."
+        in payload["error_info"]["details"]
+    )
     assert payload["result_html"] == ""
     for fragment in raw_fragments:
         assert fragment not in snapshot.error
+        assert fragment not in serialized
+
+
+def test_web_batch_report_unexpected_exception_fails_job_with_structured_error(
+    tmp_path, monkeypatch
+):
+    module = load_web_module()
+    from query_doctor.web import job_workers
+
+    raw_fragments = [
+        "SELECT secret_col FROM raw_table",
+        "/private/tmp/query-doctor-report-case",
+        "diagnosis_python.partial.md",
+    ]
+
+    def raise_unexpected_exception(*_args, **_kwargs):
+        raise RuntimeError(" | ".join(raw_fragments))
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("runner should not be called after command build failure")
+
+    monkeypatch.setattr(
+        job_workers,
+        "build_selected_case_report_command",
+        raise_unexpected_exception,
+    )
+
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create_batch_report("case-001")
+
+    module.run_batch_case_report_job(
+        job.job_id,
+        "case-001",
+        case_dir,
+        settings,
+        store,
+        fail_if_called,
+    )
+
+    snapshot = store.get(job.job_id)
+    assert snapshot is not None
+    assert snapshot.status == "failed"
+    assert snapshot.progress == 100
+    assert snapshot.result_html == ""
+
+    payload = json.loads(module.render_job_status_json(snapshot))
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["error_info"]["title"] == "Finished-query report generation failed unexpectedly"
+    assert payload["error_info"]["reason_code"] == "batch_report.unexpected_failure"
+    assert payload["error_info"]["stage"] == "Generating validated report"
+    assert payload["error_info"]["next_step"] == (
+        "Review the selected case artifacts, report settings, and local config, then retry."
+    )
+    for fragment in raw_fragments:
+        assert fragment not in serialized
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_reason", "expected_title", "expected_stage"),
+    (
+        (
+            "query",
+            "query.unexpected_failure",
+            "Specific Query analysis failed unexpectedly",
+            "Checking Query ID",
+        ),
+        (
+            "trino_query",
+            "trino_query.unexpected_failure",
+            "Trino Beta Query ID diagnosis failed unexpectedly",
+            "Checking Trino Query ID",
+        ),
+    ),
+)
+def test_web_analyze_job_unexpected_exception_uses_job_kind_structured_error(
+    kind, expected_reason, expected_title, expected_stage
+):
+    module = load_web_module()
+    raw_fragments = [
+        "SELECT secret_col FROM raw_table",
+        "https://coordinator.example.invalid/v1/query/raw",
+        "/private/tmp/query-doctor-query-case",
+    ]
+
+    def raise_unexpected_exception(*_args, **_kwargs):
+        raise RuntimeError(" | ".join(raw_fragments))
+
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create("abc:def", "analysis", kind=kind)
+
+    module.run_analysis_job(
+        job.job_id,
+        "abc:def",
+        "analysis",
+        True,
+        settings,
+        store,
+        raise_unexpected_exception,
+    )
+
+    payload = json.loads(module.render_job_status_json(store.get(job.job_id)))
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["status"] == "failed"
+    assert payload["error_info"]["title"] == expected_title
+    assert payload["error_info"]["reason_code"] == expected_reason
+    assert payload["error_info"]["stage"] == expected_stage
+    assert payload["error_info"]["details"]
+    for fragment in raw_fragments:
+        assert fragment not in serialized
+
+
+def test_web_trino_recent_unexpected_exception_uses_structured_error(monkeypatch):
+    module = load_web_module()
+    from query_doctor.web import batch_jobs
+
+    raw_fragments = [
+        "20260603_120102_00001_abcde",
+        "https://trino.example.invalid/v1/query",
+        "Bearer secret-token",
+    ]
+
+    def raise_unexpected_exception(*_args, **_kwargs):
+        raise RuntimeError(" | ".join(raw_fragments))
+
+    monkeypatch.setattr(batch_jobs, "run_trino_recent_scan", raise_unexpected_exception)
+
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create_trino_recent({"engine": "trino"})
+
+    batch_jobs.run_trino_recent_job(
+        job.job_id,
+        module.BatchRunConfig(engine="trino"),
+        settings,
+        store,
+    )
+
+    payload = json.loads(module.render_job_status_json(store.get(job.job_id)))
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["status"] == "failed"
+    assert payload["error_info"]["title"] == "Trino Beta Recent scan failed unexpectedly"
+    assert payload["error_info"]["reason_code"] == "trino_recent.unexpected_failure"
+    assert payload["error_info"]["stage"] == "Checking Trino Recent contract"
+    assert payload["error_info"]["next_step"].startswith("Check the selected Trino Beta")
+    for fragment in raw_fragments:
+        assert fragment not in serialized
+
+
+def test_web_optimizer_job_unexpected_exception_uses_job_kind_structured_error(
+    tmp_path, monkeypatch
+):
+    module = load_web_module()
+    from query_doctor.web import job_workers
+
+    raw_fragments = [
+        "SELECT secret_col FROM raw_table",
+        "/private/tmp/query-doctor-optimizer-case",
+        "optimized_query.partial.txt",
+    ]
+
+    def raise_unexpected_exception(*_args, **_kwargs):
+        raise RuntimeError(" | ".join(raw_fragments))
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("runner should not be called after command build failure")
+
+    monkeypatch.setattr(job_workers, "build_optimized_query_command", raise_unexpected_exception)
+
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create_query_optimized_query("abc:def")
+
+    module.run_optimized_query_job(
+        job.job_id,
+        "abc:def",
+        case_dir,
+        settings,
+        store,
+        fail_if_called,
+    )
+
+    payload = json.loads(module.render_job_status_json(store.get(job.job_id)))
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["status"] == "failed"
+    assert (
+        payload["error_info"]["title"] == "Specific Query optimizer generation failed unexpectedly"
+    )
+    assert payload["error_info"]["reason_code"] == "query_optimized_query.unexpected_failure"
+    assert payload["error_info"]["stage"] == "Generating optimizer draft"
+    assert payload["error_info"]["next_step"] == (
+        "Review the selected case artifacts, source SQL availability, and local config, then retry."
+    )
+    for fragment in raw_fragments:
+        assert fragment not in serialized
+
+
+def test_web_case_actions_unexpected_exception_uses_job_kind_structured_error(
+    tmp_path, monkeypatch
+):
+    module = load_web_module()
+    from query_doctor.web import job_workers
+
+    raw_fragments = [
+        "SELECT secret_col FROM raw_table",
+        "/private/tmp/query-doctor-actions-case",
+        "diagnosis_python.partial.md",
+    ]
+
+    def raise_unexpected_exception(*_args, **_kwargs):
+        raise RuntimeError(" | ".join(raw_fragments))
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("runner should not be called after report failure")
+
+    monkeypatch.setattr(
+        job_workers,
+        "generate_validated_report_artifact",
+        raise_unexpected_exception,
+    )
+
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create_query_case_actions("abc:def")
+
+    module.run_llm_actions_job(
+        job.job_id,
+        "abc:def",
+        case_dir,
+        settings,
+        store,
+        fail_if_called,
+    )
+
+    payload = json.loads(module.render_job_status_json(store.get(job.job_id)))
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["status"] == "failed"
+    assert payload["error_info"]["title"] == (
+        "Specific Query report and optimizer action failed unexpectedly"
+    )
+    assert payload["error_info"]["reason_code"] == "query_case_actions.unexpected_failure"
+    assert payload["error_info"]["stage"] == "Generating validated report"
+    assert payload["error_info"]["details"]
+    for fragment in raw_fragments:
         assert fragment not in serialized
 
 
@@ -2453,6 +3145,47 @@ def test_web_combined_case_actions_cancelled_uses_combined_status_label():
     assert "Python report stopped" not in html
     assert "Job stopped by user." in html
     assert f'action="/jobs/{job_id}/cancel"' not in html
+
+
+def test_web_report_action_failure_renders_structured_job_error(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.presenters.recent_scan import present_report_action
+    from query_doctor.web.ui.report_actions import render_llm_report_status
+
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create_batch_report("case-001", report_variant="python")
+    store.fail(
+        job.job_id,
+        RuntimeError(
+            "Report command failed with stdout SELECT secret_col FROM db.source_table "
+            f"and path {tmp_path / 'private-case'}"
+        ),
+    )
+    failed_job = store.get(job.job_id)
+    assert failed_job is not None
+
+    state = module.load_batch_case_report_state(
+        settings,
+        "case-001",
+        {"case_index": 1, "query_id": "abc...000001", "case_dir": str(tmp_path / "case")},
+        store,
+        job=failed_job,
+    )
+    view = present_report_action(state)
+    html = render_llm_report_status(view, None, llm_enabled=False)
+
+    assert state["status"] == "failed"
+    assert state["error_info"]["reason_code"] == "batch_report.failed"
+    assert "Reason" in html
+    assert "batch_report.failed" in html
+    assert "Stage" in html
+    assert "Checking selected batch case" in html
+    assert "Next step:" in html
+    assert "Review the selected inputs and local configuration" in html
+    assert "SELECT" not in html
+    assert "secret_col" not in html
+    assert "private-case" not in html
 
 
 def test_web_no_llm_action_block_uses_python_only_labels():
@@ -2620,10 +3353,23 @@ def test_web_static_js_surfaces_lost_job_polling_connection():
     script = (REPO_DIR / "query_doctor/web/static/app.js").read_text(encoding="utf-8")
 
     assert "var pollFailureCount = 0;" in script
+    assert "function renderClientErrorInfoBody(target, info)" in script
     assert "function showPollingUnavailable()" in script
     assert "Scan status unavailable" in script
+    assert "web.client_polling_unavailable" in script
+    assert "Job status polling" in script
     assert "local Query Doctor web server is not responding" in script
+    assert "Unsafe details remain hidden." in script
     assert "pollFailureCount >= 3" in script
+
+
+def test_web_static_js_legacy_job_error_fallback_is_structured():
+    script = (REPO_DIR / "query_doctor/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "renderClientErrorInfoBody(errorSlot, {" in script
+    assert "data.error_info && data.error_info.reason_code" in script
+    assert "web.job_status_failed" in script
+    assert "Review the selected inputs and local configuration, then retry." in script
 
 
 def test_web_unavailable_case_actions_render_compact_status():
@@ -3540,6 +4286,9 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert_css_contains(styles, ".batch-cell--badge{font-family:var(--sans);")
     assert_css_contains(styles, ".batch-mini-badge--status{justify-content:center;")
     assert_css_contains(styles, ".action-candidate-card--primary{border:1px solid var(--border);")
+    assert (
+        ".action-candidate-card--primary{border:1px solid var(--border);border-left" not in styles
+    )
     assert ".workload-action-signal" not in styles
     assert ".workload-action-plan" not in styles
     assert_css_contains(
@@ -3572,6 +4321,8 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert_css_contains(styles, ".batch-notices>summary{cursor:pointer;")
     assert_css_contains(styles, ".batch-notices-body{display:grid;")
     assert_css_contains(styles, ".batch-notice-row{display:grid;")
+    assert_css_contains(styles, ".batch-notice-row--single{grid-template-columns:minmax(0,1fr)}")
+    assert_css_contains(styles, ".batch-filter-tabs{flex-wrap:wrap;overflow-x:visible;")
     assert_css_contains(styles, ".batch-scan-details{margin-bottom:12px;")
     assert_css_contains(
         styles, ".batch-table th,.batch-table td{border-bottom:1px solid var(--border);padding:6px;"
@@ -3602,7 +4353,8 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "<span>Stats</span>" not in body
     assert '<details class="batch-notices" aria-label="Scan warnings" open>' in body
     assert "<summary>Scan warnings</summary>" in body
-    assert "<strong>Scan warnings</strong>" in body
+    assert 'class="batch-notice-row batch-notice-row--single"' in body
+    assert "<strong>Scan warnings</strong>" not in body
     assert "scan warning &lt;script&gt;" in body
     assert "scan warning <script>" not in body
     assert 'class="batch-context-block batch-context-scan-details"' in body
@@ -3658,7 +4410,7 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "Spill filter" in body
     assert "Good queries" not in body
     assert (
-        'batch-filter-link batch-filter-link--active" href="?query_group=suspicious#recent-results"'
+        'batch-filter-link batch-filter-link--active" href="/?query_group=suspicious#recent-results"'
         in body
     )
     assert "batch-severity--suspicious" in body
@@ -6027,6 +6779,12 @@ def test_web_batch_external_rewrite_validation_fails_without_echoing_sql(tmp_pat
 
     assert status == 200
     assert "External rewrite validation failed" in body
+    assert "Reason" in body
+    assert "web.optimizer_external_validation_failed" in body
+    assert "Stage" in body
+    assert "External rewrite validation" in body
+    assert "Next step:" in body
+    assert "Pasted SQL text remains hidden" in body
     assert "Source filter scope changed" in body
     assert "WHERE ds = 2" not in body
     assert "SELECT category" not in body
@@ -6097,6 +6855,51 @@ def test_web_running_batch_optimized_query_renders_progress_steps(tmp_path):
     assert "batch-progress-step--running" in body
     assert "batch-progress-step--done" in body
     assert "secret_flag" not in body
+
+
+def test_web_optimizer_action_failure_renders_structured_job_error(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.ui.llm_actions import (
+        present_optimized_query_action,
+        render_optimizer_status,
+    )
+
+    case_dir = tmp_path / "cases" / "case-001" / "abc"
+    case_dir.mkdir(parents=True)
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": "SELECT a FROM db.source_table WHERE ds = 20260504"}),
+        encoding="utf-8",
+    )
+    store = module.WebJobStore()
+    job = store.create_batch_optimized_query("case-001")
+    store.fail(
+        job.job_id,
+        RuntimeError(
+            "Optimizer failed with stderr SELECT secret_col FROM db.source_table "
+            f"and artifact {tmp_path / 'optimizer.raw'}"
+        ),
+    )
+    failed_job = store.get(job.job_id)
+    assert failed_job is not None
+
+    state = module.load_optimized_query_state(
+        case_dir, store, batch_case_id="case-001", job=failed_job
+    )
+    view = present_optimized_query_action(state)
+    html = render_optimizer_status(view)
+
+    assert state["status"] == "failed"
+    assert state["error_info"]["reason_code"] == "batch_optimized_query.failed"
+    assert "Reason" in html
+    assert "batch_optimized_query.failed" in html
+    assert "Stage" in html
+    assert "Checking source SQL" in html
+    assert "Next step:" in html
+    assert "Review the selected inputs and local configuration" in html
+    assert "SELECT" not in html
+    assert "secret_col" not in html
+    assert "optimizer.raw" not in html
 
 
 def test_web_batch_optimizer_job_does_not_mark_report_as_running(tmp_path):
@@ -7371,7 +8174,11 @@ def test_web_running_queries_page_places_configured_source_before_live_scan():
 
     assert '<label for="running_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="running_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" selected>Staging</option>' in body
+    assert (
+        '<option value="stage" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Staging</option>' in body
+    )
     assert body.index('<label for="running_cluster_key">Source cluster</label>') < body.index(
         "Live scan"
     )
@@ -7920,7 +8727,50 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert "data-diagnosis-cluster-summary" not in script
     assert "function currentDiagnosisTarget(root)" in script
     assert "function currentScanTarget(root)" in script
+    assert "function syncEngine(root)" in script
+    assert "function syncEngineAvailability(root)" in script
+    assert "function updateClusterOptionsForEngine(root)" in script
+    assert "data-engine-impala-ready" in script
+    assert "data-engine-trino-ready" in script
+    assert "option.hidden = !visible;" in script
+    assert "option.disabled = !visible;" in script
+    assert "data-trino-beta-query-ready" in script
+    assert "data-trino-beta-recent-ready" in script
+    assert "impalaChoice.disabled = !impalaReady;" in script
+    assert "trinoChoice.disabled = !trinoReady;" in script
+    assert "trinoChoice.setAttribute('aria-disabled', 'true');" in script
+    assert "trinoChoice.checked = false;" in script
+    assert "impalaChoice.checked = true;" in script
+    assert "function anyClusterTrinoReady(root)" in script
+    assert "function forceEngine(root, value)" in script
+    assert "selector.addEventListener('change', function () {" in script
+    assert (
+        "syncDiagnosisCluster(root);\n        syncEngineAvailability(root);\n"
+        "        if (currentEngine(root) === 'trino' && !selectedClusterTrinoReady(root)) {\n"
+        "          forceEngine(root, 'impala');\n        }\n"
+        "        syncEngine(root);\n        applyDiagnosisTarget(root);" in script
+    )
+    assert "function syncKnownQueryEngineCopy(root, engine)" in script
+    assert "syncKnownQueryEngineCopy(root, engine);" in script
+    assert "Trino Query ID" in script
+    assert "20260603_120102_00001_abcde" in script
+    assert "Run Trino Beta" in script
+    assert "function jobPanelTitle(kind, status)" in script
+    assert "Trino Beta complete" in script
+    assert "Trino Beta stopped" in script
+    assert "Trino Beta failed" in script
+    assert "kind === 'query' || kind === 'trino_query'" in script
+    assert "kind === 'batch' || kind === 'trino_recent'" in script
+    assert "kind === 'trino_query' ? 'Run Trino Beta'" in script
+    assert (
+        "Running scans, query-history crawling, metadata collection, "
+        "Details/trusted reports, optimizer behavior, generated SQL, and SQL execution "
+        "remain unavailable" in script
+    )
+    assert "One explicit Query ID. Query Doctor collects or reuses the profile" in script
     assert "function workflowSelection(root)" in script
+    assert "function enforceTrinoWorkflow(root)" in script
+    assert "selectedClusterTrinoRecentReady(root)" in script
     assert "function syncWorkflowState(root)" in script
     assert "form.setAttribute('data-active-scan-target', target);" in script
     assert "function updateRecentResultsContext(scanTarget, diagnosisTarget)" in script
@@ -7949,16 +8799,21 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     )
     assert_css_contains(
         styles,
-        ".workflow-segmented{grid-template-columns:repeat(3,minmax(0,1fr));"
-        "gap:0;width:100%;min-height:44px;",
+        ".engine-segmented,.workflow-segmented{gap:0;width:100%;min-height:44px;",
     )
+    assert_css_contains(
+        styles, ".workflow-segmented{grid-template-columns:repeat(3,minmax(0,1fr));"
+    )
+    assert_css_contains(styles, ".engine-control{display:grid;align-items:start;gap:6px;")
     assert_css_contains(styles, ".workflow-control{display:grid;align-items:start;gap:6px;")
     assert_css_contains(
         styles,
-        ".workflow-segmented label+label{border-left:1px solid var(--border-strong)}",
+        ".engine-segmented label+label,.workflow-segmented label+label{"
+        "border-left:1px solid var(--border-strong)}",
     )
     assert_css_contains(
-        styles, ".workflow-segmented span{align-content:center;justify-items:start;"
+        styles,
+        ".engine-segmented span,.workflow-segmented span{align-content:center;justify-items:start;",
     )
     assert ".batch-scan-options" not in styles
     assert_css_contains(
@@ -8651,7 +9506,7 @@ def test_web_batch_job_builds_safe_analyzer_only_command(tmp_path):
     assert 'name="pool" type="text" value="root.pool"' not in captured["body"]
     assert 'class="batch-spill-toggle batch-spill-toggle--active"' in captured["body"]
     assert 'aria-pressed="true"' in captured["body"]
-    assert 'href="?query_group=suspicious#recent-results"' in captured["body"]
+    assert 'href="/?query_group=suspicious#recent-results"' in captured["body"]
     assert 'name="order"' not in captured["body"]
     assert "abc:def" in captured["body"]
     assert captured["body"].index('<form id="batch-form"') < captured["body"].index("abc:def")
@@ -8666,6 +9521,52 @@ def test_web_batch_job_builds_safe_analyzer_only_command(tmp_path):
     assert '<form id="batch-form"' in captured["body"]
     assert '<button class="run-button" type="submit">Run scan</button>' in captured["body"]
     assert "abc:def" in captured["body"]
+
+
+def test_web_job_not_found_result_filters_link_back_to_home(tmp_path):
+    module = load_web_module()
+    summary = tmp_path / "batch_summary.json"
+    case_dir = tmp_path / "cases" / "case-001" / "abc"
+    case_dir.mkdir(parents=True)
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    summary.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "case_index": 1,
+                        "query_id": "abc:def",
+                        "score": 9,
+                        "score_severity": "suspicious",
+                        "duration_sec": 10.5,
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                        "score_reasons": ["memory estimate anomalies: 1"],
+                        "case_dir": str(case_dir),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary)
+    handler = module.make_handler(settings, analysis_func=lambda *args, **kwargs: None)
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {}
+
+    def write_html(status, body):
+        captured["status"] = status
+        captured["body"] = body
+
+    request.path = "/jobs/00000000000000000000000000000000"
+    request.write_html = write_html
+    request.do_GET()
+
+    assert captured["status"] == 404
+    assert 'href="/?query_group=suspicious#recent-results"' in captured["body"]
+    assert 'href="/?query_group=all#recent-results"' in captured["body"]
+    assert 'href="/jobs/00000000000000000000000000000000?query_group=' not in captured["body"]
 
 
 def test_web_batch_progress_renders_skipped_metadata_refresh(tmp_path):
@@ -8769,6 +9670,37 @@ def test_web_batch_progress_advances_stages_incrementally(tmp_path):
     assert "· Runtime metrics" in body
     assert "· Metadata refresh" in body
     assert module.batch_progress_percent(progress_path, "running") == 38
+
+
+def test_web_batch_progress_keeps_collection_running_during_streaming_analysis(tmp_path):
+    module = load_web_module()
+    progress_path = tmp_path / "progress.jsonl"
+    progress_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"stage": "discovery", "status": "done", "candidates_selected": 3}),
+                json.dumps(
+                    {"stage": "profile_collection", "status": "started", "total": 3, "cm_jobs": 2}
+                ),
+                json.dumps(
+                    {"stage": "analyzer_scoring", "status": "started", "total": 3, "jobs": 2}
+                ),
+                json.dumps({"stage": "case", "case_id": "case-001", "status": "collection_done"}),
+                json.dumps({"stage": "case", "case_id": "case-001", "status": "analysis_started"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    body = module.render_batch_progress_panel(progress_path, "running")
+
+    assert "✓ Query discovery" in body
+    assert "… Profile collection" in body
+    assert "✓ Profile collection" not in body
+    assert "… Analyzer scoring" in body
+    assert "1/3" in body
+    assert module.batch_progress_percent(progress_path, "running") == 12
 
 
 def test_web_batch_progress_renders_step_timings(tmp_path):
@@ -9558,11 +10490,23 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path,
     stage_settings = settings_for_cluster_key(settings, "stage")
     assert stage_settings.viewer_identity.mode == VIEWER_IDENTITY_LOCAL_FIRST
     assert stage_settings.viewer_identity.viewer_raw_subjects == ("stage_user",)
+    with pytest.raises(module.WebError) as exc:
+        settings_for_cluster_key(settings, "missing-source")
+    assert exc.value.reason_code == "web.cluster_not_found"
+    assert exc.value.stage == "Checking selected source"
     assert '<div class="batch-source-settings">' in body
     assert '<label for="diagnosis_cluster_key">Source cluster</label>' in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="prod" selected>Production</option>' in body
-    assert '<option value="stage">Staging</option>' in body
+    assert (
+        '<option value="prod" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Production</option>' in body
+    )
+    assert (
+        '<option value="stage" data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Staging</option>' in body
+    )
     assert "data-scan-source-field=" not in body
     assert '<label for="recent_window_minutes">Search depth (min)</label>' in body
     assert body.index('<label for="diagnosis_cluster_key">Source cluster</label>') < body.index(
@@ -9572,6 +10516,72 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path,
     assert 'name="cm_metrics_profile"' not in body
     assert "cm-prod.example.com" not in body
     assert "impala-prod.example.com" not in body
+
+
+def test_web_cluster_select_marks_engine_specific_sources(tmp_path):
+    module = load_web_module()
+    from query_doctor.web.models import WebClusterConfig
+
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        clusters=(
+            WebClusterConfig(
+                key="impala",
+                label="Impala source",
+                cm_url="https://cm.example.invalid",
+                cm_cluster="cluster",
+                cm_service="impala",
+            ),
+            WebClusterConfig(
+                key="trino",
+                label="Trino source",
+                trino_beta_enabled=True,
+                trino_coordinator_url="https://trino.example.invalid",
+                trino_query_info_source_contract=tmp_path / "trino-query-info-contract.json",
+                trino_query_list_source_contract=tmp_path / "trino-query-list-contract.json",
+            ),
+        ),
+        active_cluster_key="impala",
+    )
+
+    body = module.render_batch_page(settings)
+
+    assert (
+        '<option value="impala" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Impala source</option>' in body
+    )
+    assert (
+        '<option value="trino" data-engine-impala-ready="false" '
+        'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
+        'data-trino-beta-recent-ready="true">'
+        "Trino source - Trino Beta Recent + One Query ID</option>" in body
+    )
+
+    trino_body = module.render_batch_page(
+        settings,
+        form_values={"engine": "trino", "cluster_key": "impala"},
+    )
+    assert (
+        '<option value="trino" selected data-engine-impala-ready="false" '
+        'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
+        'data-trino-beta-recent-ready="true">'
+        "Trino source - Trino Beta Recent + One Query ID</option>" in trino_body
+    )
+    assert '<input type="hidden" name="cluster_key" value="trino">' in trino_body
+    assert '<input type="hidden" name="engine" value="trino" data-engine-hidden>' in trino_body
+
+    impala_body = module.render_batch_page(
+        settings,
+        form_values={"engine": "impala", "cluster_key": "trino"},
+    )
+    assert (
+        '<option value="impala" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Impala source</option>' in impala_body
+    )
+    assert '<input type="hidden" name="cluster_key" value="impala">' in impala_body
+    assert '<input type="hidden" name="engine" value="impala" data-engine-hidden>' in impala_body
 
 
 def test_web_settings_uses_default_config_discovery(tmp_path, capsys):
@@ -10638,6 +11648,8 @@ def test_web_batch_metadata_mode_requires_metadata_config(tmp_path):
 
     assert missing_metadata[0] == 400
     assert "Metadata collection is not configured for this web session." in missing_metadata[1]
+    assert "impala.metadata_not_configured" in missing_metadata[1]
+    assert "Restart with metadata coordinator" in missing_metadata[1]
 
 
 @pytest.mark.parametrize(
@@ -10663,7 +11675,9 @@ def test_web_batch_form_rejects_invalid_values_without_subprocess(form):
     status, body = module.start_batch_job(form, settings, store, runner=fail_runner)
 
     assert status == 400
-    assert "Safe inspection state" in body
+    assert 'class="error-card"' in body
+    assert "Reason" in body
+    assert "web." in body
     assert "Diagnose queries" in body
 
 
@@ -10800,6 +11814,10 @@ def test_web_batch_job_failure_shows_safe_subprocess_hint(tmp_path):
     assert snapshot.status == "failed"
     payload = json.loads(module.render_job_status_json(snapshot))
     assert "metadata Kerberos ticket is missing or expired" in payload["error"]
+    assert payload["error_info"]["reason_code"] == "impala.metadata_kerberos_ticket_unavailable"
+    assert payload["error_info"]["stage"] == "Query Doctor recent scan"
+    assert "Renew the Kerberos ticket" in payload["error_info"]["next_step"]
+    assert "impala.metadata_kerberos_ticket_unavailable" in payload["error_html"]
     assert "Captured subprocess output is not shown" in payload["error"]
     assert "SELECT" not in payload["error"]
     assert "secret_column" not in payload["error"]
@@ -10844,7 +11862,11 @@ def test_web_handler_preserves_selected_cluster_when_query_id_missing():
     assert status == 400
     assert "Query ID is required." in body
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="stage" selected>Staging</option>' in body
+    assert (
+        '<option value="stage" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Staging</option>' in body
+    )
     assert '<input type="hidden" name="cluster_key" value="stage">' in body
     assert 'class="run-main-row known-query-row"' in body
     assert 'id="query_cluster_key"' not in body
@@ -10881,7 +11903,11 @@ def test_web_job_preserves_selected_cluster_during_query_id_analysis():
     body = module.render_query_page(settings, job=snapshot)
 
     assert '<select class="input" id="diagnosis_cluster_key" name="cluster_key">' in body
-    assert '<option value="ambari" selected>Ambari</option>' in body
+    assert (
+        '<option value="ambari" selected data-engine-impala-ready="true" '
+        'data-engine-trino-ready="false" data-trino-beta-query-ready="false" '
+        'data-trino-beta-recent-ready="false">Ambari</option>' in body
+    )
     assert '<input type="hidden" name="cluster_key" value="ambari">' in body
     assert 'class="run-main-row known-query-row"' in body
     assert 'class="batch-progress-steps job-progress-steps"' in body
@@ -12339,6 +13365,37 @@ def test_subprocess_failure_message_adds_safe_exit_2_hint():
     assert "raw json" not in message
 
 
+def test_subprocess_failure_web_error_adds_safe_reason_code():
+    module = load_web_module()
+    error = module.subprocess_failure_web_error(
+        "CM single-query collection",
+        subprocess.CompletedProcess(
+            [],
+            2,
+            stdout="SELECT secret_column FROM sensitive_table",
+            stderr=(
+                "[CM profile collector] Collection result: FAILED\n"
+                "Single-query collection failed: HTTP 404 from CM: "
+                "https://cm-private.example.com/api/v32/clusters/prod/services/impala/"
+                "impalaQueries/aaaaaaaaaaaaaaaa%3A0000000000000001?format=text"
+            ),
+        ),
+    )
+
+    message = str(error)
+    assert error.reason_code == "impala.cm_profile_not_found"
+    assert error.title == "Cloudera Manager profile was not found"
+    assert error.stage == "CM single-query collection"
+    assert "Check CM retention" in str(error.next_step)
+    assert "Cloudera Manager did not find a profile" in message
+    assert "Captured subprocess output is not shown" in message
+    assert "SELECT" not in message
+    assert "secret_column" not in message
+    assert "sensitive_table" not in message
+    assert "cm-private.example.com" not in message
+    assert "aaaaaaaaaaaaaaaa" not in message
+
+
 @pytest.mark.parametrize(
     ("stderr", "expected"),
     [
@@ -12378,6 +13435,13 @@ def test_subprocess_failure_message_adds_safe_exit_2_hint():
             "[Impala profile collector] ERROR: Single-query Impala profile collection failed: "
             "Impala profile endpoint response exceeded the configured byte limit.",
             "direct Impala profile response exceeded the configured byte limit",
+        ),
+        (
+            "[CM profile collector] Collection result: FAILED\n"
+            "Single-query collection failed: HTTP 404 from CM: "
+            "https://cm-private.example.com/api/v32/clusters/prod/services/impala/"
+            "impalaQueries/aaaaaaaaaaaaaaaa%3A0000000000000001?format=text",
+            "Cloudera Manager did not find a profile for the selected Query ID",
         ),
         (
             "[batch] ERROR: CM auth env is not set in this execution environment.",
