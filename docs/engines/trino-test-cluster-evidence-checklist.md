@@ -164,7 +164,12 @@ Then group already raw-free summaries with
 and audit them with
 `python3 scripts/audit_trino_evidence_handoff.py --handoff-suite-manifest <trino-evidence-handoff-suite.json> --require-min-inputs <minimum-retained-package-count> --summary-json <raw-free-trino-evidence-handoff-suite-summary.json>`.
 The suite path reopens only retained raw-free summaries, not packages or raw
-exports.
+exports. The builder and audit require safe relative `*.json` references,
+reject output/input overlap, missing or duplicate summary artifacts, unsafe
+references, drifted manifest schema/redaction/no-support metadata, and raw-like
+retained summary content, and the suite summary remains aggregate-only machine
+evidence with fixed count, diagnostic-lane, issue-category, and requirement
+sections, not artifact references or paths.
 If the samples are already compact sanitized JSON files, use
 `python3 scripts/build_trino_evidence_package.py` to assemble the wrapper before
 validation. The builder is local-only, requires explicit redaction-review and

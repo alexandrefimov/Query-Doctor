@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-15
+Last updated: 2026-06-19
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -9,9 +9,10 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.8.0 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
-0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+For curated 0.9.0 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.9.0.md](release-notes-0.9.0.md). Historical
+0.8.0, 0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+[release-notes-0.8.0.md](release-notes-0.8.0.md),
 [release-notes-0.7.0.md](release-notes-0.7.0.md),
 [release-notes-0.6.0.md](release-notes-0.6.0.md),
 [release-notes-0.5.0.md](release-notes-0.5.0.md),
@@ -21,6 +22,385 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 0.9.0 - 2026-06-19
+
+- Russian web UI mode now localizes deterministic Recent Finding body copy and
+  Details recommendation/explanation body copy while keeping Details headings,
+  compact Recent labels, table headers, badges, raw-free analyzer artifacts,
+  and technical terms in English.
+- Details-page Query LLM optimizer actions now use deterministic
+  `optimizer_rewrite_support` eligibility before showing or accepting optimizer
+  launches. Cases classified as guidance-only, draft-disabled, not-applicable,
+  or source-unavailable now show a browser-safe unavailable reason instead of a
+  runnable action that later fails generically.
+- Fixed Recent scan progress rendering for streaming profile collection and
+  analyzer scoring: Profile collection now stays in progress until collection
+  actually finishes or all selected cases report collection completion/failure,
+  instead of turning green as soon as analyzer scoring starts.
+- Diagnose now asks for Engine before Source cluster so Trino Beta can switch
+  the source selector to a Trino-ready local source before workflow selection.
+  The Source cluster selector now shows only Impala-capable sources for Impala
+  and only Trino Beta-ready sources for Trino Beta. The synthetic demo pack also
+  writes read-only raw-free Trino Beta demo cases in `trino_demo.json` and
+  renders them without live coordinator collection, Details/trusted reports,
+  optimizer behavior, generated SQL, or SQL execution.
+  Manual `--batch-summary` demo startup without an explicit `--config` now
+  ignores default local config discovery so synthetic screenshots and demo
+  sessions cannot accidentally inherit workstation source settings.
+- Unexpected web job failures now keep the browser-safe redaction boundary while
+  returning workflow-specific reason codes, current progress stage, details,
+  and next-step guidance for Impala Recent/Running scans, Specific Query
+  analysis, Trino Beta Query ID/Recent, report generation, optimizer
+  generation, and combined report+optimizer actions.
+- Recent-results filters, spill toggles, and workload follow-up links now use
+  root-relative targets so they keep working from job/error pages as well as
+  the home and batch-result pages.
+- Details-page manual optimizer rewrite validation failures now render the same
+  structured safe error body with reason code, validation stage, next-step
+  guidance, and raw-SQL-hidden footer while preserving deterministic validator
+  categories.
+- Browser-side job polling failures now render a structured safe error card
+  with reason code, polling stage, and next-step guidance, including the legacy
+  async job fallback path when a status payload lacks server-rendered
+  `error_html`.
+- Selected-case report and optimizer action failures now reuse the async job
+  safe error envelope in their Details cards, including reason code, workflow
+  stage, and next-step guidance while keeping subprocess output, raw SQL, local
+  paths, and runtime internals hidden.
+- Fixed Details report+optimizer progress polling so browser job links are built
+  only from internal 32-hex job ids. Display-safe host aliases can no longer
+  become `/jobs/.../status` URLs, avoiding a stalled combined action page while
+  keeping malformed ids out of cancel links and status polling attributes.
+- Diagnose, Running, Query Optimizer, Specific Query Details/report, job lookup,
+  and isolated Spark/Trino compact web form failures now have route-smoke
+  coverage for structured browser-safe error cards. Missing inputs, unavailable
+  Specific Query artifacts, unknown jobs, and compact-intake validation errors
+  surface stable reason codes, workflow stages, and next-step guidance without
+  echoing raw SQL, local paths, selectors, subprocess output, or model/debug
+  details.
+- General web request, form validation, source selection, startup config,
+  public-demo, manual-profile, case-artifact, report, optimizer, and outcome
+  failures now carry browser-safe reason codes, workflow stages, and next-step
+  guidance. Public demo generation and local config/path failures avoid
+  exposing exception text or local filesystem paths in the browser.
+- Impala web collection, metadata preflight, CM/direct profile lookup, report,
+  optimizer, and startup TLS failures now use classified browser-safe errors
+  with stable reason codes, workflow stages, and next-step guidance. Subprocess
+  output, raw SQL/profile/JSON, coordinator/CM URLs, Query IDs, credentials,
+  and local paths remain hidden from the browser error panel and async job
+  status JSON.
+- Browser-visible web failures now render a structured safe error contract with
+  a product title, stable reason code, workflow stage, safe detail bullets, and
+  next-step guidance. Async job status JSON carries the same raw-free envelope
+  for pollers, Trino Beta Recent row failures show safe reason/next-step
+  context, and Trino Beta coordinator/auth/config failures are classified
+  without exposing Query IDs, coordinator URLs, auth references, local paths,
+  raw payloads, or subprocess output.
+- Fixed Trino Beta Recent selection for retained coordinator query lists whose
+  timestamps are nested under `queryStats` and use nanosecond ISO fractions.
+  The Recent window now excludes rows whose timestamps cannot be verified, and
+  selected Query IDs open the existing Trino Beta One Query ID diagnosis flow
+  instead of appearing as inert table text.
+- `scripts/query-doctor-web-local` now refreshes configured Trino Beta
+  Kerberos/SPNEGO ticket caches before starting the web UI, using the selected
+  local config and existing keytab without printing principals, cache paths,
+  keytab paths, coordinator URLs, or auth material.
+- Fixed the local web Engine switch so Trino Beta remains selectable when the
+  current Source cluster is Impala-only but another configured source is
+  Trino-ready. Selecting Trino Beta now switches Source cluster to a
+  Trino-ready local source, keeps Running disabled for Trino, and aligns the
+  Engine segmented control spacing/style with What to analyze.
+- CM Known Query ID collection now preserves the validated Impala Query ID
+  separator expected by Cloudera Manager profile/detail routes while still
+  rejecting unsafe Query ID path shapes, and browser job errors now classify CM
+  404/profile-lookup failures with a safe operator hint instead of only showing
+  a generic subprocess failure.
+- Added `scripts/audit_trino_beta_release_readiness.py`, a dev-only
+  one-command Trino Beta demo/release readiness bundle. The bundle runs the
+  existing static boundary audits, focused tests, local-config readiness, and
+  optional bounded live/UI smokes without printing local config values, Query
+  IDs, coordinator URLs, auth references, local paths, or raw payloads, and it
+  does not add SQL execution, metadata collection, trusted reports, optimizer
+  behavior, or production Trino support.
+- Trino Beta Recent and One Query ID result pages now render an explicit
+  blocked-surface status strip for Running, query-history crawling, metadata,
+  Details/reports, optimizer behavior, generated SQL, and SQL execution. This
+  is UI boundary polish only; it does not add metadata collection, trusted
+  reports, optimizer behavior, SQL execution, or production Trino support.
+- Added `scripts/query-doctor-web-trino-beta-smoke`, a dev-only local web UI
+  gate for Trino Beta demo/release handoff. The smoke starts the local web
+  server, submits Trino Beta Recent, validates the beta result HTML, then
+  submits One Query ID using a selected retained Query ID without printing it.
+  It rejects Details/report/optimizer action links in Trino Beta results, keeps
+  terminal output free of Query IDs, coordinator URLs, auth references, local
+  paths, and raw payloads, and does not add SQL execution, metadata collection,
+  trusted reports, optimizer behavior, or production Trino support.
+- Added an installed-package Trino Beta web E2E smoke with a local fake
+  coordinator. The installed user-paths release gate now verifies that the
+  packaged `query-doctor-web` can run Trino Beta Recent and One Query ID form
+  flows through bounded pruned coordinator-shaped responses while keeping
+  output raw-free and without contacting external services or executing SQL.
+- Aligned the safety contract with the current Trino Beta product boundary:
+  retained-list Recent plus One Query ID are the only local web beta
+  exceptions, both remain raw-free compact diagnosis, and Running,
+  query-history crawling, metadata collection, Details/trusted reports,
+  optimizer behavior, generated Trino SQL, SQL execution, and production
+  support stay blocked. The Trino product-surface audit now includes the
+  English and Russian safety contracts and rejects the stale
+  Query-ID-only wording that denied the Trino Beta Recent lane.
+- Added a dev-only `audit_trino_web_beta_live_smoke.py` gate for Trino Beta web
+  demo/release handoff after local-config readiness passes. The smoke uses the
+  local web backend to perform one bounded retained query-list read plus bounded
+  selected QueryInfo diagnosis, emits only raw-free counts and issue IDs, and
+  does not output raw payloads, coordinator URLs, Query IDs, auth references,
+  or local paths. It does not add SQL execution, metadata collection,
+  Details/trusted reports, optimizer behavior, or production Trino support.
+- Trino Beta retained-list Recent now accepts the real pruned coordinator
+  query-list response shape while scrubbing raw SQL, session, self-link, and
+  other unused response fields before building normalized rows. The lane still
+  performs one bounded read, emits only raw-free compact diagnosis, and does
+  not add Trino Running scans, query-history crawling, Details/trusted reports,
+  optimizer behavior, generated SQL, SQL execution, or production support.
+- Trino Beta web Recent and One Query ID collectors can now use local
+  Kerberos/SPNEGO settings for bounded coordinator GETs as an alternative to an
+  operator-managed `Authorization` header file. The settings are local
+  references only, are mutually exclusive with `trino_auth_header_file`, and
+  do not add SQL submission, metadata collection, reports, optimizer behavior,
+  or production Trino support.
+- Added a dev-only `audit_trino_web_beta_readiness.py` gate for Trino Beta web
+  demo/release handoff. The audit validates only local config and Trino source
+  contract files, emits raw-free counts and issue IDs, and performs no
+  coordinator network read or SQL execution.
+- Local config validation now accepts `trino_query_list_source_contract` at the
+  global and cluster levels, matching the Trino Beta Recent documentation and
+  web startup path.
+- Local web Diagnose now exposes a bounded Trino Beta Recent lane when the
+  selected local source has `trino_beta_enabled`, `trino_coordinator_url`,
+  `trino_query_info_source_contract`, and `trino_query_list_source_contract`.
+  The lane reads one retained pruned coordinator query list, diagnoses only a
+  bounded selected set through pruned QueryInfo, renders raw-free compact
+  results, and keeps Trino Running scans, query-history crawling, metadata,
+  Details/trusted reports, optimizer behavior, generated SQL, SQL execution,
+  and production support claims blocked.
+- Local web Diagnose now exposes a Trino Beta engine lane for one explicit
+  Query ID when local `trino_beta_enabled`,
+  `trino_coordinator_url`, and `trino_query_info_source_contract` settings are
+  configured. The lane performs one bounded pruned coordinator QueryInfo read,
+  renders deterministic raw-free compact diagnosis, rejects Trino Running scans
+  server-side, and still blocks Trino metadata collection,
+  Details/trusted reports, optimizer behavior, SQL execution, query-history
+  crawling, and production support claims.
+- The Diagnose page now marks Trino Beta as selectable only when the selected
+  local source has the required beta config, keeps unconfigured sessions on
+  Impala, and the Help page documents the Trino Beta Recent and One Query ID boundary
+  without exposing local coordinator, source-contract, or auth-reference
+  values.
+- Trino Beta One Query ID async jobs now use beta-specific progress wording
+  for the bounded QueryInfo read, raw-free boundary validation, compact
+  diagnosis, and beta result preparation instead of Impala profile/report
+  stages.
+- Trino Beta web startup now validates the configured local QueryInfo source
+  contract, coordinator URL shape, and optional auth-header reference before
+  presenting the beta lane as configured, while keeping rejected URL, path, and
+  secret details out of startup errors.
+- Trino Beta One Query ID jobs now honor web cancellation checks between
+  bounded stages, including before the coordinator QueryInfo read starts, while
+  keeping the same one-query beta boundary.
+- The Diagnose Known Query ID form now switches to Trino-specific label,
+  placeholder, button, and beta-boundary help text when Trino Beta is selected,
+  avoiding Impala profile, metadata, report, optimizer, or SQL-execution
+  promises in that lane.
+- Trino Beta Query ID results now include an explicit beta-boundary note stating
+  that the result is the complete beta product output and does not create
+  Details pages, trusted reports, optimizer recommendations, generated SQL,
+  query-history crawling, metadata collection, or SQL execution.
+- The Diagnose page now keeps the Known Query ID label, placeholder, help text,
+  and submit button synchronized with the selected engine, so switching between
+  Impala and Trino Beta no longer leaves stale Impala or Trino copy in the
+  visible form.
+- The Diagnose page now initializes engine-specific Known Query ID copy before
+  source-cluster synchronization runs, preserving selected-source submits and
+  async job polling after the Trino Beta engine switcher loads.
+- Source cluster options now mark locally configured Trino Beta sources as
+  `Trino Beta Recent + One Query ID` or `Trino Beta One Query ID` without exposing coordinator URLs, source-contract
+  paths, or auth-reference paths in the browser.
+- Trino Beta Query ID submits now fail closed before analysis or async job
+  creation when the selected source lacks the required local beta configuration,
+  returning a browser-safe product-level error instead of starting a doomed
+  Trino job.
+- README, Help, and configuration docs now describe the Trino Beta source
+  selector marker and fail-closed submit guard while preserving the Recent and
+  One Query ID beta-only support claim.
+- Trino Beta Query ID job panels now use Trino-specific running, complete,
+  stopped, and failed titles instead of generic analysis titles, keeping async
+  progress copy aligned with the beta lane.
+- Trino Beta async polling now preserves those beta-specific terminal titles and
+  restores the `Run Trino Beta` submit label after terminal job states.
+- New Trino Beta Query ID jobs now start with an empty result slot instead of
+  inheriting the prior Impala Known Query ID result table while the beta job is
+  still running.
+- The Diagnose Engine help popover now uses the complete Trino Beta boundary,
+  including blocked Running scans, query-history crawling, metadata collection,
+  Details/trusted reports, optimizer behavior, generated SQL, and SQL execution.
+- The Diagnose engine-switching script now keeps the dynamic Trino Beta Query
+  ID help text aligned with the same complete boundary when users switch
+  engines without reloading the page.
+- The server-rendered Trino Beta Query ID field help now also uses the complete
+  beta boundary, so first-load HTML and engine-switching copy stay consistent.
+- The Trino Beta Query ID result header and boundary note now repeat the full
+  beta boundary, including blocked Running scans, query-history
+  crawling, metadata collection, Details/trusted reports, optimizer behavior,
+  generated SQL, and SQL execution.
+- Trino Beta async job pages now have regression coverage that the running job
+  route preserves the beta Query ID form and never falls back to Impala
+  profile/report wording while the job is in progress.
+- The Diagnose UI now disables unsupported Trino workflows on first render and
+  during engine/workflow switching, preventing stale form state from showing
+  Trino Beta as a Running scan path or a Recent path without the query-list
+  source contract.
+- Source cluster options now carry raw-free Trino Beta readiness markers, and
+  the Diagnose UI disables or clears Trino Beta when users switch to a source
+  without the local Recent/One Query ID beta config before submit.
+- README, Help, and configuration docs now describe that same Trino Beta
+  source-switch guard while preserving the forged/stale submit fail-closed
+  server boundary.
+- The Trino product-surface boundary audit now reports how many allowlisted
+  Trino preview imports it inspected in product modules, making the Recent/One
+  Query ID beta and compact-preview import boundary visible in retained audit
+  summaries.
+- The Trino product-surface boundary audit now also checks curated public
+  README, support-matrix, and web UI claim surfaces for the beta-only Recent and
+  One Query ID boundary and forbidden production-support wording.
+- Added a Trino Beta UI readiness checklist that defines the showable local
+  Recent and One Query ID beta surfaces, required UI behavior, blocked claims, release
+  gates, and screenshot-refresh boundary without broadening Trino support.
+- Trino Beta UI readiness now includes a route-level E2E smoke covering
+  configured `/analyze` submit, async job status polling, and the final raw-free
+  beta result page without contacting a real coordinator.
+- Trino private-preview release docs now link the local Trino Beta UI readiness
+  checklist so release-facing wording, support-matrix boundaries, and UI beta
+  gates stay aligned.
+- Trino Beta Query ID errors now validate before async job creation and clear
+  rejected Trino Query ID input from browser error renders while successful beta
+  results still show the selected valid Query ID.
+- The Trino product-surface boundary audit now treats `docs/configuration.md`
+  as a curated public claim surface so local Trino Beta config wording stays
+  pinned to the Recent and One Query ID beta boundary.
+- The Russian configuration reference now documents the same local Trino Beta
+  Recent and One Query ID config boundary and is included in the Trino product-surface
+  claim audit without broadening Trino support.
+- The Trino product-surface claim audit now rejects Russian forbidden
+  production-support wording for the beta-only Recent and One Query ID boundary.
+- Configuration documentation tests now pin the English and Russian Trino Beta
+  Recent and One Query ID config references to the same required local keys, raw-free UI
+  limits, and blocked support surfaces.
+- Public release readiness docs now describe the local Trino Beta Recent and
+  One Query ID lanes explicitly while continuing to block Running, query-history,
+  metadata, Details/report, optimizer, generated SQL, SQL execution, and
+  production Trino support claims.
+- The Trino product-surface claim audit now also checks English and Russian
+  public-release readiness docs for the beta-only Recent and One Query ID boundary and
+  forbidden support overclaims.
+- Release checklists now pin the Trino Beta Recent and One Query ID boundary and are
+  covered by the Trino product-surface claim audit, keeping release gates
+  aligned with the beta-only support claim.
+- Documentation indexes now include the local Trino Beta Recent and One Query ID boundary
+  in the product-surface claim audit, including the Russian docs index.
+- The engine preview index is now covered by the Trino product-surface claim
+  audit, so second-engine boundary wording stays pinned to the beta-only lane.
+- The changelog itself is now covered by the Trino product-surface claim audit
+  so release-history wording cannot accidentally broaden the beta support
+  boundary.
+- The Russian support-gap matrix is now covered by the Trino product-surface
+  claim audit, keeping localized engine-support wording aligned with the
+  beta-only Recent and One Query ID boundary.
+- The Trino product-surface audit now checks preview web registry metadata, so
+  Trino preview routes must stay isolated compact pages and cannot be marked
+  as product surfaces.
+- The Trino product-surface audit now inspects the Trino Beta Query ID module
+  for forbidden report, optimizer, CLI, subprocess, or product action imports,
+  keeping the beta lane bounded to QueryInfo import and compact diagnosis.
+- The Trino product-surface audit now also inspects the Trino Beta UI renderer
+  for forbidden Details, report, optimizer, or product action rendering
+  imports.
+- The Trino product-surface audit now also rejects direct Details, report,
+  optimizer, or selected-case action markers inside the Trino Beta UI renderer,
+  keeping the beta output from becoming a trusted report or optimizer surface.
+- Trino Beta result rendering, including async job result JSON, now redacts
+  dynamic diagnosis text through the browser-display safety boundary while
+  still showing the explicit Trino Query ID.
+- Trino Beta local config validation now still runs when CM startup checks are
+  disabled, so partial beta auth/header settings fail closed without echoing
+  local paths or secrets.
+- Read-only batch summary and staged corpus startup now skip CM credential
+  checks again when CM validation is disabled, while still running Trino Beta
+  local config validation for partial beta settings.
+- The Trino support-gap matrix audit now checks the single product-beta
+  capability shape, so retained support-gap evidence rejects accidental CLI,
+  route, script, dev-only, or production-surface drift for One Query ID beta.
+- Trino retained one-query handoff-suite manifests now reject smoke summary
+  artifacts that overlap boundary, diagnosis, readiness-summary,
+  handoff-summary, or product-surface summary artifacts, while still allowing
+  one shared smoke summary across entries.
+- Trino compact readiness now requires retained Kerberos/SPNEGO smoke summaries
+  to keep explicit not-written redaction assertions and dev-only/no-product
+  limitations before they can contribute to one-query handoff readiness.
+- Trino compact readiness now validates retained Kerberos/SPNEGO smoke-check
+  counter fields, requiring planned checks to stay not-run and executed checks
+  to report non-negative row/field/response counters with a positive page count.
+- Trino compact readiness now validates retained Kerberos/SPNEGO smoke-check
+  `safe_error_category` values against the known safe smoke categories and
+  Trino error types emitted by the smoke generator, while still rejecting
+  successful or planned checks that carry failure categories.
+- Trino compact readiness now rejects retained Kerberos/SPNEGO smoke summaries
+  whose bounded statement count does not match the retained smoke checks, so an
+  all-ok executed smoke artifact must stay internally consistent before it can
+  contribute to one-query handoff readiness.
+- Trino pruned QueryInfo fixture coverage now includes committed raw-free
+  zero/absence and invalid-value compact fixtures in the shared engine-fact
+  golden harness, preserving the boundary that missing or invalid coordinator
+  fields degrade to `not_observed` or `unknown` instead of fake zeros.
+- Trino retained one-query handoff-suite readiness can now require per-entry
+  `trino_product_surface_boundary_audit_v1` summaries with
+  `--require-product-surface-summary-json`. The compact readiness audit checks
+  those retained summaries for the no-product-surface boundary and deterministic
+  diagnostic-lane/count consistency, records path-free checked counts, and still
+  keeps Trino below Details, trusted reports, optimizer behavior, Recent, live
+  Query ID diagnosis, and support claims.
+- Cloudera Manager Recent profile collection now stops submitting new profile
+  jobs when repeated HTTP 5xx responses indicate Service Monitor or the CM
+  profile source is unhealthy. The batch keeps already completed/in-flight case
+  results, marks unsubmitted cases as skipped with a safe reason, emits a
+  progress stop event, and records a raw-free summary warning instead of
+  continuing to hammer the monitoring service.
+- Recent batch case processing now streams analyzer work as soon as each
+  parallel profile collection succeeds, reducing large-batch wall-clock time by
+  overlapping analyzer execution with slow collection tails while preserving
+  ordered summaries and safe failure categories.
+- Large analyzer-only Recent batches now collect a small reserve candidate pool
+  and retain up to the requested number of successfully analyzed cases in the
+  final summary, reducing missing-analysis noise from isolated collection
+  failures during calibration runs.
+- Analyzer primary-bottleneck classification now runs after deterministic
+  runtime diagnosis is built, so safe storage/runtime follow-up evidence can
+  participate in the same selected-query primary routing pass.
+- Impala profile-format detection now treats classic text profiles with plan
+  fragment sections or resource/timing section markers as limited mapped
+  profiles instead of failing primary bottleneck routing closed as an unknown
+  dialect, while preserving per-section promotion guardrails.
+- Recent batch profile collection now retries one bounded transient profile
+  collection failure before marking a case failed, reducing missing-analysis
+  gaps from short-lived Cloudera Manager or profile endpoint hiccups while
+  preserving safe failure categories for persistent collection failures.
+- Documented the direct Impala history-depth boundary: direct Recent and
+  Running scans only see the coordinator query log exposed by daemon query-list
+  endpoints, upstream Impala defaults that log to `--query_log_size=200`, and
+  deeper direct history requires deliberate Impala daemon configuration, future
+  bounded profile-log directory ingestion, or future bounded external history
+  sources such as Loki/OpenSearch rather than arbitrary node/pod file reads or
+  browser-submitted log searches.
 - Web Recent scans now continue with bounded partial analysis when a broad CM
   discovery hits the raw query-summary cap, while clearly marking the result as
   partial and showing guidance to reduce Search depth or add user, pool, or
@@ -111,6 +491,12 @@ handoff, see [release-notes-0.8.0.md](release-notes-0.8.0.md). Historical
   bookkeeping entries when building Recent candidates, and plain non-CTAS DDL
   statements are reported as `excluded: DDL statement` instead of the generic
   not-analyzable query-text reason.
+- Direct Impala query-list discovery now emits safe warnings when the daemon
+  completed-query list is already at its retained log size, or when a single
+  configured profile host appears to front multiple daemon query-location
+  hints. The warnings explain why broad Recent windows or load-balanced Known
+  Query ID profile collection may miss the intended user query without exposing
+  endpoints, Query IDs, SQL, users, profiles, or metadata.
 - Direct Impala Recent and Running metadata refresh now also consumes
   collector-extracted source-table references from the selected profile, so
   metadata can run when daemon query-list statements are redacted or incomplete.

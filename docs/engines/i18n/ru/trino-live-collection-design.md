@@ -146,6 +146,12 @@ retained summaries, например `synthetic_trino_event_listener_v1`,
 `representative_query_selection` или `source_contract_review`, без reopening
 packages или raw exports; strict one-query gates остаются в
 `trino_one_query_live_handoff.py` и one-query handoff-suite manifest audit.
+Retained package-level suite builder и audit также reject-ят unsafe или
+duplicate handoff-summary references, output/input overlap, missing artifacts,
+drifted manifest schema/redaction/no-support metadata и raw-like retained
+summary content, а suite summary записывает только fixed aggregate counts,
+diagnostic-lane counters, requirement flags и safe issue categories вместо
+artifact paths или references.
 `scripts/validate_trino_evidence_package.py`, `query-doctor-trino-import`,
 `query-doctor-trino-event-store-import`,
 `query-doctor-trino-http-event-archive-import` и

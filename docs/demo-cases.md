@@ -1,6 +1,6 @@
 # Query Doctor Demo Cases
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-19
 
 This page describes the sanitized synthetic demo story used for public,
 repeatable Query Doctor demos. It replaces older prepared-pack notes that were
@@ -27,7 +27,9 @@ Open the localhost URL printed by `query-doctor-web`.
 
 The synthetic demo pack contains no real SQL, profiles, metadata, hostnames,
 users, credentials, local config contents, production case identifiers, or real
-query IDs.
+query IDs. It also includes read-only Trino Beta compact diagnosis examples in
+`trino_demo.json`; those examples are static raw-free facts and do not contact a
+Trino coordinator.
 
 ## Scenario 1: Optimization Candidate With Trusted Recommendations
 
@@ -230,6 +232,34 @@ Talk track:
 - Selected-query profile resource/timing facts can still support a bounded
   admission/runtime follow-up.
 
+## Scenario 10: Trino Beta Compact Diagnosis Demo
+
+Use this to show the current Trino Beta boundary without implying production
+Trino support.
+
+Synthetic case labels: Trino spill/retry compact diagnosis and Trino
+queue/planning compact diagnosis.
+
+Show:
+
+- The read-only <strong>Trino Beta demo cases</strong> section below the
+  synthetic Finished Queries results.
+- Static compact diagnosis cards with supported attention areas such as spill,
+  task retries, queue time, and planning time.
+- The blocked-surface strip for Running, query-history crawling, metadata,
+  Details/reports, optimizer behavior, generated SQL, and SQL execution.
+
+Talk track:
+
+- These are raw-free static compact diagnosis examples, not live coordinator
+  collection.
+- They demonstrate how Trino Beta can present bounded attention areas and
+  verification direction without raw QueryInfo, raw SQL, metadata collection,
+  Details pages, trusted reports, optimizer behavior, generated SQL, or SQL
+  execution.
+- Do not position this as production Trino triage. It is a beta demo of the
+  already-bounded compact diagnosis surface.
+
 ## Demo Caveats
 
 - Do not show raw SQL, raw profiles, raw metadata, raw query IDs, account names,
@@ -258,5 +288,7 @@ Talk track:
 6. Open the mixed-signal case to show staged review without false certainty.
 7. Mention the unknown and direct Impala cases as limitation and compatibility
    stories.
-8. Mention the rejected-draft scenario to demonstrate safety behavior.
-9. Open Frequent short to show low-value repeat handling.
+8. Use the Trino Beta demo section only to explain the bounded raw-free beta
+   surface and the unsupported product paths.
+9. Mention the rejected-draft scenario to demonstrate safety behavior.
+10. Open Frequent short to show low-value repeat handling.

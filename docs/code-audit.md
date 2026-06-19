@@ -573,24 +573,27 @@ Before broader Trino support or any Details/trusted-report promotion:
   aggregate metadata-coverage facts cannot be rendered as diagnosis;
 - run `scripts/audit_trino_product_surface_boundary.py` on retained compact
   boundary/diagnosis artifacts or a retained handoff-suite manifest before any
-  product-surface promotion decision so `live_known_query_diagnosis=not_wired`,
-  no support claim, and compact-preview web/CLI registry limits stay pinned;
+  product-surface promotion decision so
+  `live_known_query_diagnosis=one_query_pruned_query_info_beta`,
+  `live_recent_scan=retained_query_list_beta`, the beta-only support claim, and
+  the compact-preview plus Recent/One Query ID web registry limits stay pinned;
   manifest mode must require diagnosis artifacts for every entry, and this
   audit must reject metadata-summary boundaries as aggregate coverage evidence,
   not product-surface diagnosis artifacts; keep its static source-import guard
-  enabled so Details, trusted report, optimizer, Recent, and other product
+  enabled so Details, trusted report, optimizer, and other unsupported product
   modules cannot import Trino preview diagnosis code outside the isolated
-  compact-diagnosis route/page;
+  compact-diagnosis route/page or explicit Recent/One Query ID beta paths;
 - run `scripts/audit_trino_support_gap_matrix.py` before broader support-surface
   decisions so registered Trino fact-family coverage, source-type registry
   coverage, neutral `no_*` gaps, blocked product adapter flags, and
   `trino_support_gap_matrix_audit_v1` evidence stay aligned with the
   support-gap matrix;
 - keep the engine adapter and console-script registry language precise: Trino is
-  registered only for bounded raw-free preview surfaces, including metadata
-  source-contract checking and bounded local metadata summary import, not
-  production Recent, Details, trusted reports, optimizer, live metadata
-  collection, SQL execution, or live Query ID diagnosis.
+  registered only for bounded raw-free preview surfaces and the local One Query
+  ID beta surface, including metadata source-contract checking and bounded
+  local metadata summary import, not production Recent, Details, trusted
+  reports, optimizer, live metadata collection, SQL execution, query-history
+  crawling, or production Query ID support.
 
 ### 17. Public documentation must not become a local run journal
 

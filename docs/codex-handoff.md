@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last updated: 2026-06-14
+Last updated: 2026-06-16
 
 This is the public-safe agent baseline for Query Doctor. It records durable
 product, safety, and engineering context only. Transient continuation notes,
@@ -20,8 +20,13 @@ local exclude-only note files, not in committed documentation.
   [engine-support-gap-matrix.md](engine-support-gap-matrix.md). Use that matrix
   before changing support wording or second-engine wiring.
 - Trino is implemented only for the bounded raw-free surfaces listed in the
-  matrix. Do not expand it into live Trino coordinator diagnosis or product
-  surfaces without explicit implementation and validation.
+  matrix. The product web beta surfaces are retained-list Trino Recent over one
+  bounded retained pruned coordinator query-list read plus selected pruned
+  QueryInfo reads, and one explicit Trino Query ID over bounded pruned
+  coordinator QueryInfo; both render raw-free compact diagnosis. Do not expand
+  it into Running, query-history crawling, metadata collection, Details/trusted
+  reports, optimizer behavior, generated SQL, SQL execution, or production
+  support without explicit implementation and validation.
 - Recent scan is the primary workflow.
 - Query ID diagnosis is secondary for one known query.
 - Query Optimizer is separate for pasted SQL analysis and deterministic
@@ -152,12 +157,31 @@ continuation plans belong in local exclude-only notes.
   guarding, plus the dev-only
   `scripts/audit_trino_support_gap_matrix.py` static support-gap audit over the
   registered Trino fact-family coverage, source-type registry coverage,
-  engine fact promotion-policy coverage, and engine adapter flags, plus
+  engine fact promotion-policy coverage, and engine adapter flags, plus the
+  dev-only `scripts/audit_trino_beta_release_readiness.py` bundle that
+  orchestrates static audits, focused tests, local-config readiness, and
+  optional bounded live/UI smokes without printing local config values, Query
+  IDs, coordinator URLs, auth references, local paths, raw payloads, or adding
+  SQL execution, plus the
+  dev-only `scripts/audit_trino_web_beta_readiness.py` local-config readiness
+  gate over Trino Beta web source contracts without coordinator network reads
+  or SQL execution, plus the dev-only
+  `scripts/audit_trino_web_beta_live_smoke.py` gate over the same local web
+  backend path with one bounded retained query-list read, bounded selected
+  QueryInfo diagnosis, raw-free counts only, and no SQL execution, plus the
+  dev-only `scripts/query-doctor-web-trino-beta-smoke` local UI gate over
+  Trino Beta Recent and One Query ID form/job flows with no Query ID,
+  coordinator URL, auth reference, local path, raw payload, or unsupported
+  Details/report/optimizer action-link output, plus
   local compact diagnosis over raw-free direct boundary JSON excluding metadata
   summary boundaries or selected package sample boundaries through
   `query-doctor-diagnose-trino-compact`, plus isolated local compact-diagnosis
   rendering through `/trino/compact-diagnosis` for the same already raw-free
-  inputs.
+  inputs, plus local web Trino Beta Recent diagnosis that consumes one bounded
+  retained pruned coordinator query-list read and selected pruned coordinator
+  QueryInfo imports through local config, plus local web Trino Beta One Query ID
+  diagnosis that consumes one bounded pruned coordinator QueryInfo import
+  through local config; both render the same raw-free compact diagnosis.
   These paths validate already-sanitized compact inputs or compact
   source-contract JSON, or one compact sanitized aggregate metadata summary and
   emit only safe summaries or raw-free normalized fact boundaries,
@@ -209,11 +233,12 @@ continuation plans belong in local exclude-only notes.
   SQL execution linkage. SQL-execution-specific timing/failure facts still
   require accepted SQL execution evidence. Live validation notes and one-run
   checkpoints stay out of committed docs.
-- Do not add public support claims, broad live collection, engine registration
-  beyond adapters explicitly listed in the support matrix, browser workflows
-  beyond isolated compact pages, Details/trusted report output, optimizer
-  behavior, or Query Doctor-generated SQL for a second engine without explicit
-  implementation and validation.
+- Do not add public production support claims, broad live collection, engine
+  registration beyond adapters explicitly listed in the support matrix, browser
+  workflows beyond isolated compact pages and the Trino Recent/One Query ID
+  beta lanes, Details/trusted report output, optimizer behavior, metadata
+  collection, query-history crawling, SQL execution, or Query Doctor-generated
+  SQL for a second engine without explicit implementation and validation.
 
 ## Trino/Spark Parallel Restart Gate
 

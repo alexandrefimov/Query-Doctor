@@ -431,6 +431,11 @@ Current behavior:
 - completed draft rejected by validation: show no trusted SQL draft and provide
   trusted no-rewrite or recommendations when Python can explain the rejection
   safely;
+- Details-page optimizer action: hide or disable the launch action when
+  deterministic rewrite-support classification is not `safe_to_attempt`; show a
+  browser-safe reason such as manual review only, safety-threshold guardrail, no
+  recipe, deterministic draft unavailable, source unavailable, or not
+  applicable;
 - no-draft recommendations must be useful enough for manual review: state that
   no trusted SQL draft is shown, identify the safe review direction from
   Python-owned facts, optionally include a raw-free no-recipe shape family, and

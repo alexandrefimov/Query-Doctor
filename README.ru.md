@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-19
 
 Язык: [English](README.md) | Русский
 
@@ -18,7 +18,9 @@ Python owns facts. LLM owns wording only.
 ```
 
 Recent scan - основной workflow. Диагностика по Query ID вторична и рассчитана
-на один известный Impala query. Query Optimizer отдельный, read-only, не
+на один известный Impala query; есть локальный Trino Beta lane для bounded
+retained-list Recent diagnosis и одного explicit Query ID, если настроены
+нужные coordinator contracts. Query Optimizer отдельный, read-only, не
 выполняет SQL и не показывает отправленный SQL обратно.
 
 ## Quickstart
@@ -115,19 +117,32 @@ Query Doctor это не:
 | Runtime metrics | Optional bounded Prometheus summaries для configured direct Impala workflows; без arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted Impala metadata statements через `impala-shell`; без user SQL execution и unbounded metadata crawl. |
 | Reports and optimizer | Python-owned facts и validation. Known Query ID готовит deterministic Python report в explicit submit-job; LLM narratives и optimizer actions остаются explicit selected-case actions. |
-| Trino and Spark | Только bounded raw-free preview/compact surfaces. Это не production engine support, не live Recent scans, не Details/trusted report output, не optimizer behavior и не Query Doctor-generated SQL. |
+| Trino Beta | Local web beta может прочитать один bounded retained pruned coordinator query list для Recent diagnosis, затем bounded pruned coordinator QueryInfo payloads для выбранных rows или одного explicit Query ID, и показать deterministic compact diagnosis. Без Running scans, query-history crawling, metadata collection, Details/trusted report output, optimizer behavior, generated Trino SQL, SQL execution и production support. |
+| Spark | Только bounded compact support surfaces. Spark не является production engine support, live Recent scans, Details/trusted report output, optimizer behavior, raw event-log handling, Spark job execution или Query Doctor-generated SQL. |
 
-Trino preview surfaces остаются offline/local boundary, а не public support:
+Trino preview surfaces включают offline/local raw-free imports and checks:
 bounded local pruned QueryInfo import принимает one explicit compact sanitized
 local pruned QueryInfo JSON через `query-doctor-trino-query-info-pruned-import`
 после source-contract checks. `query-doctor-trino-coordinator-query-info-pruned-probe`
 и `query-doctor-trino-coordinator-query-info-pruned-import` могут использовать
-`--auth-header-file`, но safe output не печатает auth header paths или values,
-не делает network read вне explicit bounded probe/import, reject-ит raw
-QueryInfo fields вроде Query ID, query text, session fields, endpoint URLs,
-object names и stage/task detail, и не дает live collection,
-Details/trusted report output, optimizer behavior или Query Doctor-generated
-Trino SQL.
+`--auth-header-file`, но safe output не печатает auth header paths или values.
+Product-facing Trino surfaces - local web Trino Beta retained-list Recent
+diagnosis и One Query ID diagnosis. Оба требуют `trino_beta_enabled=true`,
+`trino_coordinator_url` и `trino_query_info_source_contract` в local config;
+Recent дополнительно требует `trino_query_list_source_contract`. Startup
+validation проверяет local source contracts, safe coordinator URL shape и
+optional auth reference (`trino_auth_header_file` или local Kerberos/SPNEGO
+settings) до того, как lane считается configured.
+Configured Trino Beta sources помечаются в source selector как
+`Trino Beta Recent + One Query ID` или `Trino Beta One Query ID`.
+Diagnose Engine control сужает Source cluster selector до Impala-capable
+sources или Trino Beta-ready sources до выбора workflow, а stale или forged
+Trino submits все равно fail closed до analysis или async job creation. Этот
+lane не делает network read вне explicit bounded probe/import, reject-ит raw
+QueryInfo fields вроде query text, session fields, endpoint URLs, object names
+и stage/task detail, и не дает Running scans, Details/trusted report output,
+optimizer behavior, metadata collection или Query Doctor-generated Trino SQL.
+Broader Trino live collection остается unsupported.
 
 Spark compact support surfaces остаются только compact History Server intake,
 compact evidence-package build/validation и compact diagnosis; no public Spark
@@ -299,11 +314,13 @@ Finished Queries results:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Synthetic demo pack `0.5.0` содержит eleven sanitized cases: workload
-follow-up, repeated patterns, trusted optimizer recommendations, stats
-maintenance, storage/HDFS follow-up, frequent-short workloads, mixed signals,
-unknown-but-useful limited evidence и direct-Impala compatibility. Полный
-список scenarios:
+Synthetic demo pack содержит eleven sanitized Impala cases: workload follow-up,
+repeated patterns, trusted optimizer recommendations, stats maintenance,
+storage/HDFS follow-up, frequent-short workloads, mixed signals,
+unknown-but-useful limited evidence и direct-Impala compatibility. Также в нем
+есть two read-only raw-free Trino Beta demo cases из static compact diagnosis
+facts, без Trino coordinator, Details, reports, optimizer behavior, generated
+SQL или SQL execution. Полный список scenarios:
 [docs/demo-cases.md](docs/demo-cases.md).
 
 ### Дверь 3: minimal Cloudera Manager scan
@@ -450,7 +467,7 @@ credentials, raw profiles, raw metadata или temporary outputs.
 
 ## Public status
 
-Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.8.0`
+Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.9.0`
 продолжает эту public source release line. Older package-index releases
 остаются видимыми на
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) для

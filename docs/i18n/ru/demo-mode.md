@@ -1,6 +1,6 @@
 # Demo Mode
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-06-19
 
 Язык: [English](../../demo-mode.md) | Русский
 
@@ -13,14 +13,18 @@ synthetic demo pack.
 Cloudera Manager, Impala, Ollama или network. Output содержит synthetic cases и
 batch summary для localhost web UI.
 
-Текущий pack покрывает optimizer recommendations, stats maintenance,
+Текущий pack покрывает Impala optimizer recommendations, stats maintenance,
 rejected/untrusted optimizer draft, admission/runtime workload regression,
 Storage/HDFS runtime follow-up, frequent-short workload handling, mixed
 diagnostic signals, unknown-but-useful limitations, direct Impala compatibility
-и local synthetic action outcomes. Эти local synthetic action outcomes содержат
-достаточно comparable rerun records с measured results, чтобы default synthetic
-outcome gate проходил для admission/runtime workload aggregate. В git попадает
-только safe aggregate summary, а не generated local outcome records.
+и local synthetic action outcomes. Он также содержит two read-only Trino Beta
+demo cases в `trino_demo.json`: UI рендерит их из static raw-free compact
+diagnosis facts без Trino coordinator, metadata collection, Details, reports,
+optimizer behavior, generated SQL или SQL execution. Local synthetic action
+outcomes содержат достаточно comparable rerun records с measured results, чтобы
+default synthetic outcome gate проходил для admission/runtime workload
+aggregate. В git попадает только safe aggregate summary, а не generated local
+outcome records.
 
 Основной public-demo запуск:
 
@@ -29,10 +33,11 @@ query-doctor-web --public-demo
 ```
 
 `--public-demo` сам генерирует fresh synthetic pack в system temp directory,
-подключает `batch_summary.json` и synthetic `action_outcomes.jsonl`, включает
-Python-only mode, игнорирует default local config discovery и owner-source env,
-отклоняет explicitly loaded CM/Impala/Prometheus/metadata/source-owner settings
-и блокирует все POST routes.
+подключает `batch_summary.json`, synthetic `action_outcomes.jsonl` и static
+`trino_demo.json`, включает Python-only mode, игнорирует default local config
+discovery и owner-source env, отклоняет explicitly loaded
+CM/Impala/Prometheus/metadata/Trino Beta/source-owner settings и блокирует все
+POST routes.
 
 Если нужно вручную посмотреть или переиспользовать generated pack, используйте
 dedicated temp output path:

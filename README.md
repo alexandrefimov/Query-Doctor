@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-19
 
 Language: English | [Russian](README.ru.md)
 
@@ -23,8 +23,10 @@ Python owns facts. LLM owns wording only.
 ```
 
 Recent scan is the flagship workflow. Query ID diagnosis is secondary for one
-known Impala query. Query Optimizer is separate, read-only, and does not execute
-or echo submitted SQL.
+known Impala query, with a local Trino Beta lane for bounded retained-list
+Recent diagnosis and one explicit Query ID when the required coordinator
+contracts are configured. Query Optimizer is separate, read-only, and does not
+execute or echo submitted SQL.
 
 ## Quickstart
 
@@ -92,8 +94,9 @@ Query Doctor is not:
   inspect, what to try, how to verify a comparable rerun, and what evidence is
   missing.
 - Folds validated selected-case optimizer guidance into the same Recommended
-  change area when available, while report and optimizer generation remain
-  separate explicit actions.
+  change area when available. Report generation remains an explicit selected-case
+  action, and optimizer generation is offered only when deterministic rewrite
+  support marks the case safe to attempt.
 - Generates trusted reports only after deterministic normalization,
   sanitization, and validation.
 - Provides a separate read-only Query Optimizer workflow for pasted SQL review,
@@ -113,23 +116,50 @@ Query Doctor is not:
 | Direct Impala | Bounded Recent scans, Running scans, and one Known Query ID through impalad daemon endpoints; no Cloudera Manager events and no SQL execution. |
 | Runtime metrics | Optional bounded Prometheus summaries for configured direct Impala workflows; no arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted Impala metadata statements through `impala-shell`; no user SQL execution or unbounded metadata crawl. |
-| Reports and optimizer | Python-owned facts and validation. Known Query ID prepares the deterministic Python report in its explicit submit job; LLM narratives and optimizer actions remain explicit selected-case actions. |
-| Trino and Spark | Bounded raw-free preview/compact surfaces only. They are not production engine support, live Recent scans, Details/trusted report output, optimizer behavior, or Query Doctor-generated SQL. |
+| Reports and optimizer | Python-owned facts and validation. Known Query ID prepares the deterministic Python report in its explicit submit job; LLM narratives remain explicit selected-case actions, and optimizer actions are shown only for cases with safe-to-attempt rewrite support. |
+| Trino Beta | Local web beta can read one bounded retained pruned coordinator query list for Recent diagnosis, then bounded pruned coordinator QueryInfo payloads for selected rows or one explicit Query ID, and render deterministic compact diagnosis. No Running scans, query-history crawling, metadata collection, Details/trusted report output, optimizer behavior, generated Trino SQL, SQL execution, or production support. |
+| Spark | Bounded compact support surfaces only. Spark is not production engine support, live Recent scans, Details/trusted report output, optimizer behavior, raw event-log handling, Spark job execution, or Query Doctor-generated SQL. |
 
-Trino preview surfaces are offline or compact raw-free imports and checks only:
+Trino preview surfaces include offline or compact raw-free imports and checks:
 sanitized evidence packages, bounded local compact imports, explicit
 source-contract checks, and bounded pruned QueryInfo paths documented in the
-engine docs. They do not provide live collection, Details/trusted report
-output, optimizer behavior, live metadata collection, or Query Doctor-generated
-Trino SQL. Spark compact support surfaces are limited to bounded compact
-History Server intake, compact evidence-package build/validation, and compact
-diagnosis; there is no public Spark engine support.
+engine docs. The only product-facing Trino surfaces are local web Trino Beta
+retained-list Recent diagnosis and One Query ID diagnosis. Both require
+`trino_beta_enabled=true`, `trino_coordinator_url`, and
+`trino_query_info_source_contract` in local config; Recent also requires
+`trino_query_list_source_contract`. Startup validation checks local source
+contracts, safe coordinator URL shape, and optional auth reference
+(`trino_auth_header_file` or local Kerberos/SPNEGO settings) before the lane is
+marked configured. Configured Trino Beta sources are marked as
+`Trino Beta Recent + One Query ID` or `Trino Beta One Query ID` in the source
+selector. The Diagnose Engine control narrows the Source cluster selector to
+Impala-capable sources or Trino Beta-ready sources before workflow selection,
+and stale or forged Trino submits still fail closed before analysis or async
+job creation.
+Coordinator URL, auth header references, raw QueryInfo, raw SQL, and local paths
+stay out of the browser. Broader Trino live collection remains unsupported.
+Spark compact support surfaces are limited to bounded compact History Server
+intake, compact evidence-package build/validation, and compact diagnosis; there
+is no public Spark engine support.
 
 Future Big Data SQL/lakehouse live collectors, broader providers, prepared
 event/log sources, and Cluster Doctor workflows remain roadmap seams, not
 current support. For the detailed Trino and Spark preview command catalog, use
 [docs/engines/README.md](docs/engines/README.md) and
 [docs/engine-support-gap-matrix.md](docs/engine-support-gap-matrix.md).
+
+Direct Impala Recent and Running scans currently see only the query history
+exposed by the configured coordinator daemon query-list endpoints. Upstream
+Impala keeps the coordinator query log at `--query_log_size=200` entries by
+default, further bounded by `--query_log_size_in_bytes`. Operators who need
+deeper direct history can increase those Impala daemon settings on each
+coordinator, while watching coordinator Web UI memory and `/queries` response
+latency. Future deeper-history options are deliberately separate sources:
+operator-managed read-only profile-log directory ingestion, or bounded external
+history sources such as Loki or OpenSearch. They require explicit source
+contracts, allowlists, byte/window bounds, and raw-free browser/report output;
+the current product does not read coordinator filesystems, pod filesystems, or
+external log indexes for direct Recent scans.
 
 Apache Impala also has upstream work around native AI query profile analysis.
 Query Doctor aligns with that direction by staying focused on local-first
@@ -296,10 +326,13 @@ Finished Queries results for review:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-The `0.5.0` synthetic demo pack contains eleven sanitized cases covering
+The synthetic demo pack contains eleven sanitized Impala cases covering
 workload follow-up, repeated patterns, trusted optimizer recommendations,
 stats maintenance, storage/HDFS follow-up, frequent-short workloads, mixed
 signals, unknown but useful limited evidence, and direct-Impala compatibility.
+It also includes two read-only raw-free Trino Beta demo cases rendered from
+static compact diagnosis facts, without contacting a Trino coordinator or
+enabling Details, reports, optimizer behavior, generated SQL, or SQL execution.
 See
 [docs/demo-cases.md](docs/demo-cases.md) for the full scenario list and talk
 track.
@@ -388,8 +421,8 @@ deployment checklist is
 - Local config `no_llm=true` keeps report and optimizer actions on deterministic
   Python-owned output.
 - SQL browser exceptions are selected-case and owner-gated: Details can show a
-  validated optimizer SQL draft for an explicit optimizer action when
-  `source_visibility=owner_raw`, and the isolated owner-only source view can
+  validated optimizer SQL draft for an explicit safe-to-attempt optimizer action
+  when `source_visibility=owner_raw`, and the isolated owner-only source view can
   show read-only original SQL for an authorized query owner. On localhost, raw
   viewer subjects come from local collectable owner users; on shared binds they
   must come from authenticated per-request viewer identity. The original source
@@ -455,7 +488,7 @@ configs, credentials, raw profiles, raw metadata, or temporary outputs.
 
 ## Public Status
 
-This repository is public. Public source releases start at `v0.4.2`; `v0.8.0`
+This repository is public. Public source releases start at `v0.4.2`; `v0.9.0`
 continues that public source release line. Older package-index releases remain
 visible on
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) where needed for

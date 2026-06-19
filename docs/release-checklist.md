@@ -136,16 +136,37 @@ Confirm public docs state only implemented behavior:
   seams only.
 - Trino support is described only as sanitized offline evidence package import,
   bounded local event-store import, bounded HTTP event archive import, bounded
-  HTTP query-detail archive import, bounded local query-detail import, and
-  bounded local query-list aggregate import, plus bounded local statement-stats
-  import, event-source contract checking, and dry-run coordinator query-info
-  target checking, bounded pruned coordinator query-info probing/import, and
-  local compact diagnosis over raw-free direct boundary JSON excluding metadata
-  summary boundaries or selected package sample boundaries plus isolated local compact-diagnosis rendering for the same
-  already raw-free inputs;
-  it is not live collection, broader Trino coordinator collection,
+  HTTP query-detail archive import, bounded local query-detail import, bounded
+  local query-list aggregate import, bounded local statement-stats import,
+  bounded local pruned QueryInfo import, event-source contract checking,
+  dry-run coordinator query-info target checking, metadata source-contract
+  checking, one-query pruned coordinator query-info probing/import, local
+  compact diagnosis over raw-free direct boundary JSON excluding metadata
+  summary boundaries or selected package sample boundaries, isolated local
+  compact-diagnosis rendering for the same already raw-free inputs, and the
+  local web Trino Beta retained-list Recent lane over one bounded retained
+  pruned coordinator query-list read plus selected pruned QueryInfo reads, and
+  the local web Trino Beta One Query ID lane over one bounded pruned coordinator
+  QueryInfo read and the same raw-free compact diagnosis; it is not Running live
+  collection, broader Trino coordinator query-history collection,
   Details/trusted report output, optimizer behavior, metadata collection, Query
-  Doctor-generated SQL, or live Trino diagnosis.
+  Doctor-generated Trino SQL, SQL execution, or production Trino support beyond
+  the local retained-list Recent and One Query ID beta lanes.
+- Trino Beta web lanes have a passing local-config readiness audit before demo
+  or release handoff, followed by a bounded live smoke when an intentional local
+  source is available:
+  `python3 scripts/audit_trino_beta_release_readiness.py --config <ignored-local-web-config.json> --selected-query-limit 1`.
+  `python3 scripts/audit_trino_web_beta_readiness.py --require-query-id --require-recent`.
+  `python3 scripts/audit_trino_web_beta_live_smoke.py --config <ignored-local-web-config.json> --selected-query-limit 1`.
+  `scripts/query-doctor-web-trino-beta-smoke --config <ignored-local-web-config.json> --limit 1`.
+  The bundle is the preferred one-command handoff path and supports
+  `--static-only` when no intentional local source is available. The audit must
+  report only raw-free counts and issue IDs and must perform no coordinator
+  network read or SQL execution. The live smoke may perform only the bounded
+  Trino Beta Recent and selected QueryInfo reads, emits only raw-free counts and
+  issue IDs, and performs no SQL execution. The web UI smoke must validate
+  Recent plus One Query ID through the local form/job path without printing
+  Query IDs, coordinator URLs, auth references, local paths, or raw payloads.
 - Query Optimizer is read-only and does not execute pasted query text.
 - Known Query ID may generate the deterministic Python report in its explicit
   submit job. LLM reports and details-page optimizer drafts are explicit
@@ -259,6 +280,10 @@ python scripts/installed_readme_quickstart_smoke.py \
   --replace-work-dir
 python scripts/installed_web_e2e_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
 python scripts/installed_impala_web_ui_exports_smoke.py --bin-dir /tmp/query-doctor-release-wheel-venv/bin
+python scripts/installed_trino_beta_web_smoke.py \
+  --bin-dir /tmp/query-doctor-release-wheel-venv/bin \
+  --work-dir /tmp/query-doctor-release-trino-beta-web \
+  --replace-work-dir
 python scripts/installed_user_paths_smoke.py \
   --bin-dir /tmp/query-doctor-release-wheel-venv/bin \
   --work-dir /tmp/query-doctor-release-user-paths \

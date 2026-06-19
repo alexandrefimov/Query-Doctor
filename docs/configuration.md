@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Last reviewed: 2026-06-09
+Last reviewed: 2026-06-19
 
 Query Doctor reads non-secret local settings from a JSON config file. Keep
 passwords, tokens, keytabs, ticket contents, Authorization headers, and API keys
@@ -119,6 +119,35 @@ Use this shape when Cloudera Manager is not the profile source:
 
 Direct Impala collection reads only bounded daemon debug web endpoints for
 Recent, Running, or one Known Query ID workflow. It does not execute SQL.
+For Recent and Running scans, history depth is limited by what the configured
+coordinator query-list endpoints still expose. Upstream Impala defaults the
+coordinator query log to `--query_log_size=200` entries, with an additional
+`--query_log_size_in_bytes` cap. To make more completed direct-Impala queries
+available to Query Doctor, increase those Impala daemon settings on each
+coordinator that can accept client queries. Avoid unbounded settings in
+production; larger query logs can increase coordinator memory use and make the
+Impala Web UI `/queries` JSON page slower to render or serialize before Query
+Doctor can apply its own candidate limits.
+
+Direct Impala history can grow through several distinct options:
+
+- **Coordinator query-log retention** is the current supported path. Increase
+  `--query_log_size` and, if needed, `--query_log_size_in_bytes` in Impala daemon
+  configuration on every coordinator. This keeps Query Doctor on the existing
+  daemon `/queries` and `/profile` endpoints, but the history is still
+  coordinator-local and can increase Web UI response cost.
+- **Profile-log directory ingestion** is a future source option, not current
+  support. Impala can write completed profile logs separately from the online
+  query log. If Query Doctor adds this source, it must read an
+  operator-configured read-only local or mounted directory, not arbitrary node
+  or pod paths.
+- **External history indexes** such as Loki or OpenSearch are also future
+  source options. They must use operator-owned query templates or source
+  contracts with explicit cluster labels, time windows, byte and record bounds,
+  and redaction guarantees. Browser users must not submit arbitrary log search
+  DSL, credentials, node paths, or raw query/profile payloads through Query
+  Doctor.
+
 For load-balanced metadata connections, keep `metadata_coordinator` as the
 reachable `HOST:PORT` endpoint and set `metadata_kerberos_host_fqdn` when the
 Kerberos server principal uses a different DNS hostname.
@@ -217,7 +246,7 @@ and add the non-secret base URL. Keep the token in `~/.qdcreds/llm-api.env`.
 | `source_owner_user` | string | global or cluster | Optional query owner user for `owner_raw`. Prefer omitting this for local web runs: Query Doctor derives a simple user from `QD_SOURCE_OWNER_USER`, `QD_KRB5_PRINCIPAL`, `KRB5_PRINCIPAL`, or simple principals in `QD_KEYTAB`. Service principals with `/` are not accepted for inference. Keytab-derived users are sorted alphabetically, and the first user becomes the default Username selection. |
 | `viewer_identity_header` | string | global | Optional HTTP header name to trust as the authenticated viewer user for shared/D3 web deployments. This is the only Query Doctor D3 application contract: a trusted auth front door authenticates the request, strips inbound copies of that header, and sets exactly one already normalized simple owner value, such as an Active Directory `sAMAccountName` or Kerberos primary. OIDC/SSO, SAML, SPNEGO/Kerberos, LDAP, MFA, session, logout, and token lifecycle stay at the front door, not inside Query Doctor. Missing, duplicate, UPN/email-style, distinguished-name, group/role-like, opaque-subject, whitespace/display-name, comma-separated, service-principal, or host-principal values are unauthenticated and fail closed for raw source access. |
 | `owner_raw_source_enabled` | boolean | global | Default `true`. Set `false`, or pass `--disable-owner-raw-source`, to disable only the isolated owner-only original source page and Details link. Recent/Running collection owner filters and validated optimizer draft policy keep their existing `source_visibility` behavior. |
-| `language` | string | global | Global language mode shown in the web header. It controls Help, Details static UI, and newly generated trusted report language. Supported values: `en`, `ru`. Default: `en`. Existing reports are not regenerated automatically after changing this field. The web header points to this config key without rendering the absolute config path. |
+| `language` | string | global | Global language mode shown in the web header. It controls Help, deterministic Recent Finding body copy, deterministic Details recommendation/explanation body copy, and newly generated trusted report language. Details headings, compact Recent labels, table headers, badges, and technical terms remain English. Supported values: `en`, `ru`. Default: `en`. Existing reports are not regenerated automatically after changing this field. The web header points to this config key without rendering the absolute config path. |
 | `report_llm_provider` | string | global | Report LLM provider: `ollama` or `openai_compatible`. |
 | `report_llm_model` | string | global | Report model route name. |
 | `report_llm_base_url` | string URL | global | Non-secret report provider base URL. For external providers, keep tokens in `~/.qdcreds/llm-api.env`, not JSON. |
@@ -270,6 +299,57 @@ shared `owner_raw` only behind the D3 front-door contract described in
 [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md); they are not a
 general multi-tenant service mode.
 
+## Trino Beta Recent And One Query ID
+
+Trino Beta is a local web lane for bounded retained-list Recent diagnosis and
+one explicit Query ID. Recent reads one bounded pruned coordinator query list
+after an accepted local query-list source contract, then reads bounded pruned
+coordinator QueryInfo payloads through the QueryInfo source contract for the
+selected retained rows. One Query ID uses the same bounded QueryInfo path for
+one explicit ID. Both paths build raw-free boundaries in memory and render
+deterministic compact diagnosis. They do not enable Trino Running scans,
+query-history crawling, metadata collection, Details/trusted reports, optimizer
+behavior, SQL execution, or generated Trino SQL.
+
+Minimal local config shape:
+
+```json
+{
+  "engine": "trino",
+  "trino_beta_enabled": true,
+  "trino_coordinator_url": "https://trino-coordinator.example.com",
+  "trino_query_info_source_contract": "./trino-query-info-contract.json",
+  "trino_query_list_source_contract": "./trino-query-list-contract.json",
+  "trino_kerberos_principal": "sa@EXAMPLE.COM",
+  "trino_krb5_ccname": "FILE:/tmp/krb5cc_query_doctor_trino"
+}
+```
+
+| Field | Type | Scope | Notes |
+| --- | --- | --- | --- |
+| `engine` | string | global | Optional default UI engine selection: `impala` or `trino`. Browser submits the selected engine explicitly; invalid values are rejected by config validation. |
+| `trino_beta_enabled` | boolean | global or cluster | Enables only the local Trino Beta retained-list Recent and One Query ID lanes. Public demo mode rejects this setting. |
+| `trino_coordinator_url` | string URL | global or cluster | Trino coordinator base URL used by the bounded pruned QueryInfo and retained query-list readers. Keep it in local config; the browser form does not ask for or render it. |
+| `trino_query_info_source_contract` | string path | global or cluster | Local path to an accepted `coordinator_query_info` source contract. Required for One Query ID and for fetching facts for selected Trino Recent rows. Relative values resolve from the JSON config file. |
+| `trino_query_list_source_contract` | string path | global or cluster | Local path to an accepted retained coordinator query-list source contract. Required only for Trino Beta Recent. Relative values resolve from the JSON config file. |
+| `trino_auth_header_file` | string path | global or cluster | Optional local file containing one operator-managed `Authorization:` header line. Store the secret value only in this local file, not in JSON. Relative values resolve from the JSON config file. |
+| `trino_kerberos_principal` | string | global or cluster | Optional local Kerberos/SPNEGO client principal for Trino Beta GET collectors. Do not combine with `trino_auth_header_file`. |
+| `trino_kerberos_service_name` | string | global or cluster | Optional Kerberos service name for SPNEGO. Defaults to `HTTP`. |
+| `trino_krb5_ccname` | string | global or cluster | Optional local ticket-cache reference, for example `FILE:/tmp/krb5cc_query_doctor_trino`. Keep ticket contents out of JSON. |
+| `trino_krb5_config` | string path | global or cluster | Optional local `krb5.conf` path for the Trino SPNEGO fetcher. Relative values resolve from the JSON config file. |
+| `trino_kerberos_ca_cert` | string path | global or cluster | Optional CA certificate path for the Trino SPNEGO fetcher. Relative values resolve from the JSON config file. |
+| `trino_kerberos_insecure_tls` | boolean | global or cluster | Optional local test-cluster override for the Trino SPNEGO fetcher. Prefer `trino_kerberos_ca_cert` when possible. |
+
+Cluster entries may carry the same Trino Beta keys when different Trino targets
+need separate contracts. The web UI marks configured Trino Beta sources as
+`Trino Beta Recent + One Query ID`, `Trino Beta Recent`, or
+`Trino Beta One Query ID` in the source selector. The Diagnose Engine control
+narrows the Source cluster selector to Impala-capable sources or Trino
+Beta-ready sources before workflow selection. Forged or stale Trino submits
+still fail closed before analysis or async job creation. The web UI must not
+render coordinator URLs, auth reference paths/values, raw QueryInfo, raw
+query-list payloads, local source-contract paths, or raw SQL.
+
 ## Cloudera Manager
 
 | Field | Type | Notes |
@@ -317,7 +397,7 @@ general multi-tenant service mode.
 | `recent_pool` | string | Optional recent-query pool filter. |
 | `recent_scan_timezone` | string | IANA timezone retained for explicit date/hour helper paths. Web Finished-query scans use `recent_window_minutes` by default. This field can also be set per cluster. |
 | `recent_parallelism` | positive integer | Overall Recent scan worker limit. |
-| `recent_cm_jobs` | positive integer | CM profile/context worker limit. |
+| `recent_cm_jobs` | positive integer | CM profile/context worker limit. Repeated CM profile HTTP 5xx responses stop new profile submissions and produce a safe summary warning. |
 | `recent_cm_summary_limit` | positive integer | CM summary scan cap. |
 | `recent_profile_analysis_limit` | positive integer | Profile analysis cap. |
 | `recent_metadata_jobs` | positive integer | Metadata refresh worker limit. |
@@ -382,6 +462,16 @@ Minimal manual-only web config:
 | `impala_profile_collect_docs` | boolean | global or cluster | Optional `/profile_docs/?json` counter-stability probe with `/profile_docs` HTML fallback. When true, direct Impala collection writes a safe allowlisted counter registry context when the endpoint is available as JSON-style docs or a Web UI HTML table. Missing endpoints are non-fatal. Default is false. |
 | `impala_collect_admission_context` | boolean | global or cluster | Optional `/admission?json` aggregate pool-context probe. When true, direct Impala collection writes only bounded safe summaries such as queue presence, queue-time bucket, pool pressure, and freshness. Missing endpoints are non-fatal. Default is false. |
 | `impala_kerberos_service_name` | string | global or cluster | Kerberos service token, such as `impala` or `hive`. |
+
+Impala completed profile log files are separate from the online coordinator
+query log used by `/queries` and `/profile`. Query Doctor does not currently
+read `profile_log_dir`, pod filesystems, node filesystems, Loki, OpenSearch, or
+other external history indexes for direct Recent scans. A future profile-log or
+external-history ingestion path must be operator-configured, read-only,
+allowlisted, byte-bounded, time-window-bounded, and raw-free at the
+browser/report boundary. It must not let the web UI run `ssh`, `kubectl exec`,
+`kubectl cp`, arbitrary filesystem reads, arbitrary log-index queries, or
+credential entry against Impala nodes, pods, or external stores.
 
 ## Prometheus Runtime Metrics
 
