@@ -47,30 +47,16 @@ def test_package_entrypoint_keeps_repo_root_anchor():
 
 def test_batch_recent_direct_impala_config_does_not_require_cm_auth(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-            "--prometheus-url",
-            "http://prometheus.example.com:9090",
-            "--impala-profile-prefer-json",
-            "--impala-profile-collect-docs",
-            "--collect-cm-events",
-            "--collect-cm-timeseries",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--prometheus-url",
+        "http://prometheus.example.com:9090",
+        "--impala-profile-prefer-json",
+        "--impala-profile-collect-docs",
+        "--collect-cm-events",
+        "--collect-cm-timeseries",
     )
-
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
     module.preflight(config, env={}, repo_root=REPO_DIR)
 
     assert config.query_profile_source == "impala"
@@ -113,28 +99,15 @@ def test_batch_recent_direct_impala_discovery_filters_window_and_selects_candida
         return type("Result", (), {"summaries": summaries, "warnings": []})()
 
     monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--from-time",
-            "2026-05-12T10:00:00Z",
-            "--to-time",
-            "2026-05-12T11:00:00Z",
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--from-time",
+        "2026-05-12T10:00:00Z",
+        "--to-time",
+        "2026-05-12T11:00:00Z",
+        "--no-min-duration-filter",
     )
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env={})
 
@@ -172,29 +145,16 @@ def test_batch_recent_direct_impala_include_running_survives_window_filter(monke
         return type("Result", (), {"summaries": summaries, "warnings": []})()
 
     monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--from-time",
-            "2026-05-12T10:00:00Z",
-            "--to-time",
-            "2026-05-12T11:00:00Z",
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-            "--include-running",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--from-time",
+        "2026-05-12T10:00:00Z",
+        "--to-time",
+        "2026-05-12T11:00:00Z",
+        "--no-min-duration-filter",
+        "--include-running",
     )
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env={})
 
@@ -223,28 +183,15 @@ def test_batch_recent_direct_impala_window_uses_start_when_end_precedes_start(
         return type("Result", (), {"summaries": summaries, "warnings": []})()
 
     monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--from-time",
-            "2026-05-12T10:00:00Z",
-            "--to-time",
-            "2026-05-12T11:00:00Z",
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--from-time",
+        "2026-05-12T10:00:00Z",
+        "--to-time",
+        "2026-05-12T11:00:00Z",
+        "--no-min-duration-filter",
     )
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env={})
 
@@ -282,29 +229,16 @@ def test_batch_recent_direct_impala_only_running_filters_to_running_summaries(
         return type("Result", (), {"summaries": summaries, "warnings": []})()
 
     monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--from-time",
-            "2026-05-12T10:00:00Z",
-            "--to-time",
-            "2026-05-12T11:00:00Z",
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-            "--only-running",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--from-time",
+        "2026-05-12T10:00:00Z",
+        "--to-time",
+        "2026-05-12T11:00:00Z",
+        "--no-min-duration-filter",
+        "--only-running",
     )
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env={})
 
@@ -342,25 +276,13 @@ def test_batch_recent_owner_raw_direct_impala_filters_to_owner_user(monkeypatch,
 
     monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
     args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
+        direct_impala_owner_raw_args(
+            tmp_path,
             "--from-time",
             "2026-05-12T10:00:00Z",
             "--to-time",
             "2026-05-12T11:00:00Z",
-            "--select-limit",
-            "5",
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-            "--source-visibility",
-            "owner_raw",
-        ]
+        )
     )
     config = module.build_batch_config(
         args,
@@ -418,29 +340,17 @@ def test_batch_recent_owner_raw_direct_impala_filters_to_collectable_owner_users
 
     monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
     args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
+        direct_impala_owner_raw_args(
+            tmp_path,
             "--from-time",
             "2026-05-12T10:00:00Z",
             "--to-time",
             "2026-05-12T11:00:00Z",
-            "--select-limit",
-            "5",
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-            "--source-visibility",
-            "owner_raw",
             "--source-owner-user",
             "report_user",
             "--source-owner-user",
             "analyst_one",
-        ]
+        )
     )
     config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
 
@@ -461,16 +371,11 @@ def test_batch_recent_owner_raw_direct_impala_filters_to_collectable_owner_users
 def test_batch_recent_owner_raw_cm_adds_owner_user_filter(tmp_path):
     module = load_batch_module()
     args = module.parse_args(
-        base_args(tmp_path)
-        + [
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-            "--source-visibility",
-            "owner_raw",
+        cm_owner_raw_args(
+            tmp_path,
             "--source-owner-user",
             "analyst_one",
-        ]
+        )
     )
 
     config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
@@ -523,18 +428,13 @@ def test_batch_recent_owner_raw_cm_filters_collectable_owners_client_side(monkey
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
     args = module.parse_args(
-        base_args(tmp_path)
-        + [
-            "--metadata-mode",
-            "off",
-            "--no-min-duration-filter",
-            "--source-visibility",
-            "owner_raw",
+        cm_owner_raw_args(
+            tmp_path,
             "--source-owner-user",
             "report_user",
             "--source-owner-user",
             "analyst_one",
-        ]
+        )
     )
     config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
 
@@ -554,32 +454,26 @@ def test_batch_recent_owner_raw_cm_filters_collectable_owners_client_side(monkey
 
 def test_batch_recent_config_cluster_loads_owner_raw_source_visibility(tmp_path):
     module = load_batch_module()
-    config_path = tmp_path / "query-doctor-config.json"
-    config_path.write_text(
-        json.dumps(
+    config_path = write_query_doctor_config(
+        tmp_path,
+        source_visibility="safe",
+        clusters=[
             {
-                "out": str(batch_dir(tmp_path)),
-                "source_visibility": "safe",
-                "clusters": [
-                    {
-                        "id": "cm",
-                        "cm_url": "https://cm.example.com:7183/",
-                        "cluster": "prod_cluster",
-                        "service": "impala",
-                    },
-                    {
-                        "id": "direct-impala",
-                        "query_profile_source": "impala",
-                        "impala_profile_hosts": ["impalad-1.example.com"],
-                        "metadata_kerberos_service_name": "hive",
-                        "metadata_kerberos_host_fqdn": "impala-lb.example.com",
-                        "source_visibility": "owner_raw",
-                        "source_owner_user": "analyst_one",
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
+                "id": "cm",
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "prod_cluster",
+                "service": "impala",
+            },
+            {
+                "id": "direct-impala",
+                "query_profile_source": "impala",
+                "impala_profile_hosts": ["impalad-1.example.com"],
+                "metadata_kerberos_service_name": "hive",
+                "metadata_kerberos_host_fqdn": "impala-lb.example.com",
+                "source_visibility": "owner_raw",
+                "source_owner_user": "analyst_one",
+            },
+        ],
     )
     args = module.parse_args(
         [
@@ -605,23 +499,17 @@ def test_batch_recent_config_cluster_loads_owner_raw_source_visibility(tmp_path)
 
 def test_batch_recent_config_cluster_can_be_overridden_by_cli_owner_flags(tmp_path):
     module = load_batch_module()
-    config_path = tmp_path / "query-doctor-config.json"
-    config_path.write_text(
-        json.dumps(
+    config_path = write_query_doctor_config(
+        tmp_path,
+        clusters=[
             {
-                "out": str(batch_dir(tmp_path)),
-                "clusters": [
-                    {
-                        "id": "direct-impala",
-                        "query_profile_source": "impala",
-                        "impala_profile_hosts": ["impalad-1.example.com"],
-                        "source_visibility": "owner_raw",
-                        "source_owner_user": "config_owner",
-                    }
-                ],
+                "id": "direct-impala",
+                "query_profile_source": "impala",
+                "impala_profile_hosts": ["impalad-1.example.com"],
+                "source_visibility": "owner_raw",
+                "source_owner_user": "config_owner",
             }
-        ),
-        encoding="utf-8",
+        ],
     )
     args = module.parse_args(
         [
@@ -645,21 +533,15 @@ def test_batch_recent_config_cluster_can_be_overridden_by_cli_owner_flags(tmp_pa
 
 def test_batch_recent_config_cluster_rejects_unknown_cluster_id(tmp_path):
     module = load_batch_module()
-    config_path = tmp_path / "query-doctor-config.json"
-    config_path.write_text(
-        json.dumps(
+    config_path = write_query_doctor_config(
+        tmp_path,
+        clusters=[
             {
-                "out": str(batch_dir(tmp_path)),
-                "clusters": [
-                    {
-                        "id": "direct-impala",
-                        "query_profile_source": "impala",
-                        "impala_profile_hosts": ["impalad-1.example.com"],
-                    }
-                ],
+                "id": "direct-impala",
+                "query_profile_source": "impala",
+                "impala_profile_hosts": ["impalad-1.example.com"],
             }
-        ),
-        encoding="utf-8",
+        ],
     )
     args = module.parse_args(
         [
@@ -678,20 +560,7 @@ def test_batch_recent_config_cluster_rejects_unknown_cluster_id(tmp_path):
 
 def test_batch_recent_owner_raw_fails_closed_for_service_principal(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--metadata-mode",
-            "off",
-            "--source-visibility",
-            "owner_raw",
-        ]
-    )
+    args = module.parse_args(direct_impala_owner_raw_config_args(tmp_path))
 
     with pytest.raises(ValueError, match="requires at least one collectable source_owner_user"):
         module.build_batch_config(
@@ -705,20 +574,11 @@ def test_batch_recent_owner_raw_fails_closed_for_service_principal(tmp_path):
 def test_batch_recent_owner_raw_fails_closed_for_explicit_service_principal(tmp_path):
     module = load_batch_module()
     args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--metadata-mode",
-            "off",
-            "--source-visibility",
-            "owner_raw",
+        direct_impala_owner_raw_config_args(
+            tmp_path,
             "--source-owner-user",
             "impala/host.example.com@EXAMPLE.COM",
-        ]
+        )
     )
 
     with pytest.raises(ValueError, match="requires at least one collectable source_owner_user"):
@@ -728,22 +588,13 @@ def test_batch_recent_owner_raw_fails_closed_for_explicit_service_principal(tmp_
 def test_batch_recent_owner_raw_rejects_conflicting_user_filter(tmp_path):
     module = load_batch_module()
     args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--metadata-mode",
-            "off",
-            "--source-visibility",
-            "owner_raw",
+        direct_impala_owner_raw_config_args(
+            tmp_path,
             "--source-owner-user",
             "analyst_one",
             "--user",
             "other_user",
-        ]
+        )
     )
 
     with pytest.raises(ValueError, match="requires recent_user to match a collectable"):
@@ -752,46 +603,24 @@ def test_batch_recent_owner_raw_rejects_conflicting_user_filter(tmp_path):
 
 def test_batch_recent_direct_impala_profile_collection_uses_impala_collector(monkeypatch, tmp_path):
     module = load_batch_module()
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-            "--prometheus-url",
-            "http://prometheus.example.com:9090",
-            "--prometheus-metrics-profile",
-            "ambari-hadoop",
-            "--prometheus-step-sec",
-            "45",
-            "--prometheus-timeseries-padding-sec",
-            "180",
-            "--prometheus-timeout-sec",
-            "20",
-            "--impala-profile-prefer-json",
-            "--impala-profile-collect-docs",
-            "--impala-collect-admission-context",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--prometheus-url",
+        "http://prometheus.example.com:9090",
+        "--prometheus-metrics-profile",
+        "ambari-hadoop",
+        "--prometheus-step-sec",
+        "45",
+        "--prometheus-timeseries-padding-sec",
+        "180",
+        "--prometheus-timeout-sec",
+        "20",
+        "--impala-profile-prefer-json",
+        "--impala-profile-collect-docs",
+        "--impala-collect-admission-context",
     )
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
-    case = module.CaseResult(
-        index=1,
-        query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
-        duration_sec=120.0,
-        user=None,
-        pool=None,
-        query_type="QUERY",
-        sql_verb="SELECT",
-        wrapper_dir=batch_dir(tmp_path) / "cases" / "case-001",
-    )
+    case = direct_impala_collection_case(module, tmp_path)
     calls = []
 
     def fake_run(cmd, cwd, env):
@@ -825,36 +654,18 @@ def test_batch_recent_direct_impala_profile_collection_reads_metadata_source_tab
     monkeypatch, tmp_path
 ):
     module = load_batch_module()
-    args = module.parse_args(
-        [
-            "--query-profile-source",
-            "impala",
-            "--impala-profile-host",
-            "impalad-1.example.com",
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "on",
-            "--metadata-coordinator",
-            "impala.example.net:21000",
-            "--metadata-top-limit",
-            "1",
-        ]
+    config = build_direct_impala_config(
+        module,
+        tmp_path,
+        "--metadata-coordinator",
+        "impala.example.net:21000",
+        "--metadata-top-limit",
+        "1",
+        metadata_mode="on",
     )
-    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
-    case = module.CaseResult(
-        index=1,
-        query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
-        duration_sec=120.0,
-        user=None,
-        pool=None,
-        query_type="QUERY",
-        sql_verb="SELECT",
-        wrapper_dir=batch_dir(tmp_path) / "cases" / "case-001",
+    case = direct_impala_collection_case(
+        module,
+        tmp_path,
         metadata_source_tables=("existing.table",),
     )
     calls = []
@@ -978,8 +789,154 @@ def batch_dir(tmp_path: Path) -> Path:
     return tmp_path / "query-doctor-batch"
 
 
+def write_query_doctor_config(tmp_path: Path, **config: object) -> Path:
+    config_path = tmp_path / "query-doctor-config.json"
+    config_path.write_text(
+        json.dumps({"out": str(batch_dir(tmp_path)), **config}),
+        encoding="utf-8",
+    )
+    return config_path
+
+
+def direct_impala_args(
+    tmp_path: Path,
+    *extra: str,
+    metadata_mode: str = "off",
+) -> list[str]:
+    return [
+        "--query-profile-source",
+        "impala",
+        "--impala-profile-host",
+        "impalad-1.example.com",
+        "--out",
+        str(batch_dir(tmp_path)),
+        "--cm-inspect-limit",
+        "5",
+        "--select-limit",
+        "2",
+        "--metadata-mode",
+        metadata_mode,
+        *extra,
+    ]
+
+
+def build_batch_config_from_args(module, args: list[str], tmp_path: Path, *, env=None, cwd=None):
+    return module.build_batch_config(
+        module.parse_args(args),
+        env={} if env is None else env,
+        cwd=tmp_path if cwd is None else cwd,
+        repo_root=REPO_DIR,
+    )
+
+
+def build_direct_impala_config(
+    module,
+    tmp_path: Path,
+    *extra: str,
+    metadata_mode: str = "off",
+    env=None,
+):
+    return build_batch_config_from_args(
+        module,
+        direct_impala_args(tmp_path, *extra, metadata_mode=metadata_mode),
+        tmp_path,
+        env=env,
+    )
+
+
+def build_cm_query_config(module, tmp_path: Path, *extra: str, env=None, cwd=REPO_DIR):
+    return build_batch_config_from_args(
+        module,
+        [
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--cm-url",
+            "https://cm.example.net:7183",
+            "--cluster",
+            "cluster",
+            "--service",
+            "impala",
+            *extra,
+        ],
+        tmp_path,
+        env=auth_env() if env is None else env,
+        cwd=cwd,
+    )
+
+
+def build_cm_config(module, tmp_path: Path, *extra: str, env=None, cwd=REPO_DIR):
+    return build_batch_config_from_args(
+        module,
+        [*base_args(tmp_path), *extra],
+        tmp_path,
+        env=auth_env() if env is None else env,
+        cwd=cwd,
+    )
+
+
+def direct_impala_owner_raw_args(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--query-profile-source",
+        "impala",
+        "--impala-profile-host",
+        "impalad-1.example.com",
+        "--out",
+        str(batch_dir(tmp_path)),
+        "--select-limit",
+        "5",
+        "--metadata-mode",
+        "off",
+        "--no-min-duration-filter",
+        "--source-visibility",
+        "owner_raw",
+        *extra,
+    ]
+
+
+def direct_impala_owner_raw_config_args(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--query-profile-source",
+        "impala",
+        "--impala-profile-host",
+        "impalad-1.example.com",
+        "--out",
+        str(batch_dir(tmp_path)),
+        "--metadata-mode",
+        "off",
+        "--source-visibility",
+        "owner_raw",
+        *extra,
+    ]
+
+
+def cm_owner_raw_args(tmp_path: Path, *extra: str) -> list[str]:
+    return base_args(tmp_path) + [
+        "--metadata-mode",
+        "off",
+        "--no-min-duration-filter",
+        "--source-visibility",
+        "owner_raw",
+        *extra,
+    ]
+
+
 def auth_env() -> dict[str, str]:
     return {"CM_PASSWORD": "secret", "CM_USERNAME": "user"}
+
+
+def direct_impala_collection_case(module, tmp_path: Path, **overrides):
+    values = {
+        "index": 1,
+        "query_id": "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+        "duration_sec": 120.0,
+        "user": None,
+        "pool": None,
+        "query_type": "QUERY",
+        "sql_verb": "SELECT",
+        "wrapper_dir": batch_dir(tmp_path) / "cases" / "case-001",
+    }
+    values.update(overrides)
+    return module.CaseResult(**values)
 
 
 def candidate(
@@ -1019,6 +976,26 @@ def read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def read_batch_summary(tmp_path: Path) -> dict:
+    return json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+
+
+def read_batch_summary_markdown(tmp_path: Path) -> str:
+    return (batch_dir(tmp_path) / "batch_summary.md").read_text(encoding="utf-8")
+
+
+def patch_discovered_candidates(module, monkeypatch, selected):
+    monkeypatch.setattr(
+        module,
+        "discover_candidates",
+        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
+    )
+
+
+def command_query_id(cmd):
+    return cmd[cmd.index("--query-id") + 1]
+
+
 def assert_non_negative_number(value):
     assert isinstance(value, (int, float))
     assert value >= 0
@@ -1028,6 +1005,12 @@ def write_case(case_dir: Path, facts: str) -> None:
     case_dir.mkdir(parents=True, exist_ok=True)
     (case_dir / "profile_digest.md").write_text("# digest\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text(facts, encoding="utf-8")
+
+
+def write_collected_case_from_command(cmd, facts=None) -> None:
+    query_id = command_query_id(cmd)
+    out = Path(cmd[cmd.index("--out") + 1])
+    write_case(out / query_id.replace(":", "_"), healthy_facts() if facts is None else facts)
 
 
 def case_result(
@@ -1063,6 +1046,210 @@ def case_result(
         host_tail_candidate_count=host_tail,
         execution_tail_candidate_count=execution_tail,
     )
+
+
+def batch_summary_test_config(module, tmp_path: Path, **overrides):
+    values = {
+        "out": batch_dir(tmp_path),
+        "cm_url": "https://cm.example.net:7183",
+        "cluster": "cluster",
+        "service": "impala",
+        "cm_username": None,
+        "ca_bundle": None,
+        "verify_tls": True,
+        "recent_window_minutes": 60,
+        "cm_inspect_limit": 5,
+        "triage_profile_limit": 4,
+        "metadata_top_limit": 0,
+        "min_duration_sec": None,
+        "max_duration_sec": None,
+        "order": "duration-desc",
+        "include_failed": False,
+        "include_running": False,
+        "user": None,
+        "pool": None,
+        "query_type": None,
+        "max_profile_bytes": 1000,
+        "collect_cm_events": False,
+        "cm_events_max_events": 50,
+        "collect_cm_timeseries": False,
+        "cm_metrics_profile": "auto",
+        "cm_timeseries_top_limit": 0,
+        "cm_timeseries_padding_sec": 0,
+        "max_timeseries_bytes": 1000,
+        "max_timeseries_points": 100,
+        "metadata_mode": "off",
+        "metadata_coordinator": None,
+        "metadata_impala_shell": None,
+        "metadata_auth": "kerberos",
+        "metadata_protocol": "beeswax",
+        "metadata_kerberos_service_name": None,
+        "metadata_ssl": False,
+        "metadata_ca_cert": None,
+        "metadata_timeout_sec": 30,
+        "metadata_max_tables": None,
+        "metadata_max_output_bytes": None,
+        "metadata_redact": True,
+        "top_reports": 0,
+        "jobs": 1,
+        "cm_jobs": 1,
+        "metadata_jobs": 1,
+        "allow_high_jobs": False,
+        "discover_only": False,
+        "overwrite": False,
+        "config_path": None,
+        "progress_jsonl": None,
+        "krb5ccname": None,
+        "from_time": None,
+        "to_time": None,
+        "only_running": False,
+    }
+    values.update(overrides)
+    return module.BatchConfig(**values)
+
+
+def build_summary_for_test_cases(
+    module,
+    config,
+    cases,
+    *,
+    discovery=None,
+    warnings=(),
+    summaries_inspected: int = 1,
+    discovery_seconds: float = 1.2,
+    total_seconds: float = 3.4,
+):
+    if discovery is None:
+        discovery = module.DiscoveryResult(
+            [], [], "client-side", None, summaries_inspected=summaries_inspected
+        )
+    return module.build_summary(
+        config,
+        discovery,
+        cases,
+        list(warnings),
+        discovery_seconds=discovery_seconds,
+        total_seconds=total_seconds,
+    )
+
+
+def write_batch_summary_test_outputs(module, tmp_path: Path, summary: dict) -> None:
+    batch_dir(tmp_path).mkdir()
+    module.write_batch_outputs(batch_dir(tmp_path), summary)
+
+
+def optimizer_support(**overrides):
+    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
+
+    return OptimizerRewriteSupport(**overrides)
+
+
+def safe_material_draft_support(**overrides):
+    values = {
+        "status": "sql_draft_supported",
+        "label": "SQL draft eligible",
+        "reason": "Python-owned recipe is available",
+        "risk_mode": "standard",
+        "risk_reasons": (),
+        "rewriteability_bucket": "safe_material_draft",
+        "rewriteability_label": "Safe material draft",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def adjacent_shape_support(**overrides):
+    values = {
+        "status": "guidance_only",
+        "label": "Guidance only",
+        "reason": "No Python-owned recipe is available",
+        "risk_mode": "standard",
+        "risk_reasons": (),
+        "draft_eligibility": "no_recipe",
+        "rewriteability_bucket": "recipe_adjacent_shape",
+        "rewriteability_label": "Recipe-adjacent shape",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def no_draft_recipe_support(**overrides):
+    values = {
+        "status": "draft_disabled",
+        "label": "Recipe detected; draft unavailable",
+        "reason": "Deterministic draft unavailable",
+        "risk_mode": "standard",
+        "risk_reasons": (),
+        "draft_eligibility": "deterministic_draft_unavailable",
+        "rewriteability_bucket": "recipe_detected_no_draft",
+        "rewriteability_label": "Recipe detected, no draft",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def human_review_support(**overrides):
+    values = {
+        "status": "guidance_only",
+        "label": "Guidance only",
+        "reason": "SQL shape exceeds current safe draft thresholds",
+        "risk_mode": "recommendations_only",
+        "risk_reasons": (),
+        "draft_eligibility": "disabled_by_safety_thresholds",
+        "rewriteability_bucket": "human_review_only",
+        "rewriteability_label": "Human review only",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def guidance_human_review_support(**overrides):
+    values = {
+        "status": "guidance_only",
+        "label": "Guidance only",
+        "reason": "No Python-owned recipe is available",
+        "risk_mode": "standard",
+        "risk_reasons": (),
+        "rewriteability_bucket": "human_review_only",
+        "rewriteability_label": "Human review only",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def stats_likely_support(**overrides):
+    values = {
+        "status": "not_candidate",
+        "label": "Not an optimization candidate",
+        "reason": "Stats bottleneck is primary",
+        "risk_mode": "unknown",
+        "risk_reasons": (),
+        "rewriteability_bucket": "stats_likely",
+        "rewriteability_label": "Stats likely",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def no_recipe_not_rewriteable_support(**overrides):
+    values = {
+        "status": "guidance_only",
+        "label": "Guidance only",
+        "reason": "No Python-owned recipe is available",
+        "risk_mode": "standard",
+        "risk_reasons": (),
+        "draft_eligibility": "no_recipe",
+        "rewriteability_bucket": "not_rewriteable",
+        "rewriteability_label": "Not rewriteable",
+    }
+    values.update(overrides)
+    return optimizer_support(**values)
+
+
+def case_with_optimizer_support(module, *, index: int, query_id: str, support, score: int = 1):
+    case = case_result(module, index=index, query_id=query_id, score=score)
+    case.optimizer_rewrite_support = support
+    return case
 
 
 def suspicious_facts() -> str:
@@ -1205,9 +1392,7 @@ def test_batch_recent_help_works(capsys):
 
 def test_jobs_default_is_one(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(base_args(tmp_path))
-
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
+    config = build_cm_config(module, tmp_path)
 
     assert config.jobs == 1
     assert config.cm_jobs == 1
@@ -1216,8 +1401,7 @@ def test_jobs_default_is_one(tmp_path):
 
 def test_metadata_jobs_default_and_hard_cap_contract(tmp_path, capsys):
     module = load_batch_module()
-    args = module.parse_args(base_args(tmp_path))
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
+    config = build_cm_config(module, tmp_path)
 
     assert module.MAX_METADATA_JOBS == 5
     assert config.metadata_jobs == module.MAX_METADATA_JOBS
@@ -1373,7 +1557,7 @@ def test_batch_skips_workload_history_without_opt_in(tmp_path, monkeypatch):
     result = module.main(base_args(tmp_path), env=auth_env())
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert "workload_history" not in payload
 
 
@@ -1397,12 +1581,12 @@ def test_batch_workload_history_opt_in_records_empty_status(tmp_path, monkeypatc
     )
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["workload_history"]["enabled"] is True
     assert payload["workload_history"]["append_status"] == "empty"
     assert payload["workload_history"]["appended_record_count"] == 0
     assert not history_path.exists()
-    summary_md = (batch_dir(tmp_path) / "batch_summary.md").read_text(encoding="utf-8")
+    summary_md = read_batch_summary_markdown(tmp_path)
     assert "## Workload History" in summary_md
     assert "- append status: empty" in summary_md
     assert str(history_path) not in summary_md
@@ -1647,7 +1831,7 @@ def test_high_jobs_require_explicit_safe_mode(tmp_path, monkeypatch):
     )
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["jobs"] == 5
 
 
@@ -1666,7 +1850,7 @@ def test_high_jobs_allows_100_in_safe_mode(tmp_path, monkeypatch):
     )
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["jobs"] == 100
 
 
@@ -1775,7 +1959,7 @@ def test_empty_discovery_with_warning_exits_success_and_writes_summary(tmp_path,
     result = module.main(base_args(tmp_path) + ["--no-min-duration-filter"], env=auth_env())
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["summaries_inspected"] == 0
     assert payload["selected_count"] == 0
     assert payload["duration_filter"] == "none"
@@ -1808,7 +1992,7 @@ def test_zero_selected_candidates_after_discovery_exits_success(tmp_path, monkey
     result = module.main(base_args(tmp_path) + ["--no-min-duration-filter"], env=auth_env())
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["summaries_inspected"] == 1
     assert payload["selected_count"] == 0
     assert payload["candidate_exclusion_count"] == 1
@@ -1818,7 +2002,7 @@ def test_zero_selected_candidates_after_discovery_exits_success(tmp_path, monkey
     }
     assert payload["discovery_failed"] is False
     assert payload["cases"] == []
-    summary_md = (batch_dir(tmp_path) / "batch_summary.md").read_text(encoding="utf-8")
+    summary_md = read_batch_summary_markdown(tmp_path)
     assert "- excluded candidates: 1" in summary_md
     assert "## Candidate Selection Breakdown" in summary_md
     assert "- excluded: not analyzable query text: 1" in summary_md
@@ -2370,27 +2554,18 @@ def test_candidate_discovery_candidate_limit_keeps_top_bounded_results(monkeypat
         lambda client, filters, page_token: module.cm_profiles.CMQueryPage(items=summaries),
     )
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "6",
-            "--triage-profile-limit",
-            "5",
-            "--min-duration-sec",
-            "0",
-            "--order",
-            "duration-desc",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "6",
+        "--triage-profile-limit",
+        "5",
+        "--min-duration-sec",
+        "0",
+        "--order",
+        "duration-desc",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2430,26 +2605,17 @@ def test_batch_recent_candidate_limit_ignores_filtered_metadata_statements(monke
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "5",
-            "--triage-profile-limit",
-            "5",
-            "--no-min-duration-filter",
-            "--query-type",
-            "QUERY",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "5",
+        "--triage-profile-limit",
+        "5",
+        "--no-min-duration-filter",
+        "--query-type",
+        "QUERY",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2490,26 +2656,17 @@ def test_batch_recent_raw_scan_cap_marks_discovery_too_broad_even_when_candidate
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "5",
-            "--triage-profile-limit",
-            "5",
-            "--no-min-duration-filter",
-            "--query-type",
-            "QUERY",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "5",
+        "--triage-profile-limit",
+        "5",
+        "--no-min-duration-filter",
+        "--query-type",
+        "QUERY",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2523,11 +2680,12 @@ def test_batch_recent_raw_scan_cap_marks_discovery_too_broad_even_when_candidate
     assert discovery.raw_summary_scan_cap_hit is True
     assert "CM summary raw scan cap was reached" in discovery.warnings[-1]
 
-    summary = module.build_summary(
+    summary = build_summary_for_test_cases(
+        module,
         config,
-        discovery,
         [],
-        discovery.warnings,
+        discovery=discovery,
+        warnings=discovery.warnings,
         discovery_seconds=1.0,
         total_seconds=1.2,
     )
@@ -2640,26 +2798,17 @@ def test_batch_recent_discovery_paginates_large_cm_summary_scan(monkeypatch, tmp
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "1500",
-            "--triage-profile-limit",
-            "1500",
-            "--no-min-duration-filter",
-            "--query-type",
-            "QUERY",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "1500",
+        "--triage-profile-limit",
+        "1500",
+        "--no-min-duration-filter",
+        "--query-type",
+        "QUERY",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2721,30 +2870,21 @@ def test_batch_recent_discovery_time_shards_after_cm_scan_limit_warning(monkeypa
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "5",
-            "--triage-profile-limit",
-            "5",
-            "--from-time",
-            "2026-05-02T00:00:00Z",
-            "--to-time",
-            "2026-05-02T02:00:00Z",
-            "--no-min-duration-filter",
-            "--query-type",
-            "QUERY",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "5",
+        "--triage-profile-limit",
+        "5",
+        "--from-time",
+        "2026-05-02T00:00:00Z",
+        "--to-time",
+        "2026-05-02T02:00:00Z",
+        "--no-min-duration-filter",
+        "--query-type",
+        "QUERY",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2766,11 +2906,12 @@ def test_batch_recent_discovery_time_shards_after_cm_scan_limit_warning(monkeypa
     assert calls[2]["from"] == "2026-05-02T00:00:00Z"
     assert calls[2]["to"] == "2026-05-02T01:00:00Z"
 
-    summary = module.build_summary(
+    summary = build_summary_for_test_cases(
+        module,
         config,
-        discovery,
         [],
-        discovery.warnings,
+        discovery=discovery,
+        warnings=discovery.warnings,
         discovery_seconds=1.0,
         total_seconds=1.2,
     )
@@ -2834,30 +2975,21 @@ def test_batch_recent_discovery_splits_scan_limited_time_shards(monkeypatch, tmp
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "5",
-            "--triage-profile-limit",
-            "5",
-            "--from-time",
-            "2026-05-02T00:00:00Z",
-            "--to-time",
-            "2026-05-02T02:00:00Z",
-            "--no-min-duration-filter",
-            "--query-type",
-            "QUERY",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "5",
+        "--triage-profile-limit",
+        "5",
+        "--from-time",
+        "2026-05-02T00:00:00Z",
+        "--to-time",
+        "2026-05-02T02:00:00Z",
+        "--no-min-duration-filter",
+        "--query-type",
+        "QUERY",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2902,26 +3034,17 @@ def test_batch_recent_discovery_stops_when_cm_window_exceeds_limit(monkeypatch, 
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "5000",
-            "--triage-profile-limit",
-            "5000",
-            "--no-min-duration-filter",
-            "--query-type",
-            "QUERY",
-        ]
+    config = build_cm_query_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "5000",
+        "--triage-profile-limit",
+        "5000",
+        "--no-min-duration-filter",
+        "--query-type",
+        "QUERY",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -2931,11 +3054,12 @@ def test_batch_recent_discovery_stops_when_cm_window_exceeds_limit(monkeypatch, 
     assert discovery.summaries_inspected == 20000
     assert discovery.scan_too_broad is True
     assert "CM summary raw scan cap was reached" in discovery.warnings[-1]
-    summary = module.build_summary(
+    summary = build_summary_for_test_cases(
+        module,
         config,
-        discovery,
         [],
-        discovery.warnings,
+        discovery=discovery,
+        warnings=discovery.warnings,
         discovery_seconds=1.0,
         total_seconds=1.2,
     )
@@ -2951,9 +3075,7 @@ def test_batch_recent_discovery_stops_when_cm_window_exceeds_limit(monkeypatch, 
 
 def test_select_limit_remains_deprecated_alias_for_triage_profile_limit(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(base_args(tmp_path) + ["--select-limit", "3"])
-
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
+    config = build_cm_config(module, tmp_path, "--select-limit", "3")
 
     assert config.triage_profile_limit == 3
 
@@ -3003,20 +3125,18 @@ def test_batch_discovery_passes_duration_filter_before_inspect_limit(monkeypatch
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        base_args(tmp_path)
-        + [
-            "--cm-inspect-limit",
-            "1000",
-            "--select-limit",
-            "200",
-            "--min-duration-sec",
-            "10.001",
-            "--pool",
-            "root.analytics",
-        ]
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "1000",
+        "--select-limit",
+        "200",
+        "--min-duration-sec",
+        "10.001",
+        "--pool",
+        "root.analytics",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -3055,19 +3175,17 @@ def test_batch_discovery_passes_pool_filter_without_duration_before_inspect_limi
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(
-        base_args(tmp_path)
-        + [
-            "--cm-inspect-limit",
-            "1000",
-            "--select-limit",
-            "200",
-            "--no-min-duration-filter",
-            "--pool",
-            "root.analytics",
-        ]
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--cm-inspect-limit",
+        "1000",
+        "--select-limit",
+        "200",
+        "--no-min-duration-filter",
+        "--pool",
+        "root.analytics",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -3079,10 +3197,13 @@ def test_batch_discovery_passes_pool_filter_without_duration_before_inspect_limi
 
 def test_batch_discovery_uses_executing_filter_for_running_only(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(
-        base_args(tmp_path) + ["--only-running", "--include-running", "--no-min-duration-filter"]
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--only-running",
+        "--include-running",
+        "--no-min-duration-filter",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
     filters = module.build_recent_filters(config)
 
     _path, params = module.cm_profiles.build_cm_query_summary_page_request(filters)
@@ -3092,10 +3213,12 @@ def test_batch_discovery_uses_executing_filter_for_running_only(tmp_path):
 
 def test_batch_discovery_omits_executing_filter_when_running_is_included(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(
-        base_args(tmp_path) + ["--include-running", "--no-min-duration-filter"]
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--include-running",
+        "--no-min-duration-filter",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
     filters = module.build_recent_filters(config)
 
     _path, params = module.cm_profiles.build_cm_query_summary_page_request(filters)
@@ -3161,8 +3284,7 @@ def test_server_side_zero_results_falls_back_to_client_side_bounded_discovery(
     monkeypatch.setattr(module, "make_cm_http_client", fake_client)
     monkeypatch.setattr(module.cm_profiles, "fetch_cm_query_summary_page", fake_fetch_page)
 
-    args = module.parse_args(base_args(tmp_path) + ["--min-duration-sec", "10"])
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
+    config = build_cm_config(module, tmp_path, "--min-duration-sec", "10")
 
     discovery = module.discover_candidates(config, env=auth_env())
 
@@ -3224,8 +3346,8 @@ def test_discover_only_does_not_collect_profiles(tmp_path, monkeypatch, capsys):
     result = module.main(base_args(tmp_path) + ["--discover-only"], env=auth_env())
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
-    markdown = (batch_dir(tmp_path) / "batch_summary.md").read_text()
+    payload = read_batch_summary(tmp_path)
+    markdown = read_batch_summary_markdown(tmp_path)
     assert payload["selected_count"] == 1
     assert_non_negative_number(payload["total_seconds"])
     assert_non_negative_number(payload["discovery_seconds"])
@@ -3316,7 +3438,7 @@ def test_selected_query_ids_are_collected_individually_and_pipeline_uses_stop_af
         and cmd[cmd.index("--metadata-failure-policy") + 1] == "continue"
         for cmd in pipeline_calls
     )
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     for case in payload["cases"]:
         assert_non_negative_number(case["cm_collect_seconds"])
         assert_non_negative_number(case["analysis_seconds"])
@@ -3396,7 +3518,7 @@ def test_batch_collects_cm_events_once_for_explicit_scan_window(tmp_path, monkey
     assert event_cmd[event_cmd.index("--max-events") + 1] == "5"
     assert "--redact-identifiers" not in event_cmd
     assert "--no-redact-hosts" not in event_cmd
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["collect_cm_events"] is True
     assert payload["cm_events_max_events"] == 5
     assert payload["cluster_context"]["status"] == "degraded_service_candidate"
@@ -3469,7 +3591,7 @@ def test_metadata_refresh_runs_after_ranking_for_top_triage_cases(tmp_path, monk
     assert len(analyzer_passes) == 2
     assert len(metadata_passes) == 1
     assert "bbbbbbbbbbbbbbbb_0000000000000002" in metadata_passes[0][0]
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["triage_profile_limit"] == 2
     assert payload["select_limit"] == 2
     assert payload["metadata_top_limit"] == 1
@@ -3487,17 +3609,15 @@ def test_cm_timeseries_refresh_parallelizes_top_cases(tmp_path, monkeypatch):
     module = load_batch_module()
     from query_doctor.recent import case_processing
 
-    args = module.parse_args(
-        base_args(tmp_path)
-        + [
-            "--collect-cm-timeseries",
-            "--cm-timeseries-top-limit",
-            "4",
-            "--cm-jobs",
-            "4",
-        ]
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--collect-cm-timeseries",
+        "--cm-timeseries-top-limit",
+        "4",
+        "--cm-jobs",
+        "4",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
     progress_path = batch_dir(tmp_path) / "progress.jsonl"
     cases = []
     for index in range(1, 5):
@@ -3574,15 +3694,13 @@ def test_cm_timeseries_refresh_timeout_emits_safe_failure(tmp_path, monkeypatch)
     module = load_batch_module()
     from query_doctor.recent import case_processing
 
-    args = module.parse_args(
-        base_args(tmp_path)
-        + [
-            "--collect-cm-timeseries",
-            "--cm-timeseries-top-limit",
-            "1",
-        ]
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--collect-cm-timeseries",
+        "--cm-timeseries-top-limit",
+        "1",
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
     wrapper_dir = batch_dir(tmp_path) / "cases" / "case-001"
     actual_case_dir = wrapper_dir / "case_001"
     actual_case_dir.mkdir(parents=True)
@@ -3774,7 +3892,7 @@ def test_metadata_mode_off_skips_metadata_refresh(tmp_path, monkeypatch):
 
     assert result == 0
     assert pipeline_modes == ["off"]
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["cases"][0]["metadata_refreshed"] is False
     assert payload["cases"][0]["metadata_status"] == "not_requested"
     events = read_jsonl(progress_path)
@@ -4212,7 +4330,7 @@ def test_jobs_two_processes_cases_with_deterministic_dirs(tmp_path, monkeypatch)
     assert all("--query-id" in cmd and "--redact" in cmd for cmd in collect_calls)
     assert all("--limit" in cmd and cmd[cmd.index("--limit") + 1] == "1" for cmd in collect_calls)
     assert all("--stop-after-analysis" in cmd for cmd in pipeline_calls)
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert payload["jobs"] == 2
     assert {case["case_dir"] for case in payload["cases"]} == {
         str(batch_dir(tmp_path) / "cases" / "case-001"),
@@ -4262,7 +4380,7 @@ def test_full_report_called_only_for_top_n_bad_cases(tmp_path, monkeypatch, caps
     assert len(analyzer_done) == 2
     assert "bbbbbbbbbbbbbbbb_0000000000000002" in command_args(report_calls[0], "pipeline")[0]
     assert "--metadata-failure-policy" not in report_calls[0]
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     cases_by_id = {case["query_id"]: case for case in payload["cases"]}
     assert_non_negative_number(cases_by_id["bbbbbbbbbbbbbbbb:0000000000000002"]["report_seconds"])
     assert cases_by_id["aaaaaaaaaaaaaaaa:0000000000000001"]["report_seconds"] is None
@@ -4533,25 +4651,12 @@ def test_case_summary_attaches_workload_fingerprint_from_analysis_json(tmp_path)
 
 def test_batch_summary_builds_in_scan_workload_groups(tmp_path):
     module = load_batch_module()
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "20",
-            "--select-limit",
-            "10",
-            "--metadata-mode",
-            "off",
-        ]
+    config = batch_summary_test_config(
+        module,
+        tmp_path,
+        cm_inspect_limit=20,
+        triage_profile_limit=10,
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
 
     def make_case(index: int, family: str, duration: float) -> object:
         case = case_result(
@@ -4633,13 +4738,11 @@ def test_batch_summary_builds_in_scan_workload_groups(tmp_path):
         make_case(10, "single", 100),
     ]
 
-    summary = module.build_summary(
+    summary = build_summary_for_test_cases(
+        module,
         config,
-        module.DiscoveryResult([], [], "client-side", None, summaries_inspected=10),
         cases,
-        [],
-        discovery_seconds=1.2,
-        total_seconds=3.4,
+        summaries_inspected=10,
     )
 
     workload_groups = summary["workload_groups"]
@@ -4661,35 +4764,14 @@ def test_batch_summary_excludes_incomplete_workload_fingerprint_from_groups(tmp_
     from query_doctor.recent.workload_fingerprint import compute_workload_fingerprint
 
     module = load_batch_module()
-    args = module.parse_args(
-        [
-            "--out",
-            str(batch_dir(tmp_path)),
-            "--cm-url",
-            "https://cm.example.net:7183",
-            "--cluster",
-            "cluster",
-            "--service",
-            "impala",
-            "--cm-inspect-limit",
-            "5",
-            "--select-limit",
-            "2",
-            "--metadata-mode",
-            "off",
-        ]
+    config = batch_summary_test_config(
+        module,
+        tmp_path,
+        triage_profile_limit=2,
     )
-    config = module.build_batch_config(args, env=auth_env(), cwd=REPO_DIR, repo_root=REPO_DIR)
     case = case_result(module, index=1, query_id="query-1", score=10, duration_sec=15)
 
-    summary = module.build_summary(
-        config,
-        module.DiscoveryResult([], [], "client-side", None, summaries_inspected=1),
-        [case],
-        [],
-        discovery_seconds=1.2,
-        total_seconds=3.4,
-    )
+    summary = build_summary_for_test_cases(module, config, [case])
 
     assert summary["workload_groups"] == {"schema_version": 1, "groups": []}
     case_summary = summary["cases"][0]
@@ -4789,89 +4871,64 @@ def test_case_primary_unknown_breakdown_uses_safe_aggregate_categories(tmp_path)
 
 def test_optimizer_rewriteability_distribution_counts_buckets():
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    safe = case_result(module, index=1, query_id="query-1", score=1)
-    safe.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="sql_draft_supported",
-        label="SQL draft eligible",
-        reason="Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="safe_material_draft",
-        rewriteability_label="Safe material draft",
+    safe = case_with_optimizer_support(
+        module,
+        index=1,
+        query_id="query-1",
+        support=safe_material_draft_support(),
     )
-    adjacent = case_result(module, index=2, query_id="query-2", score=1)
-    adjacent.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        draft_eligibility="no_recipe",
-        rewriteability_bucket="recipe_adjacent_shape",
-        rewriteability_label="Recipe-adjacent shape",
-        no_recipe_review_track="cte_no_downstream_filter_review",
-        cte_graph_shape="single_cte",
-        cte_predicate_pushdown_status="blocked_no_downstream_filter",
-        cte_boundary_reasons=("aggregate_boundary", "no_downstream_filter_for_pushdown"),
-        derived_predicate_pushdown_status="blocked_no_downstream_filter",
-        derived_boundary_reasons=("projection_not_simple",),
+    adjacent = case_with_optimizer_support(
+        module,
+        index=2,
+        query_id="query-2",
+        support=adjacent_shape_support(
+            no_recipe_review_track="cte_no_downstream_filter_review",
+            cte_graph_shape="single_cte",
+            cte_predicate_pushdown_status="blocked_no_downstream_filter",
+            cte_boundary_reasons=("aggregate_boundary", "no_downstream_filter_for_pushdown"),
+            derived_predicate_pushdown_status="blocked_no_downstream_filter",
+            derived_boundary_reasons=("projection_not_simple",),
+        ),
     )
-    adjacent_actionable = case_result(module, index=7, query_id="query-7", score=1)
-    adjacent_actionable.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        draft_eligibility="no_recipe",
-        rewriteability_bucket="recipe_adjacent_shape",
-        rewriteability_label="Recipe-adjacent shape",
-        no_recipe_review_track="cte_no_downstream_filter_review",
-        cte_graph_shape="single_cte",
-        cte_predicate_pushdown_status="candidate",
+    adjacent_actionable = case_with_optimizer_support(
+        module,
+        index=7,
+        query_id="query-7",
+        support=adjacent_shape_support(
+            no_recipe_review_track="cte_no_downstream_filter_review",
+            cte_graph_shape="single_cte",
+            cte_predicate_pushdown_status="candidate",
+        ),
     )
-    no_draft = case_result(module, index=3, query_id="query-3", score=1)
-    no_draft.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="draft_disabled",
-        label="Recipe detected; draft unavailable",
-        reason="Deterministic draft unavailable",
-        risk_mode="standard",
-        risk_reasons=(),
-        recipe_id="linear_cte_predicate_pushdown",
-        draft_eligibility="deterministic_draft_unavailable",
-        rewriteability_bucket="recipe_detected_no_draft",
-        rewriteability_label="Recipe detected, no draft",
-        draft_unavailable_reasons=("no_deterministic_draft", "no_copyable_predicate"),
-        draft_unavailable_class="predicate_not_copyable",
-        draft_unavailable_class_label="Predicate not copyable",
-        cte_pushdown_conjunct_decision_counts={"unsupported_predicate": 2},
+    no_draft = case_with_optimizer_support(
+        module,
+        index=3,
+        query_id="query-3",
+        support=no_draft_recipe_support(
+            recipe_id="linear_cte_predicate_pushdown",
+            draft_unavailable_reasons=("no_deterministic_draft", "no_copyable_predicate"),
+            draft_unavailable_class="predicate_not_copyable",
+            draft_unavailable_class_label="Predicate not copyable",
+            cte_pushdown_conjunct_decision_counts={"unsupported_predicate": 2},
+        ),
     )
-    no_draft_lineage = case_result(module, index=6, query_id="query-6", score=1)
-    no_draft_lineage.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="draft_disabled",
-        label="Recipe detected; draft unavailable",
-        reason="Deterministic draft unavailable",
-        risk_mode="standard",
-        risk_reasons=(),
-        recipe_id="cte_dag_predicate_pushdown",
-        draft_eligibility="deterministic_draft_unavailable",
-        rewriteability_bucket="recipe_detected_no_draft",
-        rewriteability_label="Recipe detected, no draft",
-        draft_unavailable_reasons=("final_cte_lineage_unavailable",),
-        draft_unavailable_class="cte_lineage_limit",
-        draft_unavailable_class_label="CTE lineage limit",
+    no_draft_lineage = case_with_optimizer_support(
+        module,
+        index=6,
+        query_id="query-6",
+        support=no_draft_recipe_support(
+            recipe_id="cte_dag_predicate_pushdown",
+            draft_unavailable_reasons=("final_cte_lineage_unavailable",),
+            draft_unavailable_class="cte_lineage_limit",
+            draft_unavailable_class_label="CTE lineage limit",
+        ),
     )
-    stats = case_result(module, index=4, query_id="query-4", score=1)
-    stats.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="not_candidate",
-        label="Not an optimization candidate",
-        reason="Stats bottleneck is primary",
-        risk_mode="unknown",
-        risk_reasons=(),
-        rewriteability_bucket="stats_likely",
-        rewriteability_label="Stats likely",
+    stats = case_with_optimizer_support(
+        module,
+        index=4,
+        query_id="query-4",
+        support=stats_likely_support(),
     )
     missing = case_result(module, index=5, query_id="query-5", score=1)
 
@@ -4964,54 +5021,42 @@ def test_optimizer_rewriteability_distribution_counts_buckets():
 
 def test_optimizer_rewriteability_distribution_counts_no_recipe_review_tracks():
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    aggregate = case_result(module, index=1, query_id="query-1", score=1)
-    aggregate.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        draft_eligibility="no_recipe",
-        rewriteability_bucket="not_rewriteable",
-        rewriteability_label="Not rewriteable",
-        no_recipe_review_track="aggregate_or_distinct_review",
+    aggregate = case_with_optimizer_support(
+        module,
+        index=1,
+        query_id="query-1",
+        support=no_recipe_not_rewriteable_support(
+            no_recipe_review_track="aggregate_or_distinct_review"
+        ),
     )
-    set_operation = case_result(module, index=2, query_id="query-2", score=1)
-    set_operation.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        draft_eligibility="no_recipe",
-        rewriteability_bucket="not_rewriteable",
-        rewriteability_label="Not rewriteable",
-        no_recipe_review_track="set_operation_research",
+    set_operation = case_with_optimizer_support(
+        module,
+        index=2,
+        query_id="query-2",
+        support=no_recipe_not_rewriteable_support(no_recipe_review_track="set_operation_research"),
     )
-    source_unavailable = case_result(module, index=3, query_id="query-3", score=1)
-    source_unavailable.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="source_unavailable",
-        label="Source unavailable",
-        reason="Source SQL is unavailable for trusted draft classification",
-        risk_mode="unknown",
-        risk_reasons=(),
-        draft_eligibility="source_unavailable",
-        rewriteability_bucket="human_review_only",
-        rewriteability_label="Human review only",
-        no_recipe_review_track="source_unavailable",
+    source_unavailable = case_with_optimizer_support(
+        module,
+        index=3,
+        query_id="query-3",
+        support=optimizer_support(
+            status="source_unavailable",
+            label="Source unavailable",
+            reason="Source SQL is unavailable for trusted draft classification",
+            risk_mode="unknown",
+            risk_reasons=(),
+            draft_eligibility="source_unavailable",
+            rewriteability_bucket="human_review_only",
+            rewriteability_label="Human review only",
+            no_recipe_review_track="source_unavailable",
+        ),
     )
-    missing_track = case_result(module, index=4, query_id="query-4", score=1)
-    missing_track.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        draft_eligibility="no_recipe",
-        rewriteability_bucket="not_rewriteable",
-        rewriteability_label="Not rewriteable",
+    missing_track = case_with_optimizer_support(
+        module,
+        index=4,
+        query_id="query-4",
+        support=no_recipe_not_rewriteable_support(),
     )
 
     distribution = module.optimizer_rewriteability_distribution(
@@ -5028,22 +5073,18 @@ def test_optimizer_rewriteability_distribution_counts_no_recipe_review_tracks():
 
 def test_optimizer_rewriteability_distribution_counts_human_review_guardrails():
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    supported = case_result(module, index=1, query_id="query-1", score=1)
-    supported.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="SQL shape exceeds current safe draft thresholds",
-        risk_mode="recommendations_only",
-        risk_reasons=(
-            "cte_body_validation_not_proven",
-            "sql_payload_too_large_for_safe_rewrite",
-            "/tmp/raw SELECT secret",
+    supported = case_with_optimizer_support(
+        module,
+        index=1,
+        query_id="query-1",
+        support=human_review_support(
+            risk_reasons=(
+                "cte_body_validation_not_proven",
+                "sql_payload_too_large_for_safe_rewrite",
+                "/tmp/raw SELECT secret",
+            ),
         ),
-        draft_eligibility="disabled_by_safety_thresholds",
-        rewriteability_bucket="human_review_only",
-        rewriteability_label="Human review only",
     )
 
     distribution = module.optimizer_rewriteability_distribution([supported])
@@ -5062,66 +5103,50 @@ def test_optimizer_rewriteability_distribution_counts_human_review_guardrails():
 
 def test_optimizer_funnel_counts_batch_rewrite_path():
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    ready = case_result(module, index=1, query_id="query-1", score=1)
-    ready.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="sql_draft_supported",
-        label="SQL draft eligible",
-        reason="Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        recipe_detected=True,
-        draft_eligibility="safe_to_attempt",
-        rewriteability_bucket="safe_material_draft",
-        rewriteability_label="Safe material draft",
+    ready = case_with_optimizer_support(
+        module,
+        index=1,
+        query_id="query-1",
+        support=safe_material_draft_support(
+            recipe_detected=True,
+            draft_eligibility="safe_to_attempt",
+        ),
     )
-    no_draft = case_result(module, index=2, query_id="query-2", score=1)
-    no_draft.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="draft_disabled",
-        label="Recipe detected; draft unavailable",
-        reason="Deterministic draft unavailable",
-        risk_mode="standard",
-        risk_reasons=(),
-        recipe_detected=True,
-        draft_eligibility="deterministic_draft_unavailable",
-        rewriteability_bucket="recipe_detected_no_draft",
-        rewriteability_label="Recipe detected, no draft",
-        draft_unavailable_reasons=("final_select_join_boundary",),
-        draft_unavailable_class="shape_boundary",
-        draft_unavailable_class_label="Shape boundary",
+    no_draft = case_with_optimizer_support(
+        module,
+        index=2,
+        query_id="query-2",
+        support=no_draft_recipe_support(
+            recipe_detected=True,
+            draft_unavailable_reasons=("final_select_join_boundary",),
+            draft_unavailable_class="shape_boundary",
+            draft_unavailable_class_label="Shape boundary",
+        ),
     )
-    adjacent = case_result(module, index=3, query_id="query-3", score=1)
-    adjacent.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="recipe_adjacent_shape",
-        rewriteability_label="Recipe-adjacent shape",
-        cte_predicate_pushdown_status="candidate",
+    adjacent = case_with_optimizer_support(
+        module,
+        index=3,
+        query_id="query-3",
+        support=adjacent_shape_support(
+            draft_eligibility="unknown",
+            cte_predicate_pushdown_status="candidate",
+        ),
     )
-    threshold = case_result(module, index=4, query_id="query-4", score=1)
-    threshold.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="SQL shape exceeds safe thresholds",
-        risk_mode="recommendations_only",
-        risk_reasons=("too_long",),
-        draft_eligibility="disabled_by_safety_thresholds",
-        rewriteability_bucket="human_review_only",
-        rewriteability_label="Human review only",
+    threshold = case_with_optimizer_support(
+        module,
+        index=4,
+        query_id="query-4",
+        support=human_review_support(
+            reason="SQL shape exceeds safe thresholds",
+            risk_reasons=("too_long",),
+        ),
     )
-    stats = case_result(module, index=5, query_id="query-5", score=1)
-    stats.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="not_candidate",
-        label="Not an optimization candidate",
-        reason="Stats bottleneck is primary",
-        risk_mode="unknown",
-        risk_reasons=(),
-        rewriteability_bucket="stats_likely",
-        rewriteability_label="Stats likely",
+    stats = case_with_optimizer_support(
+        module,
+        index=5,
+        query_id="query-5",
+        support=stats_likely_support(),
     )
     missing = case_result(module, index=6, query_id="query-6", score=1)
 
@@ -5163,91 +5188,25 @@ def test_optimizer_funnel_counts_batch_rewrite_path():
 
 def test_batch_summary_markdown_includes_no_draft_class_recipe_counts(tmp_path):
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    config = module.BatchConfig(
-        out=batch_dir(tmp_path),
-        cm_url="https://cm.example.net:7183",
-        cluster="cluster",
-        service="impala",
-        cm_username=None,
-        ca_bundle=None,
-        verify_tls=True,
-        recent_window_minutes=60,
-        cm_inspect_limit=5,
-        triage_profile_limit=4,
-        metadata_top_limit=0,
-        min_duration_sec=None,
-        max_duration_sec=None,
-        order="duration-desc",
-        include_failed=False,
-        include_running=False,
-        user=None,
-        pool=None,
-        query_type=None,
-        max_profile_bytes=1000,
-        collect_cm_events=False,
-        cm_events_max_events=50,
-        collect_cm_timeseries=False,
-        cm_metrics_profile="auto",
-        cm_timeseries_top_limit=0,
-        cm_timeseries_padding_sec=0,
-        max_timeseries_bytes=1000,
-        max_timeseries_points=100,
-        metadata_mode="off",
-        metadata_coordinator=None,
-        metadata_impala_shell=None,
-        metadata_auth="kerberos",
-        metadata_protocol="beeswax",
-        metadata_kerberos_service_name=None,
-        metadata_ssl=False,
-        metadata_ca_cert=None,
-        metadata_timeout_sec=30,
-        metadata_max_tables=None,
-        metadata_max_output_bytes=None,
-        metadata_redact=True,
-        top_reports=0,
-        jobs=1,
-        cm_jobs=1,
-        metadata_jobs=1,
-        allow_high_jobs=False,
-        discover_only=False,
-        overwrite=False,
-        config_path=None,
-        progress_jsonl=None,
-        krb5ccname=None,
-        from_time=None,
-        to_time=None,
-        only_running=False,
-    )
-    no_draft = case_result(module, index=1, query_id="query-1", score=10)
-    no_draft.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="draft_disabled",
-        label="Recipe detected; draft unavailable",
-        reason="Deterministic draft unavailable",
-        risk_mode="standard",
-        risk_reasons=(),
-        recipe_id="cte_dag_predicate_pushdown",
-        draft_eligibility="deterministic_draft_unavailable",
-        rewriteability_bucket="recipe_detected_no_draft",
-        rewriteability_label="Recipe detected, no draft",
-        draft_unavailable_reasons=("final_cte_lineage_unavailable",),
-        draft_unavailable_class="cte_lineage_limit",
-        draft_unavailable_class_label="CTE lineage limit",
+    config = batch_summary_test_config(module, tmp_path)
+    no_draft = case_with_optimizer_support(
+        module,
+        index=1,
+        query_id="query-1",
+        score=10,
+        support=no_draft_recipe_support(
+            recipe_id="cte_dag_predicate_pushdown",
+            draft_unavailable_reasons=("final_cte_lineage_unavailable",),
+            draft_unavailable_class="cte_lineage_limit",
+            draft_unavailable_class_label="CTE lineage limit",
+        ),
     )
 
-    summary = module.build_summary(
-        config,
-        module.DiscoveryResult([], [], "client-side", None, summaries_inspected=1),
-        [no_draft],
-        [],
-        discovery_seconds=1.2,
-        total_seconds=3.4,
-    )
+    summary = build_summary_for_test_cases(module, config, [no_draft])
 
-    batch_dir(tmp_path).mkdir()
-    module.write_batch_outputs(batch_dir(tmp_path), summary)
-    summary_md = (batch_dir(tmp_path) / "batch_summary.md").read_text(encoding="utf-8")
+    write_batch_summary_test_outputs(module, tmp_path, summary)
+    summary_md = read_batch_summary_markdown(tmp_path)
     assert "- no-draft actionability: structural_boundary=1" in summary_md
     assert "- no-draft classes: cte_lineage_limit=1" in summary_md
     assert (
@@ -5261,93 +5220,27 @@ def test_batch_summary_markdown_includes_no_draft_class_recipe_counts(tmp_path):
 
 def test_batch_summary_markdown_includes_adjacent_shape_breakdown(tmp_path):
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    config = module.BatchConfig(
-        out=batch_dir(tmp_path),
-        cm_url="https://cm.example.net:7183",
-        cluster="cluster",
-        service="impala",
-        cm_username=None,
-        ca_bundle=None,
-        verify_tls=True,
-        recent_window_minutes=60,
-        cm_inspect_limit=5,
-        triage_profile_limit=4,
-        metadata_top_limit=0,
-        min_duration_sec=None,
-        max_duration_sec=None,
-        order="duration-desc",
-        include_failed=False,
-        include_running=False,
-        user=None,
-        pool=None,
-        query_type=None,
-        max_profile_bytes=1000,
-        collect_cm_events=False,
-        cm_events_max_events=50,
-        collect_cm_timeseries=False,
-        cm_metrics_profile="auto",
-        cm_timeseries_top_limit=0,
-        cm_timeseries_padding_sec=0,
-        max_timeseries_bytes=1000,
-        max_timeseries_points=100,
-        metadata_mode="off",
-        metadata_coordinator=None,
-        metadata_impala_shell=None,
-        metadata_auth="kerberos",
-        metadata_protocol="beeswax",
-        metadata_kerberos_service_name=None,
-        metadata_ssl=False,
-        metadata_ca_cert=None,
-        metadata_timeout_sec=30,
-        metadata_max_tables=None,
-        metadata_max_output_bytes=None,
-        metadata_redact=True,
-        top_reports=0,
-        jobs=1,
-        cm_jobs=1,
-        metadata_jobs=1,
-        allow_high_jobs=False,
-        discover_only=False,
-        overwrite=False,
-        config_path=None,
-        progress_jsonl=None,
-        krb5ccname=None,
-        from_time=None,
-        to_time=None,
-        only_running=False,
-    )
-    adjacent = case_result(module, index=1, query_id="query-1", score=10)
-    adjacent.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        draft_eligibility="no_recipe",
-        rewriteability_bucket="recipe_adjacent_shape",
-        rewriteability_label="Recipe-adjacent shape",
-        no_recipe_review_track="cte_no_downstream_filter_review",
-        cte_graph_shape="single_cte",
-        cte_predicate_pushdown_status="blocked_no_downstream_filter",
-        cte_boundary_reasons=("aggregate_boundary", "no_downstream_filter_for_pushdown"),
-        derived_predicate_pushdown_status="blocked_no_downstream_filter",
-        derived_boundary_reasons=("projection_not_simple",),
+    config = batch_summary_test_config(module, tmp_path)
+    adjacent = case_with_optimizer_support(
+        module,
+        index=1,
+        query_id="query-1",
+        score=10,
+        support=adjacent_shape_support(
+            no_recipe_review_track="cte_no_downstream_filter_review",
+            cte_graph_shape="single_cte",
+            cte_predicate_pushdown_status="blocked_no_downstream_filter",
+            cte_boundary_reasons=("aggregate_boundary", "no_downstream_filter_for_pushdown"),
+            derived_predicate_pushdown_status="blocked_no_downstream_filter",
+            derived_boundary_reasons=("projection_not_simple",),
+        ),
     )
 
-    summary = module.build_summary(
-        config,
-        module.DiscoveryResult([], [], "client-side", None, summaries_inspected=1),
-        [adjacent],
-        [],
-        discovery_seconds=1.2,
-        total_seconds=3.4,
-    )
+    summary = build_summary_for_test_cases(module, config, [adjacent])
 
-    batch_dir(tmp_path).mkdir()
-    module.write_batch_outputs(batch_dir(tmp_path), summary)
-    summary_md = (batch_dir(tmp_path) / "batch_summary.md").read_text(encoding="utf-8")
+    write_batch_summary_test_outputs(module, tmp_path, summary)
+    summary_md = read_batch_summary_markdown(tmp_path)
     assert "- adjacent CTE graphs: single_cte=1" in summary_md
     assert "- adjacent actionability: structural_boundary=1" in summary_md
     assert "- adjacent CTE predicate status: blocked_no_downstream_filter=1" in summary_md
@@ -5361,63 +5254,8 @@ def test_batch_summary_markdown_includes_adjacent_shape_breakdown(tmp_path):
 
 def test_batch_summary_includes_primary_bottleneck_distribution(tmp_path):
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
-    config = module.BatchConfig(
-        out=batch_dir(tmp_path),
-        cm_url="https://cm.example.net:7183",
-        cluster="cluster",
-        service="impala",
-        cm_username=None,
-        ca_bundle=None,
-        verify_tls=True,
-        recent_window_minutes=60,
-        cm_inspect_limit=5,
-        triage_profile_limit=4,
-        metadata_top_limit=0,
-        min_duration_sec=None,
-        max_duration_sec=None,
-        order="duration-desc",
-        include_failed=False,
-        include_running=False,
-        user=None,
-        pool=None,
-        query_type=None,
-        max_profile_bytes=1000,
-        collect_cm_events=False,
-        cm_events_max_events=50,
-        collect_cm_timeseries=False,
-        cm_metrics_profile="auto",
-        cm_timeseries_top_limit=0,
-        cm_timeseries_padding_sec=0,
-        max_timeseries_bytes=1000,
-        max_timeseries_points=100,
-        metadata_mode="off",
-        metadata_coordinator=None,
-        metadata_impala_shell=None,
-        metadata_auth="kerberos",
-        metadata_protocol="beeswax",
-        metadata_kerberos_service_name=None,
-        metadata_ssl=False,
-        metadata_ca_cert=None,
-        metadata_timeout_sec=30,
-        metadata_max_tables=None,
-        metadata_max_output_bytes=None,
-        metadata_redact=True,
-        top_reports=0,
-        jobs=1,
-        cm_jobs=1,
-        metadata_jobs=1,
-        allow_high_jobs=False,
-        discover_only=False,
-        overwrite=False,
-        config_path=None,
-        progress_jsonl=None,
-        krb5ccname=None,
-        from_time=None,
-        to_time=None,
-        only_running=False,
-    )
+    config = batch_summary_test_config(module, tmp_path)
     stats = case_result(module, index=1, query_id="query-1", score=10)
     stats.case_primary_bottleneck = {"label": "stats", "confidence": "high", "reasons": []}
     stats.scoring_evidence_source = "analysis_json"
@@ -5425,28 +5263,24 @@ def test_batch_summary_includes_primary_bottleneck_distribution(tmp_path):
     unknown.case_primary_bottleneck = {"label": "unknown", "confidence": "low", "reasons": []}
     unknown.scoring_evidence_source = "markdown_fallback"
     unknown.scoring_fallback_reason = "analysis_json_missing"
-    human_review = case_result(module, index=3, query_id="query-3", score=4)
-    human_review.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="SQL shape exceeds current safe draft thresholds",
-        risk_mode="recommendations_only",
-        risk_reasons=(
-            "cte_body_validation_not_proven",
-            "sql_payload_too_large_for_safe_rewrite",
+    human_review = case_with_optimizer_support(
+        module,
+        index=3,
+        query_id="query-3",
+        score=4,
+        support=human_review_support(
+            risk_reasons=(
+                "cte_body_validation_not_proven",
+                "sql_payload_too_large_for_safe_rewrite",
+            ),
         ),
-        draft_eligibility="disabled_by_safety_thresholds",
-        rewriteability_bucket="human_review_only",
-        rewriteability_label="Human review only",
     )
 
-    summary = module.build_summary(
+    summary = build_summary_for_test_cases(
+        module,
         config,
-        module.DiscoveryResult([], [], "client-side", None, summaries_inspected=3),
         [stats, unknown, human_review],
-        [],
-        discovery_seconds=1.2,
-        total_seconds=3.4,
+        summaries_inspected=3,
     )
 
     distribution = summary["case_primary_bottleneck_distribution"]
@@ -5466,9 +5300,8 @@ def test_batch_summary_includes_primary_bottleneck_distribution(tmp_path):
     optimizer_funnel = summary["optimizer_funnel"]
     assert optimizer_funnel["optimization_candidate_cases"] == 1
     assert optimizer_funnel["draft_ready_cases"] == 0
-    batch_dir(tmp_path).mkdir()
-    module.write_batch_outputs(batch_dir(tmp_path), summary)
-    summary_md = (batch_dir(tmp_path) / "batch_summary.md").read_text(encoding="utf-8")
+    write_batch_summary_test_outputs(module, tmp_path, summary)
+    summary_md = read_batch_summary_markdown(tmp_path)
     funnel_json = json.loads((batch_dir(tmp_path) / "optimizer_funnel.json").read_text())
     assert funnel_json == optimizer_funnel
     assert "## Primary Bottleneck Distribution" in summary_md
@@ -5747,7 +5580,6 @@ def test_case_summary_includes_profile_admission_source_locators():
 
 def test_batch_summary_includes_source_coordinates_for_safe_and_owner_raw(tmp_path):
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
     case = case_result(
         module, index=1, query_id="aaaaaaaaaaaaaaaa:0000000000000001", score=0, duration_sec=120
@@ -5792,14 +5624,9 @@ def test_batch_summary_includes_source_coordinates_for_safe_and_owner_raw(tmp_pa
         counter_signals=(),
         suggested_review_areas=("join keys and join cardinality",),
     )
-    case.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
+    case.optimizer_rewrite_support = adjacent_shape_support(
         reason="Manual review",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="recipe_adjacent_shape",
-        rewriteability_label="Recipe-adjacent shape",
+        draft_eligibility="unknown",
         cte_count=1,
         cte_predicate_origin_status="final_select_filter",
     )
@@ -5851,27 +5678,27 @@ def test_batch_summary_includes_source_coordinates_for_safe_and_owner_raw(tmp_pa
     )
     discovery = module.DiscoveryResult([], [], "client-side", None, summaries_inspected=1)
 
-    safe_summary = module.build_summary(
+    safe_summary = build_summary_for_test_cases(
+        module,
         safe_config,
-        discovery,
         [case],
-        [],
+        discovery=discovery,
         discovery_seconds=1.0,
         total_seconds=2.0,
     )
-    owner_summary = module.build_summary(
+    owner_summary = build_summary_for_test_cases(
+        module,
         owner_config,
-        discovery,
         [case],
-        [],
+        discovery=discovery,
         discovery_seconds=1.0,
         total_seconds=2.0,
     )
-    cm_owner_summary = module.build_summary(
+    cm_owner_summary = build_summary_for_test_cases(
+        module,
         cm_owner_config,
-        discovery,
         [case],
-        [],
+        discovery=discovery,
         discovery_seconds=1.0,
         total_seconds=2.0,
     )
@@ -6298,7 +6125,6 @@ def test_query_optimization_ranking_is_separate_from_triage_score():
 
 def test_query_optimization_ranking_prefers_draftable_rewriteability():
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
     guidance = case_result(module, index=1, query_id="guidance-only", score=3, duration_sec=500)
     guidance.analysis_status = "ok"
@@ -6311,15 +6137,7 @@ def test_query_optimization_ranking_prefers_draftable_rewriteability():
         counter_signals=(),
         suggested_review_areas=("pre-aggregation before exchange",),
     )
-    guidance.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="human_review_only",
-        rewriteability_label="Human review only",
-    )
+    guidance.optimizer_rewrite_support = guidance_human_review_support()
     draftable = case_result(module, index=2, query_id="draftable", score=2, duration_sec=100)
     draftable.analysis_status = "ok"
     draftable.query_optimization_candidate = module.QueryOptimizationCandidateScore(
@@ -6331,15 +6149,7 @@ def test_query_optimization_ranking_prefers_draftable_rewriteability():
         counter_signals=(),
         suggested_review_areas=("filter placement",),
     )
-    draftable.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="sql_draft_supported",
-        label="SQL draft eligible",
-        reason="Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="safe_material_draft",
-        rewriteability_label="Safe material draft",
-    )
+    draftable.optimizer_rewrite_support = safe_material_draft_support()
 
     ranked = module.rank_cases_for_query_optimization([guidance, draftable])
 
@@ -6729,11 +6539,11 @@ def test_top_metadata_refresh_does_not_spend_limit_on_placeholder_only_tables(
     assert placeholder.metadata_refreshed is False
     assert placeholder.metadata_status == "not_requested"
 
-    summary = module.build_summary(
+    summary = build_summary_for_test_cases(
+        module,
         config,
-        module.DiscoveryResult([], [], "none", None),
         cases,
-        [],
+        discovery=module.DiscoveryResult([], [], "none", None),
         discovery_seconds=0.0,
         total_seconds=0.0,
     )
@@ -6819,7 +6629,6 @@ def test_metadata_subprocess_env_carries_source_tables_without_mutating_base_env
 
 def test_metadata_refresh_optimization_candidates_prefer_draftable_rewriteability():
     module = load_batch_module()
-    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
 
     human_review = case_result(module, index=1, query_id="human-review", score=4, duration_sec=900)
     human_review.query_optimization_candidate = module.QueryOptimizationCandidateScore(
@@ -6831,15 +6640,7 @@ def test_metadata_refresh_optimization_candidates_prefer_draftable_rewriteabilit
         counter_signals=("metadata missing",),
         suggested_review_areas=("pre-aggregation before exchange",),
     )
-    human_review.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="guidance_only",
-        label="Guidance only",
-        reason="No Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="human_review_only",
-        rewriteability_label="Human review only",
-    )
+    human_review.optimizer_rewrite_support = guidance_human_review_support()
     draftable = case_result(module, index=2, query_id="draftable", score=3, duration_sec=300)
     draftable.query_optimization_candidate = module.QueryOptimizationCandidateScore(
         score=70,
@@ -6850,15 +6651,7 @@ def test_metadata_refresh_optimization_candidates_prefer_draftable_rewriteabilit
         counter_signals=("metadata missing",),
         suggested_review_areas=("filter placement",),
     )
-    draftable.optimizer_rewrite_support = OptimizerRewriteSupport(
-        status="sql_draft_supported",
-        label="SQL draft eligible",
-        reason="Python-owned recipe is available",
-        risk_mode="standard",
-        risk_reasons=(),
-        rewriteability_bucket="safe_material_draft",
-        rewriteability_label="Safe material draft",
-    )
+    draftable.optimizer_rewrite_support = safe_material_draft_support()
     cases = [human_review, draftable]
     for case in cases:
         case.analysis_status = "ok"
@@ -7651,19 +7444,14 @@ def test_collection_failure_recorded_and_batch_continues(tmp_path, monkeypatch):
         candidate(module, "bbbbbbbbbbbbbbbb:0000000000000002", 62000),
     ]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
 
     def fake_run(cmd, cwd, env):
         if command_uses_role(cmd, "collect_cm"):
-            query_id = cmd[cmd.index("--query-id") + 1]
+            query_id = command_query_id(cmd)
             if query_id.startswith("aaaa"):
                 return completed(1, stderr="HTTP 500 Server Error")
-            out = Path(cmd[cmd.index("--out") + 1])
-            write_case(out / query_id.replace(":", "_"), healthy_facts())
+            write_collected_case_from_command(cmd)
         return completed()
 
     monkeypatch.setattr(module, "run_subprocess", fake_run)
@@ -7671,7 +7459,7 @@ def test_collection_failure_recorded_and_batch_continues(tmp_path, monkeypatch):
     result = module.main(base_args(tmp_path) + ["--jobs", "2"], env=auth_env())
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     statuses = {case["query_id"]: case["collection_status"] for case in payload["cases"]}
     assert statuses["aaaaaaaaaaaaaaaa:0000000000000001"] == "failed"
     assert statuses["bbbbbbbbbbbbbbbb:0000000000000002"] == "ok"
@@ -7696,16 +7484,12 @@ def test_cm_http_5xx_collection_circuit_breaker_stops_new_profile_jobs(
         candidate(module, f"{index:016x}:0000000000000001", 61000 + index) for index in range(1, 13)
     ]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
     collected_query_ids = []
 
     def fake_run(cmd, cwd, env):
         if command_uses_role(cmd, "collect_cm"):
-            collected_query_ids.append(cmd[cmd.index("--query-id") + 1])
+            collected_query_ids.append(command_query_id(cmd))
             return completed(1, stderr="HTTP 500 Server Error raw-subprocess-secret")
         return completed()
 
@@ -7725,7 +7509,7 @@ def test_cm_http_5xx_collection_circuit_breaker_stops_new_profile_jobs(
     )
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert any(
         "Cloudera Manager profile collection was stopped after repeated HTTP 5xx responses"
         in warning
@@ -7753,16 +7537,12 @@ def test_cm_http_5xx_collection_circuit_breaker_does_not_stop_direct_impala(tmp_
         candidate(module, f"{index:016x}:0000000000000001", 61000 + index) for index in range(1, 8)
     ]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
     collected_query_ids = []
 
     def fake_run(cmd, cwd, env):
         if command_uses_role(cmd, "collect_impala_profile"):
-            collected_query_ids.append(cmd[cmd.index("--query-id") + 1])
+            collected_query_ids.append(command_query_id(cmd))
             return completed(1, stderr="HTTP 500 Server Error")
         return completed()
 
@@ -7784,7 +7564,7 @@ def test_cm_http_5xx_collection_circuit_breaker_does_not_stop_direct_impala(tmp_
     )
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     assert len(set(collected_query_ids)) == len(selected)
     assert not any("repeated HTTP 5xx" in warning for warning in payload["warnings"])
     assert {case["collection_status"] for case in payload["cases"]} == {"failed"}
@@ -7796,11 +7576,7 @@ def test_collection_transient_failure_retried_before_analysis(tmp_path, monkeypa
         candidate(module, "aaaaaaaaaaaaaaaa:0000000000000001", 61000),
     ]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
 
     attempts = 0
 
@@ -7810,9 +7586,7 @@ def test_collection_transient_failure_retried_before_analysis(tmp_path, monkeypa
             attempts += 1
             if attempts == 1:
                 return completed(1, stderr="temporary collector failure")
-            query_id = cmd[cmd.index("--query-id") + 1]
-            out = Path(cmd[cmd.index("--out") + 1])
-            write_case(out / query_id.replace(":", "_"), healthy_facts())
+            write_collected_case_from_command(cmd)
         return completed()
 
     monkeypatch.setattr(module, "run_subprocess", fake_run)
@@ -7821,7 +7595,7 @@ def test_collection_transient_failure_retried_before_analysis(tmp_path, monkeypa
 
     assert result == 0
     assert attempts == 2
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     [case] = payload["cases"]
     assert case["collection_status"] == "ok"
     assert case["analysis_status"] == "ok"
@@ -7832,11 +7606,7 @@ def test_collection_client_error_is_not_retried(tmp_path, monkeypatch):
     module = load_batch_module()
     selected = [candidate(module, "aaaaaaaaaaaaaaaa:0000000000000001", 61000)]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
 
     attempts = 0
 
@@ -7853,7 +7623,7 @@ def test_collection_client_error_is_not_retried(tmp_path, monkeypatch):
 
     assert result == 0
     assert attempts == 1
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     [case] = payload["cases"]
     assert case["collection_status"] == "failed"
     assert case["failure_category"] == "profile_collection_failed"
@@ -7867,19 +7637,14 @@ def test_collection_timeout_recorded_safely_and_batch_continues(tmp_path, monkey
         candidate(module, "bbbbbbbbbbbbbbbb:0000000000000002", 62000),
     ]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
 
     def fake_run(cmd, cwd, env):
         if command_uses_role(cmd, "collect_cm"):
-            query_id = cmd[cmd.index("--query-id") + 1]
+            query_id = command_query_id(cmd)
             if query_id.startswith("aaaa"):
                 return completed(module.batch_case_processing.SUBPROCESS_TIMEOUT_RETURN_CODE)
-            out = Path(cmd[cmd.index("--out") + 1])
-            write_case(out / query_id.replace(":", "_"), healthy_facts())
+            write_collected_case_from_command(cmd)
         return completed()
 
     monkeypatch.setattr(module, "run_subprocess", fake_run)
@@ -7887,7 +7652,7 @@ def test_collection_timeout_recorded_safely_and_batch_continues(tmp_path, monkey
     result = module.main(base_args(tmp_path) + ["--jobs", "2"], env=auth_env())
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     timed_out = next(
         case for case in payload["cases"] if case["query_id"] == "aaaaaaaaaaaaaaaa:0000000000000001"
     )
@@ -7908,17 +7673,11 @@ def test_metadata_failure_recorded_and_batch_continues(tmp_path, monkeypatch):
         candidate(module, "bbbbbbbbbbbbbbbb:0000000000000002", 62000),
     ]
 
-    monkeypatch.setattr(
-        module,
-        "discover_candidates",
-        lambda config, env: module.DiscoveryResult(selected, [], "client-side", None),
-    )
+    patch_discovered_candidates(module, monkeypatch, selected)
 
     def fake_run(cmd, cwd, env):
         if command_uses_role(cmd, "collect_cm"):
-            query_id = cmd[cmd.index("--query-id") + 1]
-            out = Path(cmd[cmd.index("--out") + 1])
-            write_case(out / query_id.replace(":", "_"), healthy_facts())
+            write_collected_case_from_command(cmd)
         elif command_uses_role(cmd, "pipeline") and "--stop-after-analysis" in cmd:
             assert cmd[cmd.index("--metadata-failure-policy") + 1] == "continue"
             metadata_mode = cmd[cmd.index("--metadata-mode") + 1]
@@ -7958,7 +7717,7 @@ def test_metadata_failure_recorded_and_batch_continues(tmp_path, monkeypatch):
     )
 
     assert result == 0
-    payload = json.loads((batch_dir(tmp_path) / "batch_summary.json").read_text())
+    payload = read_batch_summary(tmp_path)
     failed = [
         case
         for case in payload["cases"]
