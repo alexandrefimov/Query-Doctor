@@ -1,4 +1,4 @@
-"""Trino Beta retained-list Recent scan for the local web UI."""
+"""Trino retained-list Recent scan for the local web UI."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from query_doctor.web.models import (
     BatchRunConfig,
     WebError,
     WebSettings,
+    WebTrinoCaseArtifacts,
     WebTrinoRecentScanResult,
     WebTrinoRecentScanRow,
 )
@@ -25,17 +26,16 @@ from query_doctor.web.trino_beta_query import (
     trino_beta_query_configured,
     trino_engine_contract_web_error,
     trino_local_reference_error,
+    trino_mode_display_label,
     trino_not_configured_error,
     trino_query_list_fetcher,
+    trino_result_support_mode,
+    trino_workflow_label,
     run_trino_query_id_analysis,
 )
 from query_doctor.web.error_contract import web_error_info_from_error
 
 
-TRINO_RECENT_UNSUPPORTED_FILTER_MESSAGE = (
-    "Trino Beta Recent does not support User, Pool, or query-type filters. "
-    "Use a bounded source-side list or One Query ID for a specific query."
-)
 TRINO_RECENT_WORKFLOW = "Trino Beta Recent"
 CancelCheck = Callable[[], bool]
 ProgressFunc = Callable[[int], None]
@@ -49,30 +49,33 @@ def validate_trino_recent_config_for_settings(
     config: BatchRunConfig,
     settings: WebSettings,
 ) -> None:
+    mode_label = trino_mode_display_label(settings)
+    workflow = trino_workflow_label(settings, TRINO_RECENT_WORKFLOW)
     if config.only_running or config.include_running:
         raise WebError(
-            "Trino Beta Running scans are not supported. Use Trino Beta Finished queries "
+            f"{mode_label} Running scans are not supported. Use {mode_label} Finished queries "
             "or One Query ID.",
-            title="Trino Beta Running is unavailable",
+            title=f"{mode_label} Running is unavailable",
             reason_code="trino_beta.running_unsupported",
             stage="Checking Trino Recent request",
-            next_step="Switch to Trino Beta Finished queries or One Query ID.",
+            next_step=f"Switch to {mode_label} Finished queries or One Query ID.",
         )
     if not trino_beta_recent_configured(settings):
-        raise trino_not_configured_error(TRINO_RECENT_WORKFLOW)
+        raise trino_not_configured_error(workflow)
     if config.metadata_top_limit > 0:
         raise WebError(
-            "Trino Beta Recent does not support metadata collection. Disable metadata for "
+            f"{mode_label} Recent does not support metadata collection. Disable metadata for "
             "this scan.",
-            title="Trino Beta metadata is unavailable",
+            title=f"{mode_label} metadata is unavailable",
             reason_code="trino_beta.metadata_unsupported",
             stage="Checking Trino Recent request",
-            next_step="Disable metadata collection for Trino Beta Recent and retry.",
+            next_step=f"Disable metadata collection for {mode_label} Recent and retry.",
         )
     if config.user or config.pool or config.query_type:
         raise WebError(
-            TRINO_RECENT_UNSUPPORTED_FILTER_MESSAGE,
-            title="Trino Beta Recent filters rejected",
+            f"{mode_label} Recent does not support User, Pool, or query-type filters. "
+            "Use a bounded source-side list or One Query ID for a specific query.",
+            title=f"{mode_label} Recent filters rejected",
             reason_code="trino_beta.recent_filter_unsupported",
             stage="Checking Trino Recent request",
             next_step="Remove User, Pool, and query-type filters, then retry.",
@@ -89,8 +92,9 @@ def run_trino_recent_scan(
     validate_trino_recent_config_for_settings(config, settings)
     source_contract = settings.trino_query_list_source_contract
     coordinator_url = settings.trino_coordinator_url
+    workflow = trino_workflow_label(settings, TRINO_RECENT_WORKFLOW)
     if source_contract is None or coordinator_url is None:
-        raise trino_not_configured_error(TRINO_RECENT_WORKFLOW)
+        raise trino_not_configured_error(workflow)
     update_progress(progress, 1)
     stop_if_cancelled(cancel_check)
     try:
@@ -102,11 +106,11 @@ def run_trino_recent_scan(
             fetcher=trino_query_list_fetcher(settings),
         )
     except OSError as exc:
-        raise trino_local_reference_error(TRINO_RECENT_WORKFLOW) from exc
+        raise trino_local_reference_error(workflow) from exc
     except EngineFactContractError as exc:
         raise trino_engine_contract_web_error(
             exc,
-            workflow=TRINO_RECENT_WORKFLOW,
+            workflow=workflow,
             stage="Reading bounded query list",
         ) from exc
 
@@ -129,15 +133,22 @@ def run_trino_recent_scan(
                 query_settings,
                 progress=None,
                 cancel_check=cancel_check,
+                artifact_workflow="recent_selected_query",
             )
-            rows.append(row_from_diagnosis(record.query_id, analysis.diagnosis))
+            rows.append(
+                row_from_diagnosis(
+                    record.query_id,
+                    analysis.diagnosis,
+                    case_artifacts=analysis.case_artifacts,
+                )
+            )
             diagnosed += 1
         except WebError as exc:
             error_info = web_error_info_from_error(
                 exc,
                 default_reason_code="trino_beta.query_diagnosis_failed",
                 stage="Diagnosing selected QueryInfo",
-                default_next_step="Retry the row as One Query ID after checking local Trino Beta access.",
+                default_next_step=f"Retry the row as One Query ID after checking local {workflow} access.",
             )
             rows.append(
                 WebTrinoRecentScanRow(
@@ -158,6 +169,7 @@ def run_trino_recent_scan(
         query_bound=result.source_contract.max_query_ids,
         cluster_key=config.cluster_key,
         warnings=tuple(warnings),
+        support_mode=trino_result_support_mode(settings),
     )
 
 
@@ -244,7 +256,12 @@ def order_trino_recent_records(
     return [record for _index, record in indexed]
 
 
-def row_from_diagnosis(query_id: str, diagnosis: dict[str, object]) -> WebTrinoRecentScanRow:
+def row_from_diagnosis(
+    query_id: str,
+    diagnosis: dict[str, object],
+    *,
+    case_artifacts: WebTrinoCaseArtifacts | None = None,
+) -> WebTrinoRecentScanRow:
     diagnostic_lane = diagnosis.get("diagnostic_lane")
     supported_count = 0
     if isinstance(diagnostic_lane, dict):
@@ -267,6 +284,7 @@ def row_from_diagnosis(query_id: str, diagnosis: dict[str, object]) -> WebTrinoR
         parser_coverage=str(diagnosis.get("parser_coverage") or "unknown"),
         supported_attention_area_count=supported_count,
         attention_areas=tuple(attention_areas[:3]),
+        case_artifacts=case_artifacts,
     )
 
 

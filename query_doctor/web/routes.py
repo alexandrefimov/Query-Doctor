@@ -46,6 +46,17 @@ from query_doctor.web.owner_raw_source import (
 )
 from query_doctor.web.query_analysis import run_query_id_analysis, validate_query_id
 from query_doctor.web.request_handlers import handle_optimizer_request, start_analyze_job
+from query_doctor.web.trino_details import render_trino_detail_for_request
+from query_doctor.web.trino_guidance import (
+    load_trino_optimizer_guidance,
+    render_trino_optimizer_guidance_error_page,
+    render_trino_optimizer_guidance_for_request,
+)
+from query_doctor.web.trino_report import (
+    load_trino_python_report,
+    render_trino_python_report_error_page,
+    render_trino_python_report_for_request,
+)
 from query_doctor.web.specific_query_actions import (
     handle_specific_query_external_rewrite_validation,
     start_specific_query_llm_actions_job,
@@ -194,6 +205,9 @@ def route_get_request(
     specific_detail = route_specific_detail_get(parsed.path, settings, store)
     if specific_detail is not None:
         return specific_detail
+    trino_detail = route_trino_detail_get(parsed.path, parsed.query, settings)
+    if trino_detail is not None:
+        return trino_detail
     if parsed.path in {"/query", "/run"}:
         return WebRouteResponse.html(200, render_query_page(settings))
     if parsed.path in {"/optimizer", "/query-optimizer"}:
@@ -449,6 +463,46 @@ def route_specific_detail_get(
         )
     else:
         status, body = render_specific_query_detail_for_request(settings, query_id, store)
+    return WebRouteResponse.html(status, body)
+
+
+def route_trino_detail_get(
+    path: str,
+    query_string: str,
+    settings: WebSettings,
+) -> WebRouteResponse | None:
+    match = re.fullmatch(r"/trino/details/(?P<case_id>[^/]+)", path)
+    if not match:
+        return None
+    case_id = unquote(match.group("case_id"))
+    query = parse_qs(query_string, keep_blank_values=True)
+    if first_form_value(query, "report") == "python":
+        if first_form_value(query, "download") == "1":
+            try:
+                report = load_trino_python_report(settings, case_id)
+            except WebError as exc:
+                status = 404 if exc.reason_code == "trino.details_not_found" else 400
+                return WebRouteResponse.html(
+                    status,
+                    render_trino_python_report_error_page(settings, exc),
+                )
+            return WebRouteResponse.markdown_download(report.download_filename, report.text)
+        status, body = render_trino_python_report_for_request(settings, case_id)
+        return WebRouteResponse.html(status, body)
+    if first_form_value(query, "guidance") == "optimizer":
+        if first_form_value(query, "download") == "1":
+            try:
+                guidance = load_trino_optimizer_guidance(settings, case_id)
+            except WebError as exc:
+                status = 404 if exc.reason_code == "trino.details_not_found" else 400
+                return WebRouteResponse.html(
+                    status,
+                    render_trino_optimizer_guidance_error_page(settings, exc),
+                )
+            return WebRouteResponse.markdown_download(guidance.download_filename, guidance.text)
+        status, body = render_trino_optimizer_guidance_for_request(settings, case_id)
+        return WebRouteResponse.html(status, body)
+    status, body = render_trino_detail_for_request(settings, case_id)
     return WebRouteResponse.html(status, body)
 
 

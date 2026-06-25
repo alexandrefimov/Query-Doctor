@@ -1,4 +1,4 @@
-"""Trino Beta one-query diagnosis for the local web UI."""
+"""Trino one-query diagnosis for the local web UI."""
 
 from __future__ import annotations
 
@@ -23,7 +23,13 @@ from query_doctor.trino.coordinator_query_list_target import (
 )
 from query_doctor.trino.diagnosis import build_trino_compact_diagnosis_from_boundary
 from query_doctor.trino.kerberos_spnego import TrinoKerberosSpnegoFetcher
+from query_doctor.trino.support_mode import (
+    TRINO_SUPPORT_MODE_OFF,
+    trino_support_mode_enabled,
+    trino_support_mode_is_production,
+)
 from query_doctor.web.models import WebError, WebSettings, WebTrinoQueryAnalysisResult
+from query_doctor.web.trino_case_artifacts import materialize_trino_web_case_artifacts
 
 
 ENGINE_IMPALA = "impala"
@@ -53,9 +59,36 @@ def validate_trino_query_id(query_id: str) -> str:
 
 def trino_beta_query_configured(settings: WebSettings) -> bool:
     return bool(
-        settings.trino_beta_enabled
+        trino_mode_enabled(settings)
         and settings.trino_coordinator_url
         and settings.trino_query_info_source_contract
+    )
+
+
+def trino_mode_enabled(settings: WebSettings) -> bool:
+    mode = getattr(settings, "trino_support_mode", TRINO_SUPPORT_MODE_OFF)
+    return trino_support_mode_enabled(mode) or bool(getattr(settings, "trino_beta_enabled", False))
+
+
+def trino_workflow_label(settings: WebSettings, beta_label: str) -> str:
+    if trino_support_mode_is_production(getattr(settings, "trino_support_mode", "")):
+        return beta_label.replace("Trino Beta", "Trino")
+    return beta_label
+
+
+def trino_mode_display_label(settings: WebSettings) -> str:
+    return (
+        "Trino"
+        if trino_support_mode_is_production(getattr(settings, "trino_support_mode", ""))
+        else "Trino Beta"
+    )
+
+
+def trino_result_support_mode(settings: WebSettings) -> str:
+    return (
+        "production"
+        if trino_support_mode_is_production(getattr(settings, "trino_support_mode", ""))
+        else "beta"
     )
 
 
@@ -95,13 +128,13 @@ def validate_trino_beta_startup_config(
             validate_trino_coordinator_query_list_source_contract(query_list_contract)
     except (OSError, EngineFactContractError) as exc:
         raise WebError(
-            "Trino Beta local config has an invalid source contract, coordinator URL, "
+            "Trino local config has an invalid source contract, coordinator URL, "
             "or auth reference.",
-            title="Trino Beta local config rejected",
+            title="Trino local config rejected",
             reason_code="trino_beta.local_config_rejected",
-            stage="Checking Trino Beta local config",
+            stage="Checking Trino local config",
             next_step=(
-                "Fix the selected local Trino Beta source contract, coordinator target, "
+                "Fix the selected local Trino source contract, coordinator target, "
                 "or auth reference before starting the web UI."
             ),
         ) from exc
@@ -113,17 +146,19 @@ def run_trino_query_id_analysis(
     *,
     progress: Callable[[int], None] | None = None,
     cancel_check: CancelCheck | None = None,
+    artifact_workflow: str = "query_id",
 ) -> WebTrinoQueryAnalysisResult:
     update_progress(progress, 0)
     validated_query_id = validate_trino_query_id(query_id)
-    if not settings.trino_beta_enabled:
-        raise trino_not_configured_error(TRINO_QUERY_WORKFLOW)
+    workflow = trino_workflow_label(settings, TRINO_QUERY_WORKFLOW)
+    if not trino_mode_enabled(settings):
+        raise trino_not_configured_error(workflow)
     if not trino_beta_query_configured(settings):
-        raise trino_not_configured_error(TRINO_QUERY_WORKFLOW)
+        raise trino_not_configured_error(workflow)
     source_contract = settings.trino_query_info_source_contract
     coordinator_url = settings.trino_coordinator_url
     if source_contract is None or coordinator_url is None:
-        raise trino_not_configured_error(TRINO_QUERY_WORKFLOW)
+        raise trino_not_configured_error(workflow)
     try:
         stop_if_cancelled(cancel_check)
         auth_headers = trino_auth_headers(settings)
@@ -146,15 +181,27 @@ def run_trino_query_id_analysis(
         diagnosis = build_trino_compact_diagnosis_from_boundary(boundary)
         update_progress(progress, 4)
         stop_if_cancelled(cancel_check)
+        case_artifacts = materialize_trino_web_case_artifacts(
+            settings=settings,
+            boundary=boundary,
+            diagnosis=diagnosis,
+            workflow=artifact_workflow,
+            support_mode=trino_result_support_mode(settings),
+        )
     except OSError as exc:
-        raise trino_local_reference_error(TRINO_QUERY_WORKFLOW) from exc
+        raise trino_local_reference_error(workflow) from exc
     except EngineFactContractError as exc:
         raise trino_engine_contract_web_error(
             exc,
-            workflow=TRINO_QUERY_WORKFLOW,
+            workflow=workflow,
             stage="Reading bounded QueryInfo",
         ) from exc
-    return WebTrinoQueryAnalysisResult(query_id=validated_query_id, diagnosis=dict(diagnosis))
+    return WebTrinoQueryAnalysisResult(
+        query_id=validated_query_id,
+        diagnosis=dict(diagnosis),
+        support_mode=trino_result_support_mode(settings),
+        case_artifacts=case_artifacts,
+    )
 
 
 def trino_auth_headers(settings: WebSettings) -> Mapping[str, str] | None:
@@ -207,16 +254,16 @@ def validate_trino_auth_mode(
     )
     if auth_header_file is not None and kerberos_configured:
         raise EngineFactContractError(
-            "Trino Beta auth-header and Kerberos auth modes cannot be combined"
+            "Trino auth-header and Kerberos auth modes cannot be combined"
         )
     if kerberos_configured and kerberos_principal is None:
-        raise EngineFactContractError("Trino Beta Kerberos auth requires a principal")
+        raise EngineFactContractError("Trino Kerberos auth requires a principal")
     if auth_header_file is not None:
         load_trino_coordinator_query_info_auth_header_file(auth_header_file)
     if krb5_config is not None and not krb5_config.is_file():
-        raise EngineFactContractError("Trino Beta Kerberos config reference is unavailable")
+        raise EngineFactContractError("Trino Kerberos config reference is unavailable")
     if kerberos_ca_cert is not None and not kerberos_ca_cert.is_file():
-        raise EngineFactContractError("Trino Beta Kerberos CA reference is unavailable")
+        raise EngineFactContractError("Trino Kerberos CA reference is unavailable")
     if kerberos_principal is not None:
         TrinoKerberosSpnegoFetcher(
             kerberos_principal=kerberos_principal,
@@ -249,9 +296,9 @@ def trino_not_configured_error(workflow: str) -> WebError:
         f"{workflow} is not configured for the selected source.",
         title=f"{workflow} not configured",
         reason_code="trino_beta.not_configured",
-        stage="Checking Trino Beta local config",
+        stage="Checking Trino local config",
         next_step=(
-            "Choose a Trino Beta-ready source, or update the ignored local config with "
+            "Choose a Trino-ready source, or update the ignored local config with "
             "the required bounded source contracts and coordinator target."
         ),
     )
@@ -262,7 +309,7 @@ def trino_local_reference_error(workflow: str) -> WebError:
         f"{workflow} could not read a local source contract or auth reference.",
         title=f"{workflow} local reference unavailable",
         reason_code="trino_beta.local_reference_unreadable",
-        stage="Reading local Trino Beta references",
+        stage="Reading local Trino references",
         next_step=(
             "Check the selected local source contract and auth-reference files, then retry."
         ),
@@ -314,7 +361,7 @@ def classify_trino_engine_contract_error(
         target = "query list" if "query-list" in normalized else "QueryInfo"
         return (
             "trino_beta.network_read_failed",
-            f"Trino Beta could not read the bounded coordinator {target}.",
+            f"{workflow} could not read the bounded coordinator {target}.",
             "Check coordinator reachability and the selected local auth mode, then retry.",
             "The bounded coordinator read failed before raw-free diagnosis could start.",
         )
@@ -343,7 +390,7 @@ def classify_trino_engine_contract_error(
             "trino_beta.payload_rejected",
             f"{workflow} rejected the coordinator payload before diagnosis.",
             "Check that the configured endpoint returns the expected pruned JSON shape.",
-            "The response did not match the raw-free Trino Beta intake contract.",
+            "The response did not match the raw-free Trino intake contract.",
         )
     if (
         "contract" in normalized
@@ -356,12 +403,12 @@ def classify_trino_engine_contract_error(
         return (
             "trino_beta.contract_rejected",
             f"{workflow} was rejected by safe source-contract checks.",
-            "Fix the selected local source contract to match the bounded Trino Beta contract.",
+            "Fix the selected local source contract to match the bounded Trino contract.",
             "The local source contract did not pass safe validation.",
         )
     return (
         "trino_beta.payload_rejected",
         f"{workflow} was rejected before raw-free diagnosis.",
-        "Review the selected Trino Beta source contract and retry with a bounded pruned response.",
-        "The input did not pass the raw-free Trino Beta intake contract.",
+        "Review the selected Trino source contract and retry with a bounded pruned response.",
+        "The input did not pass the raw-free Trino intake contract.",
     )
