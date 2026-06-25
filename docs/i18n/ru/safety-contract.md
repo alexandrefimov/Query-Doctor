@@ -41,15 +41,18 @@ Last reviewed: 2026-06-17
   facts должны деградировать в `unknown`, `not_observed` или explicit safe
   limitation. Нельзя backfill fake metrics, counters, lifecycle evidence или
   events между движками.
-- Trino fixture facts и Spark compact facts остаются ниже product support.
-  Текущие Trino product beta exceptions - local web retained-list Recent через
+- Trino compact/dev facts и Spark compact facts остаются ниже product support.
+  Текущие Trino local production exceptions - local web retained-list Recent через
   один bounded retained pruned coordinator query-list read плюс selected pruned
   coordinator QueryInfo reads, и один explicit local web Query ID через
   bounded pruned coordinator QueryInfo. Оба workflow показывают только raw-free
-  compact diagnosis. Они не включают Running, query-history crawling, metadata
-  collection, Details/trusted reports, optimizer behavior, Query
-  Doctor-generated Trino SQL, SQL execution или production support. Текущий
-  статус см. в [engine-support-gap-matrix.md](engine-support-gap-matrix.md).
+  compact diagnosis. Они не включают Running, query-history crawling, product
+  metadata collection, LLM reports, Query Optimizer jobs, Query Doctor-generated Trino
+  SQL, user SQL execution или broader/shared Trino production triage support. Они могут открывать raw-free Trino
+  Details view, deterministic Python Report и optimizer guidance только из
+  server-owned materialized case artifacts. Текущий
+  статус см. в английской
+  [engine-support-gap-matrix.md](../../engine-support-gap-matrix.md).
 
 ## Граница сбора данных
 
@@ -199,14 +202,16 @@ production profile text.
   optimizer jobs. Known Query ID может готовить deterministic Python report
   внутри explicit analysis submit-job. LLM report generation и Query LLM
   optimizer generation остаются explicit actions для одного selected case.
-- Trino Beta Recent использует один bounded retained pruned coordinator
+- Trino Recent использует один bounded retained pruned coordinator
   query-list read плюс bounded selected pruned coordinator QueryInfo reads из
-  local config; Trino Beta One Query ID использует один bounded pruned
+  local config; Trino One Query ID использует один bounded pruned
   coordinator QueryInfo read из local config. Оба workflow показывают только
   raw-free compact diagnosis. Они не должны показывать coordinator URLs, auth
   header paths/values, raw QueryInfo, raw query-list payloads, raw SQL, local
-  source-contract paths, Details/trusted reports, optimizer output или
-  generated Trino SQL.
+  source-contract paths, LLM reports, Query Optimizer jobs или generated Trino SQL.
+  Trino Details, Trino Python Report и Trino optimizer guidance могут показывать
+  только server-owned raw-free materialized case facts и не должны раскрывать
+  query IDs, local paths, raw artifact names или raw source payloads.
 - Details-page Query LLM optimizer может показывать validated read-only SQL
   draft только для explicit selected-case optimizer action, когда текущая web
   source policy равна `source_visibility=owner_raw`. Default
