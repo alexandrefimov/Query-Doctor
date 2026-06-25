@@ -1,4 +1,4 @@
-"""Raw-free readiness check for the local Trino Beta web lanes."""
+"""Raw-free readiness check for the local Trino web lanes."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ from query_doctor.web.trino_beta_query import validate_trino_auth_mode
 
 
 TRINO_WEB_BETA_READINESS_SUMMARY_KIND = "trino_web_beta_readiness_v1"
+TRINO_WEB_SUPPORT_CLAIM = "local_production"
 TRINO_WEB_BETA_STARTUP_QUERY_ID = "20260603_120102_00001_startup"
 
 
@@ -91,7 +92,7 @@ def trino_web_beta_readiness_summary_payload(
         "summary_kind": TRINO_WEB_BETA_READINESS_SUMMARY_KIND,
         "mode": "trino_web_beta_readiness",
         "status": "ready" if result.ok else "failed",
-        "support_claim": "beta_only",
+        "support_claim": TRINO_WEB_SUPPORT_CLAIM,
         "requirements": {
             "query_id_required": result.require_query_id,
             "recent_required": result.require_recent,
@@ -110,8 +111,10 @@ def trino_web_beta_readiness_summary_payload(
             "network_read_performed": False,
             "sql_execution_performed": False,
             "raw_payload_output": False,
-            "details_trusted_report_output": "not_wired",
-            "optimizer_behavior": "not_wired",
+            "details_python_report_output": "materialized_details_only",
+            "optimizer_guidance_output": "materialized_details_only",
+            "llm_report_output": "not_wired",
+            "optimizer_behavior": "guidance_only",
             "metadata_collection": "not_wired",
             "running_scan": "not_wired",
         },
