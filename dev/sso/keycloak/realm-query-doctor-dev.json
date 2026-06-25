@@ -1,0 +1,75 @@
+{
+  "realm": "query-doctor-dev",
+  "enabled": true,
+  "displayName": "Query Doctor Dev SSO",
+  "clients": [
+    {
+      "clientId": "query-doctor-dev",
+      "name": "Query Doctor Dev oauth2-proxy",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "query-doctor-dev-client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://query-doctor-sso.localhost:4180/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://query-doctor-sso.localhost:4180"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://query-doctor-sso.localhost:4180/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-query-doctor-dev",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "query-doctor-dev",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "analyst_one",
+      "enabled": true,
+      "email": "analyst_one@example.com",
+      "emailVerified": true,
+      "firstName": "Analyst",
+      "lastName": "One",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "analyst-one-dev-login",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "other_owner",
+      "enabled": true,
+      "email": "other_owner@example.com",
+      "emailVerified": true,
+      "firstName": "Other",
+      "lastName": "Owner",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "other-owner-dev-login",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
