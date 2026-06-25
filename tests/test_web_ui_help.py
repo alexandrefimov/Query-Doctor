@@ -47,28 +47,35 @@ def test_web_help_page_renders_curated_static_help():
     assert "Quick start" in body
     assert "Workflows" in body
     assert "Query Doctor is a local-first Big Data query diagnostics tool" in body
-    assert "focused today on Apache Impala production triage" in body
-    assert "The implemented production engine is Apache Impala." in body
+    assert "focused on Apache Impala production triage" in body
+    assert "with bounded local Trino production lanes" in body
+    assert "The full production triage engine is Apache Impala." in body
+    assert "Local Trino production support covers configured retained-list Recent diagnosis" in body
     assert (
-        "A local Trino Beta lane is available for configured retained-list Recent diagnosis" in body
+        "raw-free materialized Details, deterministic Python Report, and optimizer guidance" in body
     )
-    assert "not production engine support" in body
+    assert "trino_support_mode=beta" in body
+    assert "production mode uses the same bounded local surface" in body
     assert "validated raw-free reports" in body
     assert "Recent queries" in body
     assert "flagship production triage workflow" in body
     assert "Finished queries" in body
     assert "Known Query ID" in body
-    assert "Trino Beta Recent and One Query ID" in body
+    assert "Trino Recent and One Query ID" in body
     assert "one bounded retained pruned coordinator query list" in body
     assert "bounded pruned coordinator QueryInfo payloads for selected rows" in body
-    assert "Configured Trino Beta sources are marked in the Source cluster selector" in body
     assert (
-        "Engine control narrows that selector to Impala-capable sources or Trino Beta-ready sources"
+        "Configured beta sources keep the Trino Beta labels in the Source cluster selector" in body
+    )
+    assert (
+        "Engine control narrows that selector to Impala-capable sources or Trino-ready sources"
         in body
     )
     assert "Forged or stale Trino submits still fail closed before analysis" in body
     assert "It does not support Trino Running scans" in body
-    assert "trusted reports, optimizer behavior, generated Trino SQL, or SQL execution" in body
+    assert "Python Report" in body
+    assert "optimizer guidance" in body
+    assert "LLM reports, Query Optimizer jobs, generated Trino SQL, or SQL execution" in body
     assert (
         "Runtime context is collected automatically when the selected source supports it." in body
     )
@@ -78,7 +85,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "aaaaaaaaaaaaaaaa_0000000000000001.txt" in body
     assert "The browser does not upload the profile" in body
     assert "Running now" in body
-    assert "Query Optimizer" not in body
+    assert 'href="/optimizer">Query Optimizer</a>' not in body
+    assert "Run optimizer" not in body
     assert "Specific Query" not in body
     assert "Known Query ID analysis" in body
     assert "manual_profile_dir" in body
@@ -136,7 +144,8 @@ def test_web_help_page_renders_curated_static_help():
         in body
     )
     assert (
-        "Trino Beta is intentionally limited to configured retained-list Recent diagnosis and One Query ID."
+        "Trino is intentionally limited to configured retained-list Recent diagnosis, One Query ID, "
+        "raw-free materialized Details, deterministic Python Report, and optimizer guidance."
         in body
     )
     assert "prepares the deterministic Python report in the same submit job" in body
@@ -208,20 +217,25 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Документация GitHub" in body
     assert "Security model" in body
     assert "Big Data query diagnostics tool" in body
-    assert "сфокусированный сегодня на Apache Impala production triage" in body
+    assert "сфокусированный на Apache Impala production triage" in body
+    assert "bounded local Trino production lanes" in body
     assert "validated raw-free reports" in body
-    assert "Local Trino Beta lane доступен для configured retained-list Recent diagnosis" in body
-    assert "Trino Beta Recent и One Query ID" in body
+    assert (
+        "Local Trino production support покрывает configured retained-list Recent diagnosis" in body
+    )
+    assert "raw-free materialized Details, deterministic Python Report и optimizer guidance" in body
+    assert "Trino Recent и One Query ID" in body
     assert "один bounded retained pruned coordinator query list" in body
     assert "bounded pruned coordinator QueryInfo payloads для выбранных rows" in body
-    assert "Configured Trino Beta sources помечаются в Source cluster selector" in body
+    assert "Configured beta sources сохраняют Trino Beta labels в Source cluster selector" in body
     assert (
-        "Engine control сужает selector до Impala-capable sources или Trino Beta-ready sources"
-        in body
+        "Engine control сужает selector до Impala-capable sources или Trino-ready sources" in body
     )
     assert "Forged или stale Trino submits все равно fail closed до analysis" in body
-    assert "Trino Beta не поддерживает Running scans" in body
-    assert "trusted reports, optimizer behavior, generated Trino SQL или SQL execution" in body
+    assert "Trino не поддерживает Running scans" in body
+    assert "Python Report" in body
+    assert "optimizer guidance" in body
+    assert "LLM reports, Query Optimizer jobs, generated Trino SQL или SQL execution" in body
     assert "Детали Known Query ID" not in body
     assert "manual_profile_dir" in body
     assert "local profile inbox" in body
@@ -236,7 +250,7 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Best Details case" in body
     assert 'href="/trino/compact-diagnosis"' not in body
     assert "Рендерит direct или packaged raw-free boundary JSON, не product support." not in body
-    assert "Реализованный production engine сейчас Apache Impala." in body
+    assert "Полный production triage engine сейчас Apache Impala." in body
     assert "Browser UI намеренно скрывает raw query text" in body
     assert "Synthetic demo docs" in body
     assert "Почему metadata partial или skipped?" in body
@@ -244,8 +258,8 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Где описан future engine scope?" in body
     assert "Future engine и storage scope живут в roadmap и support matrix" in body
     assert (
-        "Trino Beta намеренно ограничен configured retained-list Recent diagnosis и One Query ID."
-        in body
+        "Trino намеренно ограничен configured retained-list Recent diagnosis, One Query ID, "
+        "raw-free materialized Details, deterministic Python Report и optimizer guidance." in body
     )
     assert "Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio" not in body
     assert "small-file risk или planning pressure" not in body
@@ -305,8 +319,9 @@ def test_web_help_route_serves_help_without_running_analysis():
     assert "Quick start" in captured["body"]
     assert "Workflows" in captured["body"]
     assert "Big Data query diagnostics tool" in captured["body"]
-    assert "focused today on Apache Impala production triage" in captured["body"]
-    assert "The implemented production engine is Apache Impala." in captured["body"]
+    assert "focused on Apache Impala production triage" in captured["body"]
+    assert "with bounded local Trino production lanes" in captured["body"]
+    assert "The full production triage engine is Apache Impala." in captured["body"]
     assert "GitHub documentation" in captured["body"]
     assert "Common questions" in captured["body"]
     assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in captured["body"])

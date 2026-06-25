@@ -32,17 +32,33 @@ def web_settings() -> WebSettings:
 
 
 def test_preview_web_surfaces_match_engine_capability_manifest_routes():
-    manifest_routes = {
+    route_capabilities = {
         capability.route_path: capability
         for capability in (*engine_capabilities("spark"), *engine_capabilities("trino"))
         if capability.route_path
     }
+    manifest_preview_routes = {
+        route_path: capability
+        for route_path, capability in route_capabilities.items()
+        if not capability.product_surface_allowed
+    }
+    manifest_product_routes = {
+        route_path: capability
+        for route_path, capability in route_capabilities.items()
+        if capability.product_surface_allowed
+    }
     registry_routes = {surface.route_path: surface for surface in PREVIEW_WEB_SURFACES}
 
     assert set(registry_routes) == {"/spark/compact-diagnosis", "/trino/compact-diagnosis"}
-    assert set(registry_routes) == set(manifest_routes)
+    assert set(registry_routes) == set(manifest_preview_routes)
+    assert set(manifest_product_routes) == {
+        "/trino/details/{case_id}",
+        "/trino/details/{case_id}?report=python",
+        "/trino/details/{case_id}?guidance=optimizer",
+    }
+    assert set(registry_routes).isdisjoint(manifest_product_routes)
     for route_path, surface in registry_routes.items():
-        capability = manifest_routes[route_path]
+        capability = manifest_preview_routes[route_path]
         assert surface.engine == capability.engine
         assert surface.surface_id == capability.surface_id
         assert surface.surface_class == capability.surface_class

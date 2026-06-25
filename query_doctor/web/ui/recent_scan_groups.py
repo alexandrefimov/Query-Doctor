@@ -85,8 +85,7 @@ def batch_table_columns(query_group: str, *, language: str = "en") -> tuple[str,
         "User",
         "Priority",
         "Duration",
-        "Table stats",
-        "Metadata",
+        "Next",
     )
 
 

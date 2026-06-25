@@ -188,6 +188,6 @@ def trino_demo_boundary() -> dict[str, str]:
         "details_trusted_report_surface": "not_wired",
         "optimizer_behavior": "not_wired",
         "trino_sql_execution": "not_performed",
-        "live_recent_scan": "retained_query_list_beta",
-        "live_known_query_diagnosis": "one_query_pruned_query_info_beta",
+        "live_recent_scan": "retained_query_list_local_production",
+        "live_known_query_diagnosis": "one_query_pruned_query_info_local_production",
     }

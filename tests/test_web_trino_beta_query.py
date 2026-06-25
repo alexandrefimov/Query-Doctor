@@ -5,6 +5,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Literal
 
 import pytest
 
@@ -41,7 +43,9 @@ from query_doctor.web.trino_beta_query import (
     classify_trino_engine_contract_error,
     run_trino_query_id_analysis,
 )
-from query_doctor.web.trino_recent import select_trino_recent_records
+from query_doctor.web.trino_guidance import validate_trino_optimizer_guidance_text
+from query_doctor.web.trino_report import validate_trino_python_report_text
+from query_doctor.web.trino_recent import run_trino_recent_scan, select_trino_recent_records
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.recent_scan_form import render_batch_run_panel
 from query_doctor.web.ui.trino import (
@@ -54,13 +58,25 @@ COORDINATOR_URL = "https://coordinator.example.test:8443"
 QUERY_ID = "20260603_120102_00001_abcde"
 
 
-def assert_trino_beta_blocked_surfaces(html: str) -> None:
-    assert 'aria-label="Trino Beta blocked surfaces"' in html
+def assert_trino_beta_blocked_surfaces(
+    html: str, *, details_available: bool = False, mode_label: str = "Trino Beta"
+) -> None:
+    assert f'aria-label="{mode_label} blocked surfaces"' in html
     assert "Running:" in html
     assert "Query-history crawl:" in html
     assert "Metadata:" in html
     assert "not collected" in html
-    assert "Details/reports:" in html
+    assert "Details:" in html
+    if details_available:
+        assert "raw-free case view" in html
+    else:
+        assert "Details:" in html and "raw-free case view" not in html
+    assert "Python Report:" in html
+    assert "LLM reports:" in html
+    if details_available:
+        assert "via Details" in html
+    assert "Trusted reports:" not in html
+    assert "Details/reports:" not in html
     assert "Optimizer:" in html
     assert "Generated SQL:" in html
     assert "not generated" in html
@@ -93,6 +109,429 @@ def test_trino_beta_query_analysis_runs_one_bounded_pruned_import(
     assert result.query_id == QUERY_ID
     assert result.diagnosis["schema_version"] == "trino_compact_diagnosis_v1"
     assert result.diagnosis["diagnosis_boundary"]["trino_sql_execution"] == "not_performed"
+
+
+def test_trino_beta_query_analysis_materializes_raw_free_case_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+
+    artifacts = result.case_artifacts
+    assert artifacts is not None
+    assert artifacts.case_dir.parent == tmp_path / "cases" / "cm-corpus" / "trino-web-cases"
+    assert artifacts.case_id.startswith("trino-")
+    expected_paths = (
+        artifacts.boundary_path,
+        artifacts.compact_diagnosis_path,
+        artifacts.metadata_summary_path,
+        artifacts.analysis_path,
+        artifacts.analysis_facts_path,
+    )
+    assert all(path.is_file() for path in expected_paths)
+
+    boundary = json.loads(artifacts.boundary_path.read_text(encoding="utf-8"))
+    diagnosis = json.loads(artifacts.compact_diagnosis_path.read_text(encoding="utf-8"))
+    metadata_summary = json.loads(artifacts.metadata_summary_path.read_text(encoding="utf-8"))
+    analysis = json.loads(artifacts.analysis_path.read_text(encoding="utf-8"))
+    facts_text = artifacts.analysis_facts_path.read_text(encoding="utf-8")
+
+    assert boundary["schema_version"] == "engine_fact_boundary_v1"
+    assert boundary["identity"]["engine"] == "trino"
+    assert diagnosis["schema_version"] == "trino_compact_diagnosis_v1"
+    assert metadata_summary == analysis["metadata_summary"]
+    assert metadata_summary["collection"] == "not_collected"
+    assert analysis["schema_version"] == "trino_web_case_analysis_v1"
+    assert analysis["workflow"] == "query_id"
+    assert analysis["query_reference"] == {
+        "kind": "explicit_query_id",
+        "value": "hidden",
+    }
+    assert analysis["raw_source_policy"]["python_report"] == "raw_free_materialized"
+    assert analysis["raw_source_policy"]["optimizer_guidance"] == "raw_free_materialized"
+    assert analysis["raw_source_policy"]["llm_reports"] == "not_wired"
+    assert analysis["raw_source_policy"]["trusted_reports"] == "python_report_only"
+    assert analysis["raw_source_policy"]["optimizer_behavior"] == "guidance_only"
+    assert "Query reference: explicit_query_id_hidden" in facts_text
+    assert "Python report: raw_free_materialized" in facts_text
+    assert "Optimizer guidance: raw_free_materialized" in facts_text
+
+    serialized = "\n".join(path.read_text(encoding="utf-8") for path in expected_paths)
+    forbidden_tokens = (
+        QUERY_ID,
+        COORDINATOR_URL,
+        "SELECT",
+        "sensitive_table",
+        "operator_user",
+        "adhoc_console",
+        "stage-raw-id",
+        "task-raw-id",
+        "worker-a.example.net",
+        "synthetic_local_path_marker",
+        "Authorization",
+        str(tmp_path),
+    )
+    for token in forbidden_tokens:
+        assert token not in serialized
+
+    html = render_trino_query_analysis_result(result)
+    rendered_job = json.loads(render_job_status_json(_completed_trino_job(result)))["result_html"]
+    assert f'href="/trino/details/{artifacts.case_id}"' in html
+    assert f'href="/trino/details/{artifacts.case_id}"' in rendered_job
+    for hidden in (
+        str(artifacts.case_dir),
+        "boundary.json",
+        "compact_diagnosis.json",
+        "metadata_summary.json",
+        "analysis.json",
+        "analysis_facts.md",
+    ):
+        assert hidden not in html
+        assert hidden not in rendered_job
+
+
+def test_trino_beta_details_route_renders_raw_free_materialized_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+    assert result.case_artifacts is not None
+
+    response = route_get_request(
+        f"/trino/details/{result.case_artifacts.case_id}",
+        settings,
+        WebJobStore(),
+    )
+
+    assert response is not None
+    assert response.status == 200
+    body = response.body
+    assert "Trino Details" in body
+    assert "Decision facts" in body
+    assert "Diagnosis result" in body
+    assert "Python Report" in body
+    assert "raw_free_materialized" in body
+    assert "Optimizer guidance" in body
+    assert "guidance_only" in body
+    assert "LLM reports" in body
+    assert "not_wired" in body
+    assert "Optimizer" in body
+    assert "SQL execution" in body
+    assert 'href="?report=python"' in body
+    assert 'href="?report=python&amp;download=1"' in body
+    assert 'href="?guidance=optimizer"' in body
+    assert 'href="?guidance=optimizer&amp;download=1"' in body
+    assert QUERY_ID not in body
+    assert result.case_artifacts.case_id not in body
+    forbidden_tokens = (
+        COORDINATOR_URL,
+        "SELECT",
+        "sensitive_table",
+        "operator_user",
+        "adhoc_console",
+        "stage-raw-id",
+        "task-raw-id",
+        "worker-a.example.net",
+        "synthetic_local_path_marker",
+        "Authorization",
+        str(tmp_path),
+        "boundary.json",
+        "compact_diagnosis.json",
+        "metadata_summary.json",
+        "analysis.json",
+        "analysis_facts.md",
+    )
+    for token in forbidden_tokens:
+        assert token not in body
+    assert 'href="/query/details/' not in body
+    assert 'href="/python-report/' not in body
+    assert 'href="/optimizer"' not in body
+    assert "Run optimizer" not in body
+    assert "Run report" not in body
+
+
+def test_trino_beta_optimizer_guidance_route_renders_validated_raw_free_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+    assert result.case_artifacts is not None
+
+    response = route_get_request(
+        f"/trino/details/{result.case_artifacts.case_id}?guidance=optimizer",
+        settings,
+        WebJobStore(),
+    )
+
+    assert response is not None
+    assert response.status == 200
+    body = response.body
+    assert "Trino Optimizer Guidance" in body
+    assert "Review Tracks" in body
+    assert "Root cause not claimed" in body
+    assert "Download Markdown" in body
+    assert 'href="?guidance=optimizer&amp;download=1"' in body
+    assert QUERY_ID not in body
+    assert result.case_artifacts.case_id not in body
+    forbidden_tokens = (
+        COORDINATOR_URL,
+        "SELECT",
+        "sensitive_table",
+        "operator_user",
+        "adhoc_console",
+        "stage-raw-id",
+        "task-raw-id",
+        "worker-a.example.net",
+        "synthetic_local_path_marker",
+        "Authorization",
+        str(tmp_path),
+        "boundary.json",
+        "compact_diagnosis.json",
+        "metadata_summary.json",
+        "analysis.json",
+        "analysis_facts.md",
+    )
+    for token in forbidden_tokens:
+        assert token not in body
+    assert 'href="/query/details/' not in body
+    assert 'href="/python-report/' not in body
+    assert 'href="/optimizer"' not in body
+    assert "Run optimizer" not in body
+
+
+def test_trino_beta_optimizer_guidance_markdown_download_stays_raw_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+    assert result.case_artifacts is not None
+
+    response = route_get_request(
+        f"/trino/details/{result.case_artifacts.case_id}?guidance=optimizer&download=1",
+        settings,
+        WebJobStore(),
+    )
+
+    assert response is not None
+    assert response.status == 200
+    assert response.content_type == "text/markdown; charset=utf-8"
+    assert response.download_filename == "query-doctor-trino-optimizer-guidance.md"
+    assert response.body.startswith("# Trino Optimizer Guidance")
+    assert validate_trino_optimizer_guidance_text(response.body) == []
+    assert QUERY_ID not in response.body
+    assert result.case_artifacts.case_id not in response.body
+    assert COORDINATOR_URL not in response.body
+    assert str(tmp_path) not in response.body
+
+
+def test_trino_beta_python_report_route_renders_validated_raw_free_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+    assert result.case_artifacts is not None
+
+    response = route_get_request(
+        f"/trino/details/{result.case_artifacts.case_id}?report=python",
+        settings,
+        WebJobStore(),
+    )
+
+    assert response is not None
+    assert response.status == 200
+    body = response.body
+    assert "Trino Python Report" in body
+    assert "Root cause not claimed" in body
+    assert "Attention Areas" in body
+    assert "Download Markdown" in body
+    assert 'href="?report=python&amp;download=1"' in body
+    assert QUERY_ID not in body
+    assert result.case_artifacts.case_id not in body
+    forbidden_tokens = (
+        COORDINATOR_URL,
+        "SELECT",
+        "sensitive_table",
+        "operator_user",
+        "adhoc_console",
+        "stage-raw-id",
+        "task-raw-id",
+        "worker-a.example.net",
+        "synthetic_local_path_marker",
+        "Authorization",
+        str(tmp_path),
+        "boundary.json",
+        "compact_diagnosis.json",
+        "metadata_summary.json",
+        "analysis.json",
+        "analysis_facts.md",
+    )
+    for token in forbidden_tokens:
+        assert token not in body
+    assert 'href="/query/details/' not in body
+    assert 'href="/python-report/' not in body
+    assert 'href="/optimizer"' not in body
+    assert "generated SQL" not in body
+
+
+def test_trino_beta_python_report_markdown_download_stays_raw_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+    assert result.case_artifacts is not None
+
+    response = route_get_request(
+        f"/trino/details/{result.case_artifacts.case_id}?report=python&download=1",
+        settings,
+        WebJobStore(),
+    )
+
+    assert response is not None
+    assert response.status == 200
+    assert response.content_type == "text/markdown; charset=utf-8"
+    assert response.download_filename == "query-doctor-trino-python-report.md"
+    assert response.body.startswith("# Trino Python Report")
+    assert validate_trino_python_report_text(response.body) == []
+    assert QUERY_ID not in response.body
+    assert result.case_artifacts.case_id not in response.body
+    assert COORDINATOR_URL not in response.body
+    assert str(tmp_path) not in response.body
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    (
+        "Impala admission control was involved.",
+        "SELECT secret_col FROM sensitive_table",
+        "SHOW CREATE TABLE catalog.schema.table",
+        QUERY_ID,
+        "https://coordinator.example.test/ui/query.html",
+        "/private/tmp/query-doctor/secret.json",
+        "Authorization: Bearer secret-token",
+        "The root cause is stale statistics.",
+        "generated SQL draft follows",
+        "connector internal stage-raw-id task-raw-id worker-a.example.net",
+    ),
+)
+def test_trino_python_report_validator_rejects_unsafe_claims_and_payloads(
+    unsafe_text: str,
+) -> None:
+    safe_report = "# Trino Python Report\n\n## Summary\n- Root cause not claimed.\n"
+
+    assert validate_trino_python_report_text(safe_report) == []
+    assert validate_trino_python_report_text(safe_report + unsafe_text + "\n")
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    (
+        "Impala admission control was involved.",
+        "SELECT secret_col FROM sensitive_table",
+        "SHOW CREATE TABLE catalog.schema.table",
+        QUERY_ID,
+        "https://coordinator.example.test/ui/query.html",
+        "/private/tmp/query-doctor/secret.json",
+        "Authorization: Bearer secret-token",
+        "The root cause is stale statistics.",
+        "generated SQL draft follows",
+        "connector internal stage-raw-id task-raw-id worker-a.example.net",
+    ),
+)
+def test_trino_optimizer_guidance_validator_rejects_unsafe_claims_and_payloads(
+    unsafe_text: str,
+) -> None:
+    safe_guidance = "# Trino Optimizer Guidance\n\n## Scope\n- Root cause not claimed.\n"
+
+    assert validate_trino_optimizer_guidance_text(safe_guidance) == []
+    assert validate_trino_optimizer_guidance_text(safe_guidance + unsafe_text + "\n")
+
+
+def test_trino_beta_details_route_rejects_invalid_case_reference_without_echo(
+    tmp_path: Path,
+) -> None:
+    settings = _trino_settings(tmp_path)
+    invalid_case_id = "trino-SELECT-sensitive_table"
+
+    response = route_get_request(f"/trino/details/{invalid_case_id}", settings, WebJobStore())
+
+    assert response is not None
+    assert response.status == 400
+    assert "Trino Details case reference was rejected." in response.body
+    assert invalid_case_id not in response.body
+    assert "sensitive_table" not in response.body
+    assert str(tmp_path) not in response.body
+    assert "analysis.json" not in response.body
+
+
+def test_trino_production_mode_query_analysis_uses_bounded_raw_free_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(
+        tmp_path,
+        trino_support_mode="production",
+        trino_beta_enabled=False,
+    )
+    calls: list[tuple[str, str]] = []
+
+    def fetcher(coordinator_url: str, *, query_id: str, **_kwargs: object) -> str:
+        calls.append((coordinator_url, query_id))
+        return _raw_query_info_text()
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        fetcher,
+    )
+
+    result = run_trino_query_id_analysis(QUERY_ID, settings)
+    html = render_trino_query_analysis_result(result)
+
+    assert calls == [(COORDINATOR_URL, QUERY_ID)]
+    assert result.support_mode == "production"
+    assert "Trino Query ID diagnosis" in html
+    assert "Trino Beta Query ID diagnosis" not in html
+    assert 'aria-label="Trino blocked surfaces"' in html
+    assert "Local boundary" in html
+    assert "complete local Trino output for the selected Query ID" in html
+    assert result.case_artifacts is not None
+    assert f'href="/trino/details/{result.case_artifacts.case_id}"' in html
+    assert_trino_beta_blocked_surfaces(html, details_available=True, mode_label="Trino")
+    assert 'href="/query/details/' not in html
+    assert 'href="/python-report/' not in html
+    assert 'href="/optimizer"' not in html
+    assert COORDINATOR_URL not in html
+    assert str(tmp_path) not in html
 
 
 def test_trino_beta_query_analysis_reports_beta_progress_stages(
@@ -229,13 +668,16 @@ def test_trino_beta_handle_analyze_request_renders_raw_free_result(
     assert "complete Trino Beta product output for the selected Query ID" in body
     assert (
         "no Running scans, query-history crawling, metadata collection, "
-        "Details/trusted reports, optimizer behavior, generated SQL, or SQL execution" in body
+        "LLM reports, Query Optimizer jobs, generated SQL, or SQL execution" in body
     )
+    assert "raw-free case view" in body
     assert "does not create Running scans, a query-history crawl" in body
-    assert "Details pages, trusted reports, optimizer recommendations" in body
+    assert "LLM reports, Query Optimizer jobs" in body
+    assert "optimizer guidance" in body
     assert "generated SQL drafts, or SQL execution" in body
     assert "SQL execution" in body
-    assert_trino_beta_blocked_surfaces(body)
+    assert_trino_beta_blocked_surfaces(body, details_available=True)
+    assert 'href="/trino/details/' in body
     assert 'href="/query/' not in body
     assert 'href="/optimizer"' not in body
     assert COORDINATOR_URL not in body
@@ -293,6 +735,7 @@ def test_trino_beta_result_renderer_redacts_dynamic_diagnosis_text(tmp_path: Pat
     assert f"<code>{QUERY_ID}</code>" in html
     assert "Trino Beta Query ID diagnosis" in html
     assert_trino_beta_blocked_surfaces(html)
+    assert 'href="/trino/details/' not in html
     assert "secret_col" not in html
     assert "sensitive_table" not in html
     assert "coordinator.example.test" not in html
@@ -457,7 +900,7 @@ def test_trino_beta_handle_analyze_request_hides_network_failure_details(
     )
 
     assert status == 400
-    assert "Trino Beta could not read the bounded coordinator QueryInfo" in body
+    assert "Trino Beta Query ID diagnosis could not read the bounded coordinator QueryInfo" in body
     assert "trino_beta.network_read_failed" in body
     assert "Check coordinator reachability" in body
     assert COORDINATOR_URL not in body
@@ -708,6 +1151,7 @@ def test_trino_beta_route_post_analyze_e2e_smoke_renders_final_beta_result(
     assert status_payload["status"] == "ok"
     assert status_payload["kind"] == "trino_query"
     assert "Trino Beta Query ID diagnosis" in status_payload["result_html"]
+    assert 'href="/trino/details/' in status_payload["result_html"]
     assert "Known Query ID analysis" not in status_payload["result_html"]
     assert "Generating Python report" not in json.dumps(status_payload, sort_keys=True)
 
@@ -716,6 +1160,7 @@ def test_trino_beta_route_post_analyze_e2e_smoke_renders_final_beta_result(
     assert "Trino Beta Query ID diagnosis" in final_response.body
     assert "Run Trino Beta" in final_response.body
     assert "complete Trino Beta product output for the selected Query ID" in final_response.body
+    assert 'href="/trino/details/' in final_response.body
     assert 'href="/query/details/' not in final_response.body
     assert 'href="/optimizer"' not in final_response.body
     assert "SELECT" not in final_response.body
@@ -771,7 +1216,10 @@ def test_trino_beta_async_job_hides_network_failure_details(
 
     assert payload["status"] == "failed"
     assert payload["error_info"]["reason_code"] == "trino_beta.network_read_failed"
-    assert payload["error"] == "Trino Beta could not read the bounded coordinator QueryInfo."
+    assert (
+        payload["error"]
+        == "Trino Beta Query ID diagnosis could not read the bounded coordinator QueryInfo."
+    )
     assert "Check coordinator reachability" in rendered
     assert COORDINATOR_URL not in rendered
     assert "RedactedSecret" not in rendered
@@ -822,8 +1270,11 @@ def test_trino_beta_failed_job_page_hides_network_failure_details(
 
     assert response is not None
     assert response.status == 200
-    assert '<span class="progress-title">Trino Beta failed</span>' in response.body
-    assert "Trino Beta could not read the bounded coordinator QueryInfo" in response.body
+    assert '<span class="progress-title">Trino failed</span>' in response.body
+    assert (
+        "Trino Beta Query ID diagnosis could not read the bounded coordinator QueryInfo"
+        in response.body
+    )
     assert "trino_beta.network_read_failed" in response.body
     assert "Check coordinator reachability" in response.body
     assert "Trino Beta Query ID diagnosis</h1>" not in response.body
@@ -834,7 +1285,7 @@ def test_trino_beta_failed_job_page_hides_network_failure_details(
     assert str(tmp_path) not in response.body
 
 
-def test_trino_beta_job_panel_uses_beta_title_and_progress_copy() -> None:
+def test_trino_job_panel_uses_generic_title_and_trino_progress_copy() -> None:
     store = WebJobStore()
     snapshot = store.create(
         QUERY_ID,
@@ -843,7 +1294,7 @@ def test_trino_beta_job_panel_uses_beta_title_and_progress_copy() -> None:
         kind="trino_query",
     )
     html = render_job_panel(snapshot)
-    assert '<span class="progress-title">Trino Beta running</span>' in html
+    assert '<span class="progress-title">Trino running</span>' in html
     assert "Checking Trino Query ID" in html
     assert "Reading bounded QueryInfo" in html
     assert "Building compact diagnosis" in html
@@ -886,7 +1337,7 @@ def test_trino_beta_job_route_preserves_beta_query_form(tmp_path: Path) -> None:
     assert '<label for="query_id">Trino Query ID</label>' in response.body
     assert '<button class="run-button" type="submit" disabled>Running</button>' in response.body
     assert '<input type="hidden" name="engine" value="trino" data-engine-hidden>' in response.body
-    assert '<span class="progress-title">Trino Beta running</span>' in response.body
+    assert '<span class="progress-title">Trino running</span>' in response.body
     assert "Collecting or reusing profile" not in response.body
     assert "Generating Python report" not in response.body
     assert "adds metadata when configured" not in response.body
@@ -945,7 +1396,7 @@ def test_trino_beta_cancel_route_preserves_beta_boundary(tmp_path: Path) -> None
     assert status_payload["error"] == "Job stopped by user."
     assert page_response is not None
     assert page_response.status == 200
-    assert '<span class="progress-title">Trino Beta stopped</span>' in page_response.body
+    assert '<span class="progress-title">Trino stopped</span>' in page_response.body
     assert "Job stopped by user." in page_response.body
     assert "Trino Beta Query ID diagnosis</h1>" not in page_response.body
     assert 'href="/query/details/' not in page_response.body
@@ -1185,6 +1636,55 @@ def test_trino_beta_recent_post_creates_beta_recent_job(
     assert "Trino Beta Recent diagnosis" in job.result_html
     assert QUERY_ID in job.result_html
     assert_trino_beta_blocked_surfaces(job.result_html)
+    assert 'href="/trino/details/' not in job.result_html
+
+
+def test_trino_beta_recent_materializes_case_artifacts_for_selected_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _trino_settings(tmp_path)
+
+    monkeypatch.setattr(
+        "query_doctor.web.trino_recent.load_trino_coordinator_query_list",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            records=(
+                TrinoCoordinatorQueryListRecord(
+                    query_id=QUERY_ID,
+                    state="FINISHED",
+                    end_time=datetime.now(timezone.utc),
+                    elapsed_ms=2500,
+                ),
+            ),
+            records_seen=1,
+            source_contract=SimpleNamespace(max_query_ids=50),
+        ),
+    )
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+
+    result = run_trino_recent_scan(
+        BatchRunConfig(
+            engine="trino",
+            recent_window_minutes=30,
+            triage_profile_limit=50,
+            metadata_top_limit=0,
+        ),
+        settings,
+    )
+
+    assert result.records_diagnosed == 1
+    row = result.rows[0]
+    assert row.case_artifacts is not None
+    analysis = json.loads(row.case_artifacts.analysis_path.read_text(encoding="utf-8"))
+    assert analysis["workflow"] == "recent_selected_query"
+    assert analysis["query_reference"]["value"] == "hidden"
+    assert QUERY_ID not in row.case_artifacts.analysis_path.read_text(encoding="utf-8")
+    html = render_trino_recent_scan_result(result)
+    assert f'href="/trino/details/{row.case_artifacts.case_id}"' in html
+    assert_trino_beta_blocked_surfaces(html, details_available=True)
 
 
 def test_trino_beta_recent_result_renderer_marks_blocked_surfaces() -> None:
@@ -1218,6 +1718,40 @@ def test_trino_beta_recent_result_renderer_marks_blocked_surfaces() -> None:
     assert "Retained records:" in html
     assert "Contract bound:" in html
     assert_trino_beta_blocked_surfaces(html)
+    assert 'href="/trino/details/' not in html
+
+
+def test_trino_production_mode_recent_renderer_marks_local_boundary() -> None:
+    html = render_trino_recent_scan_result(
+        WebTrinoRecentScanResult(
+            rows=(
+                WebTrinoRecentScanRow(
+                    query_id=QUERY_ID,
+                    status="diagnosed",
+                    lifecycle="finished",
+                    parser_coverage="known",
+                    supported_attention_area_count=1,
+                    attention_areas=("trino_spill_observed",),
+                ),
+            ),
+            records_seen=3,
+            records_selected=1,
+            records_diagnosed=1,
+            query_bound=1,
+            cluster_key="trino",
+            support_mode="production",
+        )
+    )
+
+    assert "Trino Recent diagnosis" in html
+    assert "Trino Beta Recent diagnosis" not in html
+    assert 'aria-label="Trino blocked surfaces"' in html
+    assert 'aria-label="Open Trino Query ID diagnosis"' in html
+    assert "Local boundary" in html
+    assert "Trino Recent uses only the bounded retained coordinator list" in html
+    assert 'href="/query/details/' not in html
+    assert 'href="/python-report/' not in html
+    assert 'href="/optimizer"' not in html
 
 
 def test_trino_beta_recent_result_renderer_shows_safe_row_error_reason() -> None:
@@ -1401,7 +1935,7 @@ def test_recent_run_panel_exposes_engine_selector_without_secret_config(tmp_path
     assert "Configured locally" in html
     assert (
         "Running scans, query-history crawling, metadata collection, "
-        "Details/trusted reports, optimizer behavior, generated SQL, and SQL execution "
+        "LLM reports, Query Optimizer jobs, generated SQL, and SQL execution "
         "remain unavailable" in html
     )
     assert '<label for="query_id">Trino Query ID</label>' in html
@@ -1410,9 +1944,11 @@ def test_recent_run_panel_exposes_engine_selector_without_secret_config(tmp_path
     assert "one bounded, pruned coordinator QueryInfo payload" in html
     assert (
         "Running scans, query-history crawling, metadata collection, "
-        "Details/trusted reports, optimizer behavior, generated SQL, and SQL execution "
+        "LLM reports, Query Optimizer jobs, generated SQL, and SQL execution "
         "remain unavailable" in html
     )
+    assert "raw-free Details view" in html
+    assert "optimizer guidance" in html
     assert "collects or reuses the profile" not in html
     assert "prepares the Python report" not in html
     assert "adds metadata when configured" not in html
@@ -1481,7 +2017,7 @@ def test_recent_run_panel_marks_trino_beta_source_without_local_config_echo(
     assert (
         '<option value="trino" selected data-engine-impala-ready="false" '
         'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
-        'data-trino-beta-recent-ready="false">'
+        'data-trino-beta-recent-ready="false" data-trino-display-label="Trino Beta">'
         "Trino coordinator - Trino Beta One Query ID</option>" in html
     )
     assert "coordinator.example.test" not in html
@@ -1520,7 +2056,7 @@ def test_recent_run_panel_does_not_mark_partial_trino_beta_source_ready(
         "Partial Trino source</option>" in html
     )
     assert "Partial Trino source - Trino Beta One Query ID" not in html
-    assert "Configure local Trino Beta first" in html
+    assert "Configure local Trino first" in html
     assert (
         'name="engine_choice" value="trino" data-engine-choice disabled aria-disabled="true"'
         in html
@@ -1570,7 +2106,7 @@ def test_mixed_impala_trino_beta_source_keeps_recent_command_impala_only(
     assert (
         '<option value="mixed" selected data-engine-impala-ready="true" '
         'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
-        'data-trino-beta-recent-ready="false">'
+        'data-trino-beta-recent-ready="false" data-trino-display-label="Trino Beta">'
         "Mixed source - Trino Beta One Query ID</option>" in html
     )
     assert 'name="engine" value="impala" data-engine-hidden' in html
@@ -1593,7 +2129,7 @@ def test_recent_run_panel_disables_trino_beta_until_local_config_exists(
 
     html = render_batch_run_panel(settings, {"engine": "trino"}, diagnosis_target="query")
 
-    assert "Configure local Trino Beta first" in html
+    assert "Configure local Trino first" in html
     assert (
         'name="engine_choice" value="trino" data-engine-choice disabled aria-disabled="true"'
         in html
@@ -1622,7 +2158,35 @@ def test_trino_beta_engine_default_loads_from_local_config(tmp_path: Path) -> No
     settings = build_web_settings(parse_args(["--config", str(config)]), cwd=tmp_path)
 
     assert settings.selected_engine == "trino"
+    assert settings.trino_support_mode == "beta"
     assert settings.trino_beta_enabled is True
+    assert settings.trino_query_info_source_contract == contract
+
+
+def test_trino_support_mode_production_loads_from_local_config_without_legacy_beta(
+    tmp_path: Path,
+) -> None:
+    contract = tmp_path / "trino-query-info-contract.json"
+    contract.write_text(json.dumps(_safe_contract_payload()), encoding="utf-8")
+    config = tmp_path / "web.json"
+    config.write_text(
+        json.dumps(
+            {
+                "engine": "trino",
+                "trino_support_mode": "production",
+                "trino_coordinator_url": COORDINATOR_URL,
+                "trino_query_info_source_contract": "trino-query-info-contract.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_web_startup_config(config, cwd=tmp_path, env={}, require_cm=False) == []
+    settings = build_web_settings(parse_args(["--config", str(config)]), cwd=tmp_path)
+
+    assert settings.selected_engine == "trino"
+    assert settings.trino_support_mode == "production"
+    assert settings.trino_beta_enabled is False
     assert settings.trino_query_info_source_contract == contract
 
 
@@ -1782,17 +2346,17 @@ def test_trino_beta_config_matrix_loads_top_level_cluster_and_mixed_sources(
     assert (
         '<option value="trino" data-engine-impala-ready="false" '
         'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
-        'data-trino-beta-recent-ready="false">'
+        'data-trino-beta-recent-ready="false" data-trino-display-label="Trino Beta">'
         "Trino coordinator - Trino Beta One Query ID</option>" in html
     )
     assert (
         '<option value="mixed" data-engine-impala-ready="true" '
         'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
-        'data-trino-beta-recent-ready="false">'
+        'data-trino-beta-recent-ready="false" data-trino-display-label="Trino Beta">'
         "Mixed source - Trino Beta One Query ID</option>" in html
     )
     assert "Trino Beta is configured for another local source" in html
-    assert "Configure local Trino Beta first" not in html
+    assert "Configure local Trino first" not in html
     assert (
         'name="engine_choice" value="trino" data-engine-choice disabled aria-disabled="true"'
         not in html
@@ -1853,7 +2417,7 @@ def test_trino_beta_config_matrix_rejects_partial_cluster_without_echo(
         validate_web_startup_config(config, cwd=tmp_path, env={}, require_cm=False)
 
     rendered = str(exc.value)
-    assert "Trino Beta local config requires trino_query_info_source_contract." in rendered
+    assert "Trino local config requires trino_query_info_source_contract." in rendered
     assert "Partial Trino source" not in rendered
     assert COORDINATOR_URL not in rendered
     assert str(tmp_path) not in rendered
@@ -1880,7 +2444,7 @@ def test_trino_beta_startup_validation_rejects_missing_contract_without_path_ech
 
     rendered = str(exc.value)
     assert (
-        "Trino Beta local config has an invalid source contract, coordinator URL, "
+        "Trino local config has an invalid source contract, coordinator URL, "
         "or auth reference." in rendered
     )
     assert str(tmp_path) not in rendered
@@ -1911,7 +2475,7 @@ def test_trino_beta_startup_validation_rejects_invalid_coordinator_url_without_e
 
     rendered = str(exc.value)
     assert (
-        "Trino Beta local config has an invalid source contract, coordinator URL, "
+        "Trino local config has an invalid source contract, coordinator URL, "
         "or auth reference." in rendered
     )
     assert raw_url not in rendered
@@ -1946,7 +2510,7 @@ def test_trino_beta_startup_validation_rejects_invalid_auth_header_without_secre
 
     rendered = str(exc.value)
     assert (
-        "Trino Beta local config has an invalid source contract, coordinator URL, "
+        "Trino local config has an invalid source contract, coordinator URL, "
         "or auth reference." in rendered
     )
     assert "SecretValue" not in rendered
@@ -1981,7 +2545,7 @@ def test_trino_beta_startup_validation_rejects_combined_auth_modes_without_secre
 
     rendered = str(exc.value)
     assert (
-        "Trino Beta local config has an invalid source contract, coordinator URL, "
+        "Trino local config has an invalid source contract, coordinator URL, "
         "or auth reference." in rendered
     )
     assert "SecretValue" not in rendered
@@ -2014,10 +2578,40 @@ def test_trino_beta_startup_validation_rejects_partial_auth_config_without_echo(
         validate_web_startup_config(config, cwd=tmp_path, env={}, require_cm=False)
 
     rendered = str(exc.value)
-    assert "Trino Beta local config requires trino_beta_enabled=true." in rendered
+    assert "Trino local config requires trino_support_mode=beta or production." in rendered
     assert "SecretValue" not in rendered
     assert str(tmp_path) not in rendered
     assert "trino-auth-header.txt" not in rendered
+
+
+def test_trino_startup_validation_rejects_production_mode_with_legacy_beta_flag(
+    tmp_path: Path,
+) -> None:
+    contract = tmp_path / "trino-query-info-contract.json"
+    contract.write_text(json.dumps(_safe_contract_payload()), encoding="utf-8")
+    config = tmp_path / "web.json"
+    config.write_text(
+        json.dumps(
+            {
+                "engine": "trino",
+                "trino_support_mode": "production",
+                "trino_beta_enabled": True,
+                "trino_coordinator_url": COORDINATOR_URL,
+                "trino_query_info_source_contract": "trino-query-info-contract.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WebError) as exc:
+        validate_web_startup_config(config, cwd=tmp_path, env={}, require_cm=False)
+
+    rendered = str(exc.value)
+    assert "trino_beta_enabled is a legacy beta-only setting" in rendered
+    assert "SecretValue" not in rendered
+    assert COORDINATOR_URL not in rendered
+    assert str(tmp_path) not in rendered
+    assert "trino-query-info-contract.json" not in rendered
 
 
 def test_trino_beta_startup_validation_rejects_top_level_partial_auth_config_without_echo(
@@ -2035,13 +2629,18 @@ def test_trino_beta_startup_validation_rejects_top_level_partial_auth_config_wit
         validate_web_startup_config(config, cwd=tmp_path, env={}, require_cm=False)
 
     rendered = str(exc.value)
-    assert "Trino Beta local config requires trino_beta_enabled=true." in rendered
+    assert "Trino local config requires trino_support_mode=beta or production." in rendered
     assert "SecretValue" not in rendered
     assert str(tmp_path) not in rendered
     assert "trino-auth-header.txt" not in rendered
 
 
-def _trino_settings(tmp_path: Path) -> WebSettings:
+def _trino_settings(
+    tmp_path: Path,
+    *,
+    trino_support_mode: Literal["off", "beta", "production"] = "beta",
+    trino_beta_enabled: bool = True,
+) -> WebSettings:
     config = tmp_path / "web.json"
     config.write_text("{}", encoding="utf-8")
     contract = tmp_path / "trino-query-info-contract.json"
@@ -2054,12 +2653,27 @@ def _trino_settings(tmp_path: Path) -> WebSettings:
     return WebSettings(
         config=config,
         repo_dir=tmp_path,
-        trino_beta_enabled=True,
+        trino_support_mode=trino_support_mode,
+        trino_beta_enabled=trino_beta_enabled,
         trino_coordinator_url=COORDINATOR_URL,
         trino_query_info_source_contract=contract,
         trino_query_list_source_contract=query_list_contract,
         selected_engine="trino",
     )
+
+
+def _completed_trino_job(result: WebTrinoQueryAnalysisResult):
+    store = WebJobStore()
+    snapshot = store.create(
+        QUERY_ID,
+        "analysis",
+        form_values={"engine": "trino"},
+        kind="trino_query",
+    )
+    store.complete(snapshot.job_id, result)
+    completed = store.get(snapshot.job_id)
+    assert completed is not None
+    return completed
 
 
 def _safe_contract_payload() -> dict[str, object]:

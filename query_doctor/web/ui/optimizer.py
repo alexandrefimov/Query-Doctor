@@ -34,7 +34,7 @@ def render_optimizer_panel() -> str:
         '<section class="panel optimizer-panel" aria-label="Query Optimizer">'
         '<div class="section-heading"><div>'
         '<h1 class="section-title">Query Optimizer</h1>'
-        '<div class="section-kicker">Read-only parse and deterministic optimization hints for one Impala SELECT/WITH statement.</div>'
+        '<div class="section-kicker">Paste one Impala SELECT/WITH statement for read-only review.</div>'
         "</div></div>"
         '<form class="optimizer-form" method="post" action="/optimizer">'
         '<div class="field">'
@@ -42,8 +42,7 @@ def render_optimizer_panel() -> str:
         '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" '
         'aria-describedby="optimizer_sql_help" required></textarea>'
         '<p class="helper optimizer-field-help" id="optimizer_sql_help">'
-        "Paste one SELECT or WITH statement. Query Doctor parses it locally, never executes it, "
-        "rejects unsafe or multi-statement input before metadata collection, and clears the SQL after submit."
+        "One SELECT or WITH statement only. Query Doctor clears this field after submit and never executes the SQL."
         "</p>"
         "</div>"
         '<div class="optimizer-actions-row">'
@@ -65,13 +64,13 @@ def render_optimizer_error_panel(error: object) -> str:
 def render_optimizer_scope_details() -> str:
     return (
         '<details class="compact-details optimizer-scope-details">'
-        "<summary>Scope and safety</summary>"
+        "<summary>Input rules and safety boundary</summary>"
         '<div class="compact-details-body">'
         '<ul class="optimizer-scope-list">'
-        "<li><strong>Trust path:</strong> read-only SQL parse -&gt; referenced tables -&gt; allowlisted metadata -&gt; safe optimization hints.</li>"
-        "<li><strong>Collection:</strong> local parse · no execution · submitted SQL not echoed · referenced tables only.</li>"
-        "<li><strong>Metadata:</strong> optional bounded collection uses only table DDL, table stats, and column stats facts.</li>"
-        "<li><strong>Output:</strong> referenced tables · metadata status · findings · limitations · next checks.</li>"
+        "<li><strong>Accepted input:</strong> exactly one read-only SELECT or WITH statement.</li>"
+        "<li><strong>Rejected before metadata:</strong> mutating, admin, unsafe, or multi-statement input.</li>"
+        "<li><strong>Processing:</strong> local parse only; optional bounded metadata reads only referenced tables.</li>"
+        "<li><strong>Output:</strong> referenced tables, metadata status, findings, limitations, and next checks. Submitted SQL is not echoed.</li>"
         "</ul>"
         "</div>"
         "</details>"

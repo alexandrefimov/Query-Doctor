@@ -10,6 +10,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from query_doctor.source_visibility import collectable_owner_users
+from query_doctor.trino.support_mode import (
+    TRINO_SUPPORT_MODE_OFF,
+    trino_support_mode_enabled,
+    trino_support_mode_is_production,
+)
 from query_doctor.web.cluster_selection import (
     cluster_select_options,
     cluster_trino_beta_query_ready,
@@ -255,6 +260,7 @@ def render_batch_run_panel(
         impala_ready=impala_available,
         trino_beta_ready=trino_beta_available,
         selected_source_trino_beta_ready=trino_beta_ready,
+        trino_label=trino_display_label(selected_settings if trino_beta_ready else settings),
     )
     return (
         f'<{panel_tag} id="new-scan" class="panel batch-run-panel{" batch-run-panel--disclosure" if collapsed else ""}" aria-label="Run query diagnosis" data-diagnosis-target-root{panel_open}>'
@@ -357,9 +363,22 @@ def render_configured_advanced_settings(
 
 def trino_beta_query_ready(settings: Any) -> bool:
     return bool(
-        getattr(settings, "trino_beta_enabled", False)
+        trino_settings_enabled(settings)
         and getattr(settings, "trino_coordinator_url", None)
         and getattr(settings, "trino_query_info_source_contract", None)
+    )
+
+
+def trino_settings_enabled(settings: Any) -> bool:
+    mode = getattr(settings, "trino_support_mode", TRINO_SUPPORT_MODE_OFF)
+    return trino_support_mode_enabled(mode) or bool(getattr(settings, "trino_beta_enabled", False))
+
+
+def trino_display_label(settings: Any) -> str:
+    return (
+        "Trino"
+        if trino_support_mode_is_production(getattr(settings, "trino_support_mode", ""))
+        else "Trino Beta"
     )
 
 
@@ -429,6 +448,7 @@ def render_engine_control(
     impala_ready: bool = True,
     trino_beta_ready: bool = False,
     selected_source_trino_beta_ready: bool | None = None,
+    trino_label: str = "Trino Beta",
 ) -> str:
     selected = normalize_engine_value(selected_value)
 
@@ -449,30 +469,30 @@ def render_engine_control(
             "</label>"
         )
 
-    trino_help = "Configured locally" if trino_beta_ready else "Configure local Trino Beta first"
+    trino_help = "Configured locally" if trino_beta_ready else "Configure local Trino first"
     selected_source_ready = (
         trino_beta_ready
         if selected_source_trino_beta_ready is None
         else selected_source_trino_beta_ready
     )
     if selected_source_ready:
-        readiness_note = "Trino Beta is configured for this selected source. It is limited to retained-list Recent Beta and/or one explicit Query ID."
+        readiness_note = f"{trino_label} is configured for this selected source. It is limited to retained-list Recent and/or one explicit Query ID."
     elif trino_beta_ready:
-        readiness_note = "Trino Beta is configured for another local source. Selecting it narrows Source cluster to Trino Beta-ready sources."
+        readiness_note = f"{trino_label} is configured for another local source. Selecting it narrows Source cluster to Trino-ready sources."
     else:
-        readiness_note = "Trino Beta requires local config keys for beta enablement, coordinator URL, and source contracts before the UI can select it."
+        readiness_note = "Trino requires trino_support_mode, coordinator URL, and source contracts before the UI can select it."
     return (
         '<div class="mode-control engine-control" aria-label="Query engine">'
         '<div class="label-row">'
         '<span class="mode-label" id="engine_label">Engine</span>'
         '<details class="info-popover">'
         '<summary aria-label="Engine help">i</summary>'
-        '<div class="info-body">Impala is production triage. Trino Beta supports bounded retained-list Recent diagnosis when a query-list source contract is configured and one explicit Query ID through a local raw-free coordinator QueryInfo contract. Running scans, query-history crawling, metadata collection, Details/trusted reports, optimizer behavior, generated SQL, and SQL execution remain unavailable. '
+        f'<div class="info-body">Impala is production triage. {html.escape(trino_label)} supports bounded retained-list Recent diagnosis when a query-list source contract is configured, one explicit Query ID through a local raw-free coordinator QueryInfo contract, a raw-free Details view after case materialization, deterministic Python Report, and optimizer guidance from that Details view. Running scans, query-history crawling, metadata collection, LLM reports, Query Optimizer jobs, generated SQL, and SQL execution remain unavailable. '
         f"{html.escape(readiness_note)}</div>"
         "</details></div>"
         '<div class="segmented engine-segmented" role="radiogroup" aria-labelledby="engine_label">'
         f"{option('impala', 'Impala', 'Production', disabled=not impala_ready)}"
-        f"{option('trino', 'Trino Beta', trino_help, disabled=not trino_beta_ready)}"
+        f"{option('trino', trino_label, trino_help, disabled=not trino_beta_ready)}"
         "</div>"
         "</div>"
     )
@@ -607,14 +627,16 @@ def render_known_query_form(
     disabled_attr = " disabled" if run_disabled else ""
     selected_engine = normalize_engine_value(engine)
     if selected_engine == "trino":
-        button_label = "Running" if run_disabled else "Run Trino Beta"
+        trino_label = trino_display_label(settings)
+        button_label = "Running" if run_disabled else f"Run {trino_label}"
         label_text = "Trino Query ID"
         placeholder = "20260603_120102_00001_abcde"
         query_help_text = (
             "One explicit Trino Query ID. Query Doctor reads one bounded, pruned "
-            "coordinator QueryInfo payload through local beta config and renders compact "
-            "raw-free diagnosis. Running scans, query-history crawling, metadata "
-            "collection, Details/trusted reports, optimizer behavior, generated SQL, and SQL "
+            "coordinator QueryInfo payload through local Trino config and renders compact "
+            "raw-free diagnosis. A raw-free Details view, deterministic Python Report, and optimizer guidance "
+            "appear only after case materialization. Running scans, query-history crawling, "
+            "metadata collection, LLM reports, Query Optimizer jobs, generated SQL, and SQL "
             "execution remain unavailable."
         )
     else:
@@ -836,15 +858,29 @@ def render_cluster_select(
         getattr(cluster, "key", ""): cluster_impala_ready(cluster)
         for cluster in getattr(settings, "clusters", ())
     }
-    rendered_options = "".join(
-        f'<option value="{html.escape(value, quote=True)}"{" selected" if value == selected_raw else ""} '
-        f'data-engine-impala-ready="{"true" if impala_ready_by_key.get(value, True) else "false"}" '
-        f'data-engine-trino-ready="{"true" if trino_ready_by_key.get(value) or trino_recent_ready_by_key.get(value) else "false"}" '
-        f'data-trino-beta-query-ready="{"true" if trino_ready_by_key.get(value) else "false"}" '
-        f'data-trino-beta-recent-ready="{"true" if trino_recent_ready_by_key.get(value) else "false"}">'
-        f"{html.escape(label)}</option>"
-        for value, label in options
-    )
+    cluster_by_key = {
+        getattr(cluster, "key", ""): cluster for cluster in getattr(settings, "clusters", ())
+    }
+
+    def render_option(value: str, label: str) -> str:
+        trino_ready = bool(trino_ready_by_key.get(value) or trino_recent_ready_by_key.get(value))
+        trino_label_attr = ""
+        if trino_ready:
+            trino_label_attr = (
+                ' data-trino-display-label="'
+                f'{html.escape(trino_display_label(cluster_by_key.get(value)), quote=True)}"'
+            )
+        return (
+            f'<option value="{html.escape(value, quote=True)}"{" selected" if value == selected_raw else ""} '
+            f'data-engine-impala-ready="{"true" if impala_ready_by_key.get(value, True) else "false"}" '
+            f'data-engine-trino-ready="{"true" if trino_ready else "false"}" '
+            f'data-trino-beta-query-ready="{"true" if trino_ready_by_key.get(value) else "false"}" '
+            f'data-trino-beta-recent-ready="{"true" if trino_recent_ready_by_key.get(value) else "false"}"'
+            f"{trino_label_attr}>"
+            f"{html.escape(label)}</option>"
+        )
+
+    rendered_options = "".join(render_option(value, label) for value, label in options)
     help_text = (
         "Clusters are loaded from local config. Recent and Running scans use the selected "
         "cluster's Cloudera Manager settings; Known Query ID uses the selected cluster's configured profile source. "

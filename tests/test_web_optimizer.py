@@ -45,26 +45,19 @@ def test_optimizer_page_renders():
         'aria-describedby="optimizer_sql_help" required>'
     ) in body
     assert '<button class="run-button" type="submit">Analyze</button>' in body
-    assert (
-        "Read-only parse and deterministic optimization hints for one Impala SELECT/WITH statement."
-        in body
-    )
-    assert (
-        "read-only SQL parse -&gt; referenced tables -&gt; allowlisted metadata -&gt; safe optimization hints"
-        in body
-    )
+    assert "Paste one Impala SELECT/WITH statement for read-only review." in body
     assert '<details class="compact-details optimizer-scope-details">' in body
+    assert "Input rules and safety boundary" in body
     assert '<p class="helper optimizer-field-help" id="optimizer_sql_help">' in body
-    assert "Paste one SELECT or WITH statement." in body
-    assert "parses it locally, never executes it" in body
-    assert "rejects unsafe or multi-statement input before metadata collection" in body
-    assert "clears the SQL after submit" in body
-    assert "local parse · no execution · submitted SQL not echoed · referenced tables only" in body
-    assert (
-        "optional bounded collection uses only table DDL, table stats, and column stats facts"
-        in body
-    )
-    assert "referenced tables · metadata status · findings · limitations · next checks" in body
+    assert "One SELECT or WITH statement only." in body
+    assert "clears this field after submit and never executes the SQL" in body
+    assert "exactly one read-only SELECT or WITH statement" in body
+    assert "Rejected before metadata" in body
+    assert "mutating, admin, unsafe, or multi-statement input" in body
+    assert "local parse only" in body
+    assert "optional bounded metadata reads only referenced tables" in body
+    assert "referenced tables, metadata status, findings, limitations, and next checks" in body
+    assert "Submitted SQL is not echoed" in body
     assert '<a class="nav-link nav-link--active" href="/optimizer">Optimizer</a>' not in body
     assert 'href="/optimizer">Query Optimizer</a>' not in body
     assert optimizer_textarea_value(body) == ""

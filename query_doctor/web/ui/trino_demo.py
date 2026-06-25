@@ -75,8 +75,8 @@ def render_trino_demo_recent_section(
         'aria-label="Trino Beta demo cases">'
         '<div class="batch-head"><div><h1>Trino Beta demo cases</h1>'
         "<p>Read-only synthetic compact diagnosis from raw-free demo facts. No coordinator, "
-        "network, metadata collection, Details/trusted reports, optimizer behavior, "
-        "generated SQL, or SQL execution is used.</p></div></div>"
+        "network, metadata collection, materialized Details, Python Report, optimizer "
+        "guidance, generated SQL, or SQL execution is used.</p></div></div>"
         '<div class="status-strip" aria-label="Trino Beta demo status">'
         '<span class="status-item"><span class="dot"></span>Engine: '
         '<span class="badge gray">Trino Beta demo</span></span>'
@@ -103,7 +103,7 @@ def render_trino_demo_recent_section(
         '<span class="source-locator-heading">Demo boundary</span>'
         "<p>These Trino Beta demo cases are static raw-free compact diagnosis examples. "
         "They are not live Trino collection, production support, Details pages, trusted "
-        "reports, optimizer recommendations, generated SQL drafts, or SQL execution.</p>"
+        "reports, optimizer guidance, generated SQL drafts, or SQL execution.</p>"
         "</div>"
         "</section>"
     )

@@ -147,8 +147,9 @@ def test_web_trino_beta_smoke_requires_cluster_without_listing_private_ids(tmp_p
 
 def trino_result_html(title: str, *, recent_extra: str = "") -> str:
     boundary = (
-        "Running scans, query-history crawling, metadata collection, Details/trusted reports, "
-        "optimizer behavior, generated SQL, and SQL execution remain unavailable."
+        "Running scans, query-history crawling, metadata collection, LLM reports, "
+        "Query Optimizer jobs, generated SQL, and SQL execution remain unavailable. "
+        "Python Report and optimizer guidance are available only from materialized Details."
     )
     if title == "Trino Beta Recent diagnosis":
         return (
