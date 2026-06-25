@@ -28,7 +28,7 @@ TRINO_ADAPTER = EngineAdapter(
     notes=(
         "Supports sanitized offline evidence package, local event-store, local query-detail, local query-list, local statement-stats, local pruned QueryInfo, and bounded HTTP archive import.",
         "Supports raw-free event-source contract checks, coordinator QueryInfo target checks, pruned one-query coordinator probes/imports, and compact diagnosis over boundary JSON.",
-        "Supports local web Trino Beta for retained-list Recent diagnosis and one explicit Query ID through bounded pruned coordinator QueryInfo.",
-        "Does not support Running scans, submit SQL, crawl live history, collect metadata, or expose trusted report/optimizer output.",
+        "Supports local web Trino for retained-list Recent diagnosis and one explicit Query ID through bounded pruned coordinator QueryInfo.",
+        "Does not support Running scans, submit SQL, crawl live history, collect metadata, expose LLM reports, or run Query Optimizer jobs.",
     ),
 )

@@ -354,6 +354,7 @@ def test_supported_keys_are_accepted(tmp_path):
         "web_advanced_settings_enabled": True,
         "web_advanced_filters": ["pool", "query_type", "user", "pool"],
         "engine": "trino",
+        "trino_support_mode": "beta",
         "trino_beta_enabled": True,
         "trino_coordinator_url": "https://coordinator.example.com:8443",
         "trino_query_info_source_contract": "trino-query-info-contract.json",
@@ -386,6 +387,7 @@ def test_supported_keys_are_accepted(tmp_path):
     assert loaded["recent_scan_timezone"] == "Europe/Berlin"
     assert loaded["language"] == "ru"
     assert loaded["engine"] == "trino"
+    assert loaded["trino_support_mode"] == "beta"
     assert loaded["trino_beta_enabled"] is True
     assert loaded["trino_query_info_source_contract"] == "trino-query-info-contract.json"
     assert loaded["trino_query_list_source_contract"] == "trino-query-list-contract.json"
@@ -413,6 +415,13 @@ def test_engine_config_rejects_unknown_value(tmp_path):
     path = write_config(tmp_path / "config.json", minimal_config(engine="spark"))
 
     with pytest.raises(config_contract.ConfigError, match="engine must be one of"):
+        config_contract.load_local_config(path, cwd=tmp_path)
+
+
+def test_trino_support_mode_rejects_unknown_value(tmp_path):
+    path = write_config(tmp_path / "config.json", minimal_config(trino_support_mode="prod"))
+
+    with pytest.raises(config_contract.ConfigError, match="trino_support_mode must be one of"):
         config_contract.load_local_config(path, cwd=tmp_path)
 
 
@@ -495,6 +504,7 @@ def test_clusters_config_is_accepted_and_normalized(tmp_path):
                     "recent_scan_timezone": "UTC",
                     "source_visibility": "owner_raw",
                     "source_owner_user": "analyst_one",
+                    "trino_support_mode": "beta",
                     "trino_beta_enabled": True,
                     "trino_coordinator_url": "https://trino.example.com",
                     "trino_query_info_source_contract": "trino-contract.json",
@@ -531,6 +541,7 @@ def test_clusters_config_is_accepted_and_normalized(tmp_path):
             "recent_scan_timezone": "UTC",
             "source_visibility": "owner_raw",
             "source_owner_user": "analyst_one",
+            "trino_support_mode": "beta",
             "trino_beta_enabled": True,
             "trino_coordinator_url": "https://trino.example.com",
             "trino_query_info_source_contract": "trino-contract.json",

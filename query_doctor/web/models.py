@@ -16,6 +16,7 @@ from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_STEP_SEC,
     DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
 )
+from query_doctor.trino.support_mode import TRINO_SUPPORT_MODE_OFF, TrinoSupportMode
 from query_doctor.web.viewer_identity import (
     ViewerIdentity,
     unauthenticated_viewer_identity,
@@ -117,6 +118,7 @@ class WebClusterConfig:
     source_owner_user: str | None = None
     krb5ccname: str | None = None
     recent_scan_timezone: str = DEFAULT_RECENT_SCAN_TIMEZONE
+    trino_support_mode: TrinoSupportMode = TRINO_SUPPORT_MODE_OFF
     trino_beta_enabled: bool = False
     trino_coordinator_url: str | None = None
     trino_query_info_source_contract: Path | None = None
@@ -201,6 +203,7 @@ class WebSettings:
     owner_raw_source_enabled: bool = True
     viewer_identity: ViewerIdentity = field(default_factory=unauthenticated_viewer_identity)
     selected_engine: str = "impala"
+    trino_support_mode: TrinoSupportMode = TRINO_SUPPORT_MODE_OFF
     trino_beta_enabled: bool = False
     trino_coordinator_url: str | None = None
     trino_query_info_source_contract: Path | None = None
@@ -234,9 +237,22 @@ class WebQueryAnalysisResult:
 
 
 @dataclass(frozen=True)
+class WebTrinoCaseArtifacts:
+    case_id: str
+    case_dir: Path
+    boundary_path: Path
+    compact_diagnosis_path: Path
+    metadata_summary_path: Path
+    analysis_path: Path
+    analysis_facts_path: Path
+
+
+@dataclass(frozen=True)
 class WebTrinoQueryAnalysisResult:
     query_id: str
     diagnosis: dict[str, object]
+    support_mode: str = "beta"
+    case_artifacts: WebTrinoCaseArtifacts | None = None
 
 
 @dataclass(frozen=True)
@@ -250,6 +266,7 @@ class WebTrinoRecentScanRow:
     error: str = ""
     error_reason_code: str = ""
     error_next_step: str = ""
+    case_artifacts: WebTrinoCaseArtifacts | None = None
 
 
 @dataclass(frozen=True)
@@ -261,6 +278,7 @@ class WebTrinoRecentScanResult:
     query_bound: int
     cluster_key: str = ""
     warnings: tuple[str, ...] = ()
+    support_mode: str = "beta"
 
 
 @dataclass(frozen=True)

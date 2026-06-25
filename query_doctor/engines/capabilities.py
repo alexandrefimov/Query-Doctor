@@ -146,6 +146,7 @@ def _trino_beta(
     adapter_flag: str | None = None,
     raw_policy: RawPolicy = "raw_free_summary_only",
     surface_class: SurfaceClass = "product_web",
+    route_path: str | None = None,
 ) -> EngineCapability:
     return _capability(
         engine="trino",
@@ -156,6 +157,31 @@ def _trino_beta(
         raw_policy=raw_policy,
         product_surface_allowed=True,
         adapter_flag=adapter_flag,
+        route_path=route_path,
+        promotion_gate=promotion_gate,
+    )
+
+
+def _trino_local_production(
+    surface_id: str,
+    *,
+    input_kind: str,
+    promotion_gate: str,
+    adapter_flag: str | None = None,
+    raw_policy: RawPolicy = "raw_free_summary_only",
+    surface_class: SurfaceClass = "product_web",
+    route_path: str | None = None,
+) -> EngineCapability:
+    return _capability(
+        engine="trino",
+        surface_id=surface_id,
+        support_level="production",
+        surface_class=surface_class,
+        input_kind=input_kind,
+        raw_policy=raw_policy,
+        product_surface_allowed=True,
+        adapter_flag=adapter_flag,
+        route_path=route_path,
         promotion_gate=promotion_gate,
     )
 
@@ -262,17 +288,35 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         input_kind="validated_impala_case",
         promotion_gate="strict_report_validation",
     ),
-    _trino_beta(
+    _trino_local_production(
         "recent_scan",
         adapter_flag="supports_recent_scan",
         input_kind="bounded_trino_retained_query_list_pruned_query_info",
-        promotion_gate="trino_beta_recent_retained_query_list_contract",
+        promotion_gate="trino_local_recent_retained_query_list_contract",
     ),
-    _trino_beta(
+    _trino_local_production(
         "query_id_mode",
         adapter_flag="supports_query_id_mode",
         input_kind="one_known_trino_query_id_pruned_query_info",
-        promotion_gate="trino_beta_one_query_pruned_query_info_contract",
+        promotion_gate="trino_local_one_query_pruned_query_info_contract",
+    ),
+    _trino_local_production(
+        "materialized_details",
+        input_kind="trino_web_materialized_raw_free_case_artifacts",
+        route_path="/trino/details/{case_id}",
+        promotion_gate="trino_materialized_case_details_raw_free_contract",
+    ),
+    _trino_local_production(
+        "materialized_python_report",
+        input_kind="trino_web_materialized_raw_free_case_artifacts",
+        route_path="/trino/details/{case_id}?report=python",
+        promotion_gate="trino_materialized_case_python_report_validation_contract",
+    ),
+    _trino_local_production(
+        "materialized_optimizer_guidance",
+        input_kind="trino_web_materialized_raw_free_case_artifacts",
+        route_path="/trino/details/{case_id}?guidance=optimizer",
+        promotion_gate="trino_materialized_case_optimizer_guidance_validation_contract",
     ),
     _trino_preview(
         "offline_evidence_import",
@@ -370,6 +414,13 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         promotion_gate="metadata_allowlist_contract_check_only",
     ),
     _trino_preview(
+        "metadata_cli_summary",
+        cli_role="trino_metadata_cli_summary",
+        input_kind="operator_trino_cli_metadata_summary",
+        raw_policy="raw_free_aggregate_summary_only",
+        promotion_gate="metadata_allowlist_contract_required",
+    ),
+    _trino_preview(
         "local_metadata_summary_import",
         cli_role="trino_metadata_summary_import",
         input_kind="sanitized_aggregate_metadata_summary",
@@ -449,6 +500,13 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         promotion_gate="developer_one_query_readiness_gate",
     ),
     _trino_dev(
+        "metadata_cli_summary_smoke",
+        input_kind="operator_trino_cli_metadata_summary_round_trip",
+        surface_class="dev_wrapper",
+        script_path="scripts/trino_metadata_cli_summary_smoke.py",
+        promotion_gate="developer_metadata_cli_round_trip_gate",
+    ),
+    _trino_dev(
         "handoff_suite_manifest",
         input_kind="safe_relative_json_manifest",
         script_path="scripts/build_trino_handoff_suite_manifest.py",
@@ -461,16 +519,70 @@ ENGINE_CAPABILITIES: tuple[EngineCapability, ...] = (
         promotion_gate="one_query_readiness_audit",
     ),
     _trino_dev(
+        "representative_evidence_audit",
+        input_kind="retained_raw_free_evidence_summaries",
+        script_path="scripts/audit_trino_representative_evidence.py",
+        promotion_gate="trino_representative_real_cluster_evidence_not_closed",
+    ),
+    _trino_dev(
+        "query_linked_fact_coverage_audit",
+        input_kind="registered_fact_namespace_and_source_contracts",
+        script_path="scripts/audit_trino_query_linked_fact_coverage.py",
+        promotion_gate="trino_query_linked_fact_coverage_not_closed",
+    ),
+    _trino_dev(
+        "production_closure_gates_audit",
+        input_kind="raw_free_closure_gate_summaries_and_support_matrix",
+        script_path="scripts/audit_trino_production_closure_gates.py",
+        promotion_gate="bounded_trino_production_claim_closure",
+    ),
+    _trino_dev(
+        "product_metadata_collection_audit",
+        input_kind="metadata_source_contract_registry_and_fact_namespace",
+        script_path="scripts/audit_trino_product_metadata_collection.py",
+        promotion_gate="trino_product_metadata_collection_not_closed",
+    ),
+    _trino_dev(
+        "report_optimizer_safety_audit",
+        input_kind="trino_report_optimizer_safety_registry_policy_and_validators",
+        script_path="scripts/audit_trino_report_optimizer_safety.py",
+        promotion_gate="trino_report_optimizer_safety_not_closed",
+    ),
+    _trino_dev(
+        "browser_report_regression_audit",
+        input_kind="trino_browser_report_regression_test_catalog_and_route_manifest",
+        script_path="scripts/audit_trino_browser_report_regression.py",
+        promotion_gate="trino_browser_report_regression_not_closed",
+    ),
+    _trino_dev(
+        "production_collector_contracts_audit",
+        input_kind="source_contract_registry_and_closure_plan",
+        script_path="scripts/audit_trino_production_collector_contracts.py",
+        promotion_gate="trino_production_collector_contracts_not_closed",
+    ),
+    _trino_dev(
         "product_surface_boundary_audit",
         input_kind="retained_raw_free_compact_artifacts",
         script_path="scripts/audit_trino_product_surface_boundary.py",
         promotion_gate="product_surface_blocking_audit",
     ),
     _trino_dev(
+        "shared_deployment_audit",
+        input_kind="local_web_config_and_static_surface_registry",
+        script_path="scripts/audit_trino_shared_deployment_boundary.py",
+        promotion_gate="shared_deployment_front_door_boundary_audit",
+    ),
+    _trino_dev(
+        "shared_deployment_preflight",
+        input_kind="local_web_config_and_static_surface_registry",
+        script_path="scripts/audit_trino_shared_deployment_preflight.py",
+        promotion_gate="shared_deployment_static_preflight",
+    ),
+    _trino_dev(
         "support_gap_matrix_audit",
         input_kind="capability_and_fact_registry",
         script_path="scripts/audit_trino_support_gap_matrix.py",
-        promotion_gate="support_gap_static_audit",
+        promotion_gate="bounded_trino_production_claim_static_audit",
     ),
     _trino_dev(
         "web_beta_readiness_audit",
@@ -653,7 +765,6 @@ def unsupported_product_capabilities(engine: str) -> tuple[EngineCapability, ...
             capability.adapter_flag in PRODUCT_ADAPTER_FLAGS
             and not capability.product_surface_allowed
         )
-        or capability.support_level == "production"
     )
 
 

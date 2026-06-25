@@ -18,6 +18,12 @@ from query_doctor.report.llm_client import (
     normalize_llm_provider,
 )
 from query_doctor.report.language_contract import normalize_report_language
+from query_doctor.trino.support_mode import (
+    TRINO_SUPPORT_MODE_BETA,
+    TRINO_SUPPORT_MODE_OFF,
+    normalize_trino_support_mode,
+    trino_support_mode_enabled,
+)
 from query_doctor.web.cluster_selection import build_web_cluster_configs, settings_for_cluster_key
 from query_doctor.web.models import (
     DEFAULT_CORPUS_DIR,
@@ -484,7 +490,7 @@ def cluster_is_manual_only(cluster: WebClusterConfig) -> bool:
 
 def cluster_is_trino_beta_only(cluster: WebClusterConfig) -> bool:
     return bool(
-        cluster.trino_beta_enabled
+        (trino_support_mode_enabled(cluster.trino_support_mode) or cluster.trino_beta_enabled)
         and cluster.trino_coordinator_url
         and cluster.trino_query_info_source_contract
         and not any(
@@ -501,7 +507,8 @@ def cluster_is_trino_beta_only(cluster: WebClusterConfig) -> bool:
 
 def cluster_has_trino_beta_config(cluster: WebClusterConfig) -> bool:
     return bool(
-        cluster.trino_beta_enabled
+        cluster.trino_support_mode != TRINO_SUPPORT_MODE_OFF
+        or cluster.trino_beta_enabled
         or cluster.trino_coordinator_url
         or cluster.trino_query_info_source_contract
         or cluster.trino_query_list_source_contract
@@ -523,31 +530,46 @@ def validate_trino_beta_startup_cluster(
 
     if not cluster_has_trino_beta_config(cluster):
         return
-    if not cluster.trino_beta_enabled:
+    if cluster.trino_support_mode != TRINO_SUPPORT_MODE_BETA and cluster.trino_beta_enabled:
         raise WebError(
-            "Trino Beta local config requires trino_beta_enabled=true.",
-            title="Trino Beta source is not enabled",
-            reason_code="trino_beta.not_enabled",
-            stage="Checking Trino Beta local config",
-            next_step="Set trino_beta_enabled=true for this local source or remove Trino Beta settings.",
+            "trino_beta_enabled is a legacy beta-only setting and cannot be combined with "
+            "trino_support_mode=production.",
+            title="Trino support mode is ambiguous",
+            reason_code="trino.support_mode_conflict",
+            stage="Checking Trino local config",
+            next_step=(
+                "Remove trino_beta_enabled when using trino_support_mode=production, "
+                "or set trino_support_mode=beta for the legacy beta lane."
+            ),
+        )
+    if not trino_support_mode_enabled(cluster.trino_support_mode):
+        raise WebError(
+            "Trino local config requires trino_support_mode=beta or production.",
+            title="Trino source is not enabled",
+            reason_code="trino.not_enabled",
+            stage="Checking Trino local config",
+            next_step=(
+                "Set trino_support_mode=beta or production for this local source, "
+                "or remove Trino settings."
+            ),
         )
     if not cluster.trino_coordinator_url:
         raise WebError(
-            "Trino Beta local config requires trino_coordinator_url.",
-            title="Trino Beta coordinator is not configured",
-            reason_code="trino_beta.coordinator_missing",
-            stage="Checking Trino Beta local config",
-            next_step="Configure trino_coordinator_url for this local source or remove Trino Beta settings.",
+            "Trino local config requires trino_coordinator_url.",
+            title="Trino coordinator is not configured",
+            reason_code="trino.coordinator_missing",
+            stage="Checking Trino local config",
+            next_step="Configure trino_coordinator_url for this local source or remove Trino settings.",
         )
     if cluster.trino_query_info_source_contract is None:
         raise WebError(
-            "Trino Beta local config requires trino_query_info_source_contract.",
-            title="Trino Beta source contract is not configured",
-            reason_code="trino_beta.query_info_contract_missing",
-            stage="Checking Trino Beta local config",
+            "Trino local config requires trino_query_info_source_contract.",
+            title="Trino source contract is not configured",
+            reason_code="trino.query_info_contract_missing",
+            stage="Checking Trino local config",
             next_step=(
                 "Configure trino_query_info_source_contract for this local source "
-                "or remove Trino Beta settings."
+                "or remove Trino settings."
             ),
         )
     validate_trino_beta_startup_config(
@@ -623,6 +645,7 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.viewer_identity_header,
             settings.viewer_identity.viewer_raw_subjects,
             settings.krb5ccname,
+            settings.trino_support_mode != TRINO_SUPPORT_MODE_OFF,
             settings.trino_beta_enabled,
             settings.trino_coordinator_url,
             settings.trino_query_info_source_contract,
@@ -636,7 +659,7 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
         )
     ):
         raise WebError(
-            "Public demo mode must not load CM, Impala, Prometheus, metadata, owner source, raw viewer, or Trino beta settings.",
+            "Public demo mode must not load CM, Impala, Prometheus, metadata, owner source, raw viewer, or Trino settings.",
             title="Public demo source config was rejected",
             reason_code="web.public_demo_external_source_rejected",
             stage="Checking public demo startup",
@@ -786,6 +809,11 @@ def build_web_settings(
         else local_first_viewer_identity(
             collectable_owner_users(source_owner_user, source_owner_user_options)
         )
+    )
+    legacy_trino_beta_enabled = optional_config_bool(config_values, "trino_beta_enabled") is True
+    trino_support_mode = normalize_trino_support_mode(
+        optional_config_string(config_values, "trino_support_mode"),
+        legacy_beta_enabled=legacy_trino_beta_enabled,
     )
     report_llm_provider = normalize_llm_provider(
         first_string_value(
@@ -1057,7 +1085,10 @@ def build_web_settings(
         owner_raw_source_enabled=owner_raw_source_enabled_setting(args, config_values),
         viewer_identity=viewer_identity,
         selected_engine=normalize_engine_config(optional_config_string(config_values, "engine")),
-        trino_beta_enabled=optional_config_bool(config_values, "trino_beta_enabled") is True,
+        trino_support_mode=trino_support_mode,
+        trino_beta_enabled=(
+            legacy_trino_beta_enabled or trino_support_mode == TRINO_SUPPORT_MODE_BETA
+        ),
         trino_coordinator_url=optional_config_string(config_values, "trino_coordinator_url"),
         trino_query_info_source_contract=configured_optional_config_path(
             config_values,
