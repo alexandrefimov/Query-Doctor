@@ -24,8 +24,9 @@ about unsupported scope.
 - README quickstart works from a fresh virtual environment.
 - GitHub CI is green on the public default branch.
 - Public docs state current support honestly: Query Doctor is a Big Data query
-  diagnostic tool focused today on Apache Impala workloads; Apache Impala is the
-  only implemented production triage engine; Cloudera Manager is the full Recent
+  diagnostic tool focused on Apache Impala workloads, with bounded local Trino
+  production lanes; Apache Impala is the full production triage engine;
+  Cloudera Manager is the full Recent
   discovery/profile/metrics/events source validated against the maintained test
   environment; direct Impala supports bounded Recent, Running, and Known Query
   ID workflows without Cloudera Manager events; optional Prometheus runtime
@@ -38,40 +39,70 @@ about unsupported scope.
   coordinator query-info probing/import and local compact diagnosis over
   raw-free direct boundary JSON excluding metadata summary boundaries or selected package sample boundaries plus
   isolated local compact-diagnosis rendering for the same already raw-free
-  inputs, plus local web Trino Beta retained-list Recent over one bounded
+  inputs, plus local production web Trino retained-list Recent over one bounded
   retained pruned coordinator query-list read and selected pruned QueryInfo
-  reads, plus local web Trino Beta One Query ID over one bounded pruned
-  coordinator QueryInfo read; Spark support is limited to experimental compact History Server
+  reads, plus local production web Trino One Query ID over one bounded pruned
+  coordinator QueryInfo read, plus raw-free Trino Details over server-owned
+  materialized web cases from those lanes and deterministic Python Report plus
+  optimizer guidance over the same facts;
+  Spark support is limited to experimental compact History Server
   summary intake for one explicit application, compact evidence-package
   build/validation/fixture export over already compact samples, local compact
   diagnosis over raw-free Spark inputs, and strict handoff/readiness audits; and
   future Big Data live engines, broader providers, prepared event/log sources,
   and Cluster Doctor are roadmap seams only. Trino is not Running live
-  collection, query-history coordinator crawling, Details/trusted report
-  output, optimizer behavior, metadata collection, Query Doctor-generated SQL,
-  SQL execution, or production Trino support beyond the local retained-list
-  Recent and One Query ID beta lanes. Spark is
+  collection, query-history coordinator crawling, LLM report output,
+  Query Optimizer jobs, metadata collection, Query Doctor-generated SQL, SQL
+  execution, or broader/shared Trino production support beyond the local retained-list Recent,
+  One Query ID, raw-free materialized Details, Python Report, and optimizer
+  guidance local production lanes.
+  Spark is
   not public engine support, Recent scans, Details/trusted report output,
   optimizer behavior, engine registration, raw event-log handling, raw
   SQL/plan display, environment/log dumps, or Spark job execution.
-- Trino Beta web demo or release handoff includes a passing local-config
+- Trino local production web demo or release handoff includes a passing local-config
   readiness audit followed by a bounded live smoke when an intentional local
   source is available:
   `python3 scripts/audit_trino_beta_release_readiness.py --config <ignored-local-web-config.json> --selected-query-limit 1`.
+  `python3 scripts/audit_trino_shared_deployment_preflight.py --config <ignored-local-web-config.json>`.
+  `python3 scripts/audit_trino_shared_deployment_boundary.py --config <ignored-local-web-config.json>`.
   `python3 scripts/audit_trino_web_beta_readiness.py --require-query-id --require-recent`.
   `python3 scripts/audit_trino_web_beta_live_smoke.py --config <ignored-local-web-config.json> --selected-query-limit 1`.
   `scripts/query-doctor-web-trino-beta-smoke --config <ignored-local-web-config.json> --limit 1`.
   The bundle is the preferred one-command handoff path and supports
-  `--static-only` when no intentional local source is available. The audit must
-  emit only raw-free counts and issue IDs and must perform no coordinator
-  network read or SQL execution. The live smoke may perform only the bounded
-  Trino Beta Recent and selected QueryInfo reads, emits only raw-free counts and
-  issue IDs, and performs no SQL execution. The web UI smoke must validate
-  Recent plus One Query ID through the local form/job path without printing
-  Query IDs, coordinator URLs, auth references, local paths, or
+  `--static-only` when no intentional local source is available. The static
+  and local-config gates must emit only raw-free counts and issue IDs and must
+  perform no coordinator network read or SQL execution. The shared deployment
+  preflight is a dev-only/static wrapper over the shared boundary audit,
+  product-surface audit, support-gap audit, and active-docs check; it performs
+  no coordinator network read, live smoke, UI smoke, metadata collection, or
+  SQL execution and does not add broader/shared Trino production support. The
+  shared deployment boundary audit is dev-only/static; for shared or non-local
+  Trino web deployment it requires trusted front-door viewer identity and
+  raw-source isolation per
+  [trino-shared-deployment-hardening.md](trino-shared-deployment-hardening.md),
+  emits no config paths, header names, users, Query IDs, coordinator URLs, auth
+  references, source-contract paths, or raw payloads, and does not add
+  broader/shared Trino production support. For shared/non-local Trino configs,
+  `--trusted-front-door-reviewed` is required only after the operator verifies
+  that the trusted front door strips inbound viewer headers and sets exactly
+  one normalized simple viewer value. When
+  `--metadata-smoke-*` flags are supplied with
+  `--metadata-smoke-redaction-reviewed`, the bundle may also run the dev-only
+  metadata CLI summary smoke. That optional gate uses operator metadata inputs,
+  may contact the coordinator only through the operator-installed Trino CLI,
+  executes only Python-owned read-only metadata statements, writes or prints
+  only raw-free smoke and aggregate summaries, and must not expose paths, URLs,
+  users, object identifiers, metadata values, CLI stdout/stderr, or raw
+  payloads. It does not add product metadata collection. The live smoke may
+  perform only the bounded Trino Recent and selected QueryInfo reads, emits
+  only raw-free counts and issue IDs, and performs no SQL execution. The web UI
+  smoke must validate Recent plus One Query ID through the local form/job path
+  without printing Query IDs, coordinator URLs, auth references, local paths, or
   raw payloads.
-- Public docs use English as canonical language, with Russian pages only as
-  localized companions under `docs/i18n/ru/`.
+- Public docs use English as canonical language. Russian pages are limited to
+  README and practical user/operator companion instructions under
+  `docs/i18n/ru/`.
 - README screenshots are current for any material web UI layout changes included
   in the release and are generated only from the synthetic demo pack.
 - README screenshot provenance is recorded in
@@ -88,7 +119,8 @@ As of 2026-06-06, the public repository has the main best-practice baseline in
 place:
 
 - Canonical public docs and default browser-visible copy are English.
-- Russian docs are localized companions only under `docs/i18n/ru/`.
+- Russian docs are localized companions only for README and practical
+  user/operator instructions under `docs/i18n/ru/`.
 - The global `language` config controls Help, Details static UI copy, and newly
   generated trusted reports. English remains the default; Russian uses the same
   language-specific prompt, normalizer, and validator boundary.
@@ -110,10 +142,10 @@ place:
   the public repository.
 - `main` branch protection includes admins, strict required checks, pull request
   review/conversation gates, force-push blocking, and deletion blocking.
-- Agent instructions, roadmap, architecture docs, release docs, and Russian
-  companion pages are aligned with the current direct Impala, optional
-  `/profile_docs`, optional `/admission?json`, Prometheus, workload-diagnostics,
-  and config-driven language baseline.
+- Agent instructions, roadmap, architecture docs, release docs, and the narrow
+  Russian user/operator companion layer are aligned with the current direct
+  Impala, optional `/profile_docs`, optional `/admission?json`, Prometheus,
+  workload-diagnostics, and config-driven language baseline.
 - CI runs deterministic safety checks on pull requests and main, including a
   current-tree public-release scan, and the full Python 3.11 test suite is a
   required default-branch check.

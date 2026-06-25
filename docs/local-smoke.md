@@ -584,6 +584,29 @@ The release-readiness bundle is the preferred one-command handoff path. Use
 `--static-only` to run only static audits and focused tests when no intentional
 local Trino Beta source is available.
 
+To include the optional dev-only metadata CLI summary smoke in the same bundle,
+add explicit operator-reviewed metadata inputs:
+
+```bash
+python3 scripts/audit_trino_beta_release_readiness.py \
+  --config <ignored-local-web-config.json> \
+  --selected-query-limit 1 \
+  --metadata-smoke-redaction-reviewed \
+  --metadata-smoke-source-contract <sanitized-metadata-source-contract.json> \
+  --metadata-smoke-trino-cli <operator-trino-cli> \
+  --metadata-smoke-server https://<trino-coordinator> \
+  --metadata-smoke-connector-family hive \
+  --metadata-smoke-summary-json <raw-free-trino-metadata-cli-smoke-summary.json> \
+  --metadata-smoke-summary-out <sanitized-metadata-summary.json>
+```
+
+That metadata gate may contact the coordinator only through the
+operator-installed Trino CLI, runs only Python-owned read-only metadata
+statements from the accepted allowlist, and writes or prints only raw-free smoke
+and aggregate summaries. It must not print paths, URLs, users, object
+identifiers, metadata values, CLI stdout/stderr, or raw payloads, and it does
+not add product metadata collection.
+
 The backend live smoke prints only raw-free counts and issue IDs. The web UI
 smoke starts the local web server, submits Trino Beta Recent, then uses one
 selected retained Query ID for the One Query ID form without printing it. Both

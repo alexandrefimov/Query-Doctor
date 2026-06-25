@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-19
+Last updated: 2026-06-25
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -9,9 +9,10 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.9.0 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.9.0.md](release-notes-0.9.0.md). Historical
-0.8.0, 0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+For draft 0.10.0 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
+0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+[release-notes-0.9.0.md](release-notes-0.9.0.md),
 [release-notes-0.8.0.md](release-notes-0.8.0.md),
 [release-notes-0.7.0.md](release-notes-0.7.0.md),
 [release-notes-0.6.0.md](release-notes-0.6.0.md),
@@ -22,7 +23,490 @@ handoff, see [release-notes-0.9.0.md](release-notes-0.9.0.md). Historical
 
 ## Unreleased
 
-No unreleased changes yet.
+- Public and agent documentation positioning now consistently describes Query
+  Doctor as Impala full production triage with bounded local Trino production
+  lanes. Active architecture, roadmap, release-readiness, engine-reference,
+  demo, and Help docs no longer describe Trino as only beta/private-preview
+  support, while still keeping broader/shared Trino expansion, Running,
+  query-history crawling, product metadata collection, LLM reports, Query
+  Optimizer jobs, generated SQL, SQL execution, and Spark production support
+  out of scope.
+- Draft 0.10.0 release notes now summarize the bounded local Trino production
+  claim, Impala-first support boundary, public demo safety boundary, and
+  release validation focus without changing historical 0.9.0 notes.
+- The Diagnose page now preserves the configured Trino display label when
+  browser-side engine switching updates the One Query ID submit button. Legacy
+  beta sources keep `Run Trino Beta`, while production-mode sources use
+  `Run Trino`.
+- Trino bounded local production support claim is now release-aligned. The
+  support-gap audit reports `bounded_production_claim_pinned` and
+  `broader_production_closure_status=bounded_production_claim_ready`, the
+  production-closure audit reports `bounded_production_claim_ready` only when
+  every retained raw-free tracking summary is accepted and collector evidence is
+  linked to representative evidence, and source/product-surface machine
+  statuses now use local-production labels instead of beta labels. The claim
+  remains limited to retained-list Recent, one explicit Query ID, raw-free
+  materialized Details, deterministic Python Report, and optimizer guidance;
+  Running scans, query-history crawling, product metadata collection, LLM
+  reports, Query Optimizer jobs, generated Trino SQL, SQL execution, and
+  broader/shared Trino expansion remain unsupported.
+- Trino browser/report regression now records a raw-free
+  `production_review_browser_report_v1` profile. The audit requires regression
+  families, test files, materialized route capabilities, raw-output blocks,
+  unsupported-surface blocks, download regressions, and public-claim
+  regressions, emits path-free production-review counts, and makes the broader
+  production closure gate reject browser/report profile drift while page
+  rendering, case artifact loading, Trino collection, SQL generation, SQL
+  execution, and broader/shared Trino expansion remain blocked.
+- Trino shared/non-local deployment hardening now records a raw-free
+  `production_review_shared_deployment_v1` profile. The audit requires review
+  families, deployment-config requirements, product-boundary requirements,
+  capability requirements, release requirements, documentation requirements, and
+  unsupported-surface blocks, emits path-free production-review counts, and
+  makes the broader production closure gate reject shared-deployment profile
+  drift while raw source reveal and broader/shared Trino production support
+  remain blocked.
+- Trino report and optimizer safety now records a raw-free
+  `production_review_report_optimizer_v1` profile. The audit requires
+  report/guidance families, materialized Python Report and optimizer guidance
+  capabilities, raw-source policy fields, validator sentinel matrix, and
+  blocked product-surface requirements, emits path-free production-review
+  counts, and makes the broader production closure gate reject report/optimizer
+  profile drift while LLM reports, Query Optimizer jobs, generated SQL, and
+  Trino SQL execution remain blocked.
+- Trino product metadata collection now records a raw-free
+  `production_review_metadata_v1` profile. The audit requires the
+  allowlist/source lanes, aggregate-only metadata boundary, metadata fact
+  namespace, bounded sources, redaction blocks, explicit metadata SQL policy,
+  product-surface blocks, and the retained product-metadata open blocker, emits
+  path-free production-review counts, and makes the broader production closure
+  gate reject metadata profile drift while product metadata collection remains
+  unsupported.
+- Trino query-linked fact coverage now records
+  `operator_connector_telemetry_decision_v1`. The audit keeps connector metric
+  signal as the only current bounded-supported operator/connector/telemetry
+  decision, records operator-level, split-detail, and
+  JMX/OpenMetrics/OpenTelemetry linkage as deliberate unsupported gaps until
+  raw-free source contracts exist, emits path-free decision counts, and makes
+  the broader production closure gate reject decision-profile drift.
+- Trino query-linked fact coverage now records a raw-free
+  `production_review_query_linked_v1` profile. The audit requires
+  resource-group, stage, task, and split core query-linked families, their
+  linkage scopes, one-query source granularities, and retained
+  operator/split-detail/telemetry blockers, emits coverage-profile tracking
+  counts, and the broader production closure gate rejects profile drift while
+  keeping broad Trino support not closed.
+- Owner-raw D3 now has a release-facing raw-free SSO/auth proxy support
+  readiness gate at `scripts/audit_owner_raw_sso_proxy_support_readiness.py`.
+  It accepts only an already passing `owner_raw_d3_deployment_bundle_v1`
+  summary from the live-front-door, disabled-source rehearsal,
+  source-enable canary, post-enable, and launch-closure chain before the
+  project claims support for deployment behind a trusted SSO/auth proxy via
+  `viewer_identity_header`. It writes an
+  `owner_raw_sso_proxy_support_readiness_v1` summary with safe support status,
+  final source-state enum, gate counts, and issue categories, rejects dev-only
+  rehearsal evidence as insufficient, can optionally require
+  `final_source_state=leave_enabled`, and does not add native SSO handling,
+  contact a proxy, perform authentication, start Query Doctor, open cases, read
+  source text, print artifact paths or filenames, URLs, users, header names or
+  values, query ids, auth material, credentials, or raw source.
+- Owner-raw D3 now has a local raw-free artifact workspace helper at
+  `scripts/prepare_owner_raw_d3_artifacts.py`. It creates or preserves ignored
+  disabled-source and source-enabled config templates, fail-closed front-door
+  and post-enable review templates, a local operator checklist, and a deployment
+  bundle summary through the `owner_raw_d3_artifact_workspace_v1` scaffold
+  path, preserving existing review evidence unless
+  `--replace-templates` is explicit. It can run the deployment bundle over the
+  workspace, then runs the release-facing support-readiness gate by default and
+  writes a local `support-readiness.summary.json`; `--skip-support-readiness`
+  is explicit, and `--require-source-left-enabled` makes rollback-completed
+  closure insufficient for the final support gate. The helper prints only safe
+  gate status and issue categories. It does not add native SSO handling, start
+  Query Doctor, open cases, read source text, decide user access, print artifact
+  paths or filenames, URLs, users, header names or values, query ids, auth
+  material, credentials, or raw source, and requires explicit confirmation that
+  the artifact directory is local and ignored.
+- Owner-raw D3 now has a raw-free deployment bundle gate at
+  `scripts/audit_owner_raw_d3_deployment_bundle.py`. It orchestrates the
+  existing front-door review audit, readiness gate, dev SSO rehearsal,
+  source-enable canary gate, post-enable gate, launch-closure manifest builder,
+  and launch-closure gate into one `owner_raw_d3_deployment_bundle_v1` summary
+  with only safe gate status, counts, failed-gate names, issue categories, a
+  `ready` or `blocked` deployment verdict, and final source-state enum. It can
+  additionally audit a retained launch-closure manifest, suppresses child gate
+  output, does not add native SSO handling, start Query Doctor, open cases,
+  read source text, change source state, or decide user access, and does not
+  print config paths, review paths, retained manifest paths, URLs, users,
+  header names or values, query ids, auth material, credentials, or raw source.
+- Owner-raw D3 launch closure now has a raw-free manifest path. The new
+  `scripts/build_owner_raw_d3_launch_closure_manifest.py` writes an
+  `owner_raw_d3_launch_closure_manifest_v1` manifest with one redaction-reviewed
+  entry, safe relative `*.json` references to the retained front-door,
+  readiness, rehearsal, source-enable, and post-enable summaries, and fixed
+  limitation labels. `scripts/audit_owner_raw_d3_launch_closure.py` can now
+  consume that manifest with `--launch-closure-manifest` while rejecting unsafe
+  references, duplicate references, missing redaction review, mixed direct and
+  manifest inputs, and summary-output overlap. The builder and manifest audit
+  do not contact a proxy, perform authentication, open cases, read source text,
+  read config, print paths, URLs, header names or values, users, query ids,
+  auth material, credentials, or raw source, and do not add native SSO handling
+  to Query Doctor.
+- Owner-raw D3 now has a raw-free launch closure gate at
+  `scripts/audit_owner_raw_d3_launch_closure.py`. It validates already retained
+  raw-free front-door review, readiness, rehearsal, source-enable, and
+  post-enable summaries as one closure chain, checks disabled rehearsal to
+  operator-planned enablement to reviewed post-enable final state, and can write
+  an `owner_raw_d3_launch_closure_v1` summary with only safe gate status,
+  counts, failed-gate names, issue categories, a `closed` or `blocked` verdict,
+  and final source-state enum. It does not contact a proxy, perform
+  authentication, open cases, read source text, read config, change source
+  state, print paths, URLs, header names or values, users, query ids, auth
+  material, credentials, or raw source, and does not add native SSO handling to
+  Query Doctor.
+- Owner-raw D3 now has a raw-free post-enable canary gate at
+  `scripts/audit_owner_raw_d3_post_enable.py`. It validates an already passing
+  `owner_raw_d3_source_enable_canary_v1` summary plus a retained post-enable
+  review checklist over boolean/enum evidence for runtime allow/deny behavior,
+  raw-free denied pages and audit lines, rollback verification, monitoring, and
+  final source-state closure. It can write an
+  `owner_raw_d3_post_enable_canary_v1` summary with only safe gate status,
+  counts, failed-gate names, issue categories, and final source-state enum. It
+  does not contact a proxy, open cases, read source text, perform
+  authentication, change source state, print paths, URLs, header names or
+  values, users, query ids, auth material, credentials, or raw source, and does
+  not add native SSO handling to Query Doctor.
+- Owner-raw D3 now has a raw-free source-enable canary gate at
+  `scripts/audit_owner_raw_d3_source_enable.py`. It checks an already passing
+  `owner_raw_d3_rehearsal_v1` summary against a separate planned
+  source-enabled config, requires explicit operator confirmations for the
+  canary, unchanged front door/header mapping, absence of the CLI kill switch,
+  and a rollback plan, and can write an
+  `owner_raw_d3_source_enable_canary_v1` summary with only safe gate status,
+  counts, failed-gate names, and issue categories. It does not start Query
+  Doctor, perform authentication, enable raw source, print paths, URLs, header
+  names or values, users, query ids, auth material, credentials, or raw source,
+  and does not add native SSO handling to Query Doctor.
+- Owner-raw D3 now has a raw-free rehearsal runner at
+  `scripts/audit_owner_raw_d3_rehearsal.py`. It runs the dev SSO smoke, the
+  live front-door review summary audit, the staging config preflight, and the
+  aggregate readiness gate in one operator command, fails closed when any gate
+  is missing or unsafe, and can write an `owner_raw_d3_rehearsal_v1` summary
+  with only safe gate status, counts, failed-gate names, and issue categories.
+  It does not perform authentication, enable raw source, print paths, URLs,
+  header names or values, users, login secrets, query ids, auth material,
+  credentials, or raw source, and does not add native SSO handling to Query
+  Doctor.
+- Owner-raw D3 now has an aggregate raw-free readiness gate at
+  `scripts/audit_owner_raw_d3_readiness.py`. It combines the ignored staging
+  config preflight with the raw-free live front-door review summary, fails
+  closed when live review evidence is missing or invalid, and can write an
+  `owner_raw_d3_readiness_v1` summary with only safe gate status, counts, and
+  issue categories. It does not perform authentication, enable raw source,
+  print paths, header names or values, users, URLs, query ids, auth material,
+  credentials, or raw source, and does not add native SSO handling to Query
+  Doctor.
+- Owner-raw D3 now has a raw-free staging config preflight at
+  `scripts/audit_owner_raw_staging_preflight.py`. It validates planned
+  pre-proxy config shape for at least one `owner_raw` source, a valid trusted
+  viewer header contract, disabled raw source reveal through the config or CLI
+  kill switch, explicit non-local bind review, and unweakened privacy/redaction
+  controls, and can write an `owner_raw_staging_preflight_v1` summary without
+  printing paths, header names or values, users, URLs, query ids, credentials,
+  or raw source. This preflight does not replace the live front-door review gate
+  and does not add native SSO handling to Query Doctor.
+- Trino production-collector closure now records retained representative
+  evidence handoff status. `scripts/audit_trino_production_collector_contracts.py`
+  accepts `--representative-evidence-summary-json` plus
+  `--require-representative-evidence-summary` for promotion-review checks over
+  already raw-free `trino_representative_evidence_audit_v1` summaries. That
+  handoff now requires the `production_review_breadth_v1` profile with
+  `breadth_profile_status=ready`, keeps the gate `not_closed`, and does not
+  reopen retained artifacts, collect from Trino, execute SQL, or promote
+  broader production support.
+- Trino representative-evidence production-review tracking now requires a
+  retained summary-kind mix for handoff-suite, compact-readiness,
+  product-surface, and support-gap summaries, plus accepted `ok` input
+  statuses. The audit still consumes only already raw-free summary payloads,
+  rejects support-gap or product-surface boundary drift that would imply SQL
+  execution or broader closure, and keeps the representative evidence gate
+  `not_closed`.
+- Trino browser/report regression now has a dev-only raw-free audit at
+  `scripts/audit_trino_browser_report_regression.py`. It tracks required
+  Details, Python Report, optimizer guidance, error, unsupported-workflow,
+  product-surface static-boundary, and public-claim regression tests plus
+  current materialized route capabilities, raw-free
+  `browser_report_requirement_tracking` entries and
+  `browser_report_requirement_tracking_counts` for accepted, missing, and
+  invalid test/route/product-surface requirements, and prints the same
+  path-free CLI counts. It keeps `trino_browser_report_regression` not closed
+  and does not render pages, load case artifacts, collect from Trino, run
+  report or optimizer jobs, generate SQL, execute SQL, or promote broader
+  production support.
+- Trino report and optimizer safety now has a dev-only raw-free audit at
+  `scripts/audit_trino_report_optimizer_safety.py`. It tracks materialized
+  Python Report and optimizer guidance capability contracts, raw-source policy,
+  validator sentinel rejection, blocked Trino adapter validated reports,
+  raw-free `report_optimizer_requirement_tracking` entries and
+  `report_optimizer_requirement_tracking_counts` for accepted, missing, and
+  invalid capability/policy/validator/product-surface requirements, and prints
+  the same path-free CLI counts. It keeps `trino_report_optimizer_safety` not
+  closed and does not run LLM reports, create Query Optimizer jobs, generate
+  SQL, execute SQL, load case artifacts, or promote broader production support.
+- Owner-raw D3 now has a dev-only Keycloak/oauth2-proxy compose smoke under
+  `dev/sso/`. It can exercise a local OIDC login and inject the normalized
+  viewer header into Query Doctor while keeping the upstream web process inside
+  the compose network, disabling the original source page by default, and not
+  forwarding OIDC tokens or Authorization material upstream.
+  `scripts/dev_sso_keycloak_smoke.py` verifies the running local compose path
+  with raw-free pass/fail output. The harness is a local unblocker only and
+  does not replace the live front-door validation gate or add native SSO
+  handling to Query Doctor.
+- Trino product metadata collection now has a dev-only raw-free audit at
+  `scripts/audit_trino_product_metadata_collection.py`. It tracks the metadata
+  allowlist contract, dev-only aggregate metadata CLI summary, local aggregate
+  metadata summary import, metadata fact namespace, adapter/product-surface
+  blocks, raw metadata and identifier-output redaction, keeps
+  `trino_product_metadata_collection` not closed, and does not read metadata,
+  execute user SQL, add browser/report/optimizer metadata output, or promote
+  broader production support.
+- Trino broader production closure now has a consolidated dev-only raw-free
+  audit at `scripts/audit_trino_production_closure_gates.py`. It pins the
+  support-gap gate list, checks Trino dev-gate capability wiring, validates
+  retained collector, representative-evidence, query-linked, product-metadata,
+  report-optimizer, browser-report, shared-deployment, and support-gap summary
+  inputs when required, checks that collector and representative-evidence
+  summaries link the same retained handoff when both are present, records the
+  raw-free `current_tracking_summary_status`,
+  `invalid_current_tracking_summary_count`, and
+  `representative_evidence_linkage_status` in machine summaries, records
+  `representative_evidence_linkage_invalid_summary_count` and
+  `representative_evidence_linkage_missing_summary_count`, treats
+  present-but-invalid retained tracking or linkage summaries as failed
+  statuses, records per-gate `gate_tracking` entries and
+  `gate_tracking_counts` for accepted, missing, invalid, and not-required
+  tracking inputs, prints the same path-free tracking, linkage, and
+  `gate_tracking` status labels in CLI output,
+  keeps broader production closure `not_closed`, and does not collect from
+  Trino, execute SQL, add product surfaces, or promote broader production
+  support.
+- Trino broader production promotion now has an explicit twelve-slice release
+  plan in the support-gap matrix, with the live-collection design pointing back
+  to it. The plan defines broad Trino production support as a release claim
+  rather than automatic Impala parity, keeps Running, query-history crawling,
+  LLM reports, Query Optimizer jobs, generated Trino SQL, and SQL execution
+  unsupported unless promoted by separate gates, and orders the remaining work
+  through collector contracts/readers, representative evidence, query-linked
+  facts, product metadata, report/optimizer boundary decisions, shared
+  deployment readiness, browser/report regression, and final support-claim
+  updates.
+- Trino query-linked fact coverage now has a dev-only raw-free audit at
+  `scripts/audit_trino_query_linked_fact_coverage.py`. It checks registered
+  bounded compact resource-group, stage, task, split, and connector fact/source
+  coverage, records operator/split-detail/JMX/OpenMetrics/OpenTelemetry gaps as
+  open blockers, records raw-free `query_linked_requirement_tracking` entries
+  and `query_linked_requirement_tracking_counts` for accepted, missing, and
+  invalid fact/source requirements, prints the same path-free CLI counts, keeps
+  `trino_query_linked_fact_coverage` not closed, and does not collect from
+  Trino, execute SQL, add product surfaces, or promote broader production
+  support.
+- Trino product metadata collection now records raw-free
+  `product_metadata_requirement_tracking` entries and
+  `product_metadata_requirement_tracking_counts` for accepted, missing, and
+  invalid fact/source/product-surface requirements in
+  `scripts/audit_trino_product_metadata_collection.py`, prints the same
+  path-free CLI counts, keeps `trino_product_metadata_collection` not closed,
+  and does not read metadata, run Trino CLI, execute user SQL, add product
+  metadata surfaces, or promote broader production support.
+- Trino representative real-cluster evidence now has a dev-only raw-free audit
+  at `scripts/audit_trino_representative_evidence.py`. It aggregates already
+  retained handoff/readiness/product-surface/support-gap summary payloads for
+  safe version-family, source-schema, connector-family, lifecycle,
+  source-granularity, verification-scope, and retained summary-kind breadth,
+  and adds the
+  `production_review_breadth_v1` profile through
+  `--require-breadth-profile production_review_breadth_v1` for required
+  summary-kind mix, accepted input statuses, retained summary/evidence-unit,
+  source-contract, source-schema, lifecycle, connector-family,
+  source-granularity, verification-scope, and support-status counter breadth.
+  It now records raw-free `breadth_requirement_tracking` entries and
+  `breadth_requirement_tracking_counts` for accepted, insufficient, and
+  not-required breadth requirements, prints the same path-free CLI counts,
+  rejects raw-like retained summary content, keeps
+  `trino_representative_real_cluster_evidence` not closed, and does not reopen
+  packages, collect from Trino, execute SQL, or promote broader production
+  support.
+- Trino production-collector closure now has a dev-only raw-free audit at
+  `scripts/audit_trino_production_collector_contracts.py`. It records the
+  `trino_production_collector_contracts` gate as not closed, tracks existing
+  local lanes, preview readers, contract-only sources, metadata boundary
+  separation, open blockers, and raw-free `source_requirement_tracking` counts
+  for accepted, missing, and invalid collector source requirements, prints the
+  same path-free source-requirement tracking counts in CLI output, and rejects
+  accidental Running, query-history, broad QueryInfo, `POST /v1/statement`, or
+  `EXPLAIN ANALYZE` collector source registration.
+- Trino source-contract and production-collector audits now pin
+  auth-reference policy, source-schema gate, retry-policy, and fail-closed
+  policy fields in the source registry, support-gap summary, collector
+  requirements, per-source tracking, summary JSON, and path-free CLI output.
+  Network-capable Trino source registry entries now fail audit without a safe
+  auth reference and bounded retry policy, while broader/shared expansion
+  remains not closed.
+- Trino production-collector closure now tracks bounded reader implementations
+  as explicit raw-free summary evidence. The collector audit records
+  reader-status, reader-scope, CLI-role, capability, and forbidden-reader
+  counters, checks reader modules, command roles, and capability surfaces
+  against the code registries, rejects accidental query-history or Running-style
+  reader roles, and still keeps broader/shared Trino expansion not closed.
+- Trino bounded production promotion now has an explicit closure plan in the
+  support-gap matrix and live-collection design. The support-gap audit records
+  `broader_production_closure_status=bounded_production_claim_ready` plus the
+  required closure gate list, without expanding Trino beyond the bounded local
+  Recent, One Query ID, raw-free Details, deterministic Python Report, and
+  optimizer guidance lanes.
+- Owner-raw D3 and Trino shared hardening now have a dev-only raw-free live
+  front-door review summary audit at
+  `scripts/audit_owner_raw_live_front_door_review.py`. It lets operators retain
+  boolean/enum evidence from real Kubernetes/proxy reviews without committing
+  private URLs, paths, users, header names or values, auth subjects, logs, SQL,
+  query ids, or source text, can write a fail-closed raw-free template through
+  `--template-json`, and Trino shared preflight can require that summary through
+  `--front-door-review-summary`.
+- Trino shared/non-local deployment hardening now requires an explicit
+  `--trusted-front-door-reviewed` confirmation for shared Trino configs after
+  the operator verifies trusted front-door header stripping and exactly-one
+  normalized viewer identity injection. The flag is propagated through the
+  shared preflight and release-readiness bundle without adding Query Doctor
+  native auth, raw-source reveal, or broader/shared Trino production support.
+- Trino shared/internal deployment hardening now has a dev-only static preflight
+  wrapper at `scripts/audit_trino_shared_deployment_preflight.py`. It runs the
+  shared boundary, product-surface, support-gap, and active-docs gates, captures
+  child stdout/stderr, emits only raw-free gate counts and failure categories,
+  and performs no network read, live smoke, UI smoke, metadata collection, SQL
+  execution, or broader/shared Trino support promotion.
+- Trino shared/non-local deployment hardening now has an active public-safe
+  contract at `docs/trino-shared-deployment-hardening.md`, and the dev-only
+  shared deployment boundary audit checks that contract plus release/readiness
+  docs for trusted front-door identity, raw-source isolation, dev-only metadata
+  smoke, blocked unsupported surfaces, and no broader/shared Trino production
+  support.
+- Trino release hardening now includes a dev-only shared deployment boundary
+  audit at `scripts/audit_trino_shared_deployment_boundary.py`. It checks
+  shared/non-local Trino config shape for trusted front-door viewer identity
+  and raw-source isolation, keeps Details, Python Report, and optimizer
+  guidance raw-free/materialized only, records raw-free
+  `shared_deployment_requirement_tracking` entries and
+  `shared_deployment_requirement_tracking_counts`, and prints only raw-free
+  counts and issue categories without paths, header names, users, Query IDs,
+  URLs, or raw payloads.
+- Trino Beta release-readiness can now include the dev-only metadata CLI
+  summary smoke when explicit `--metadata-smoke-*` inputs and
+  `--metadata-smoke-redaction-reviewed` are supplied. The bundle summary records
+  only raw-free gate counts/classes and does not print paths, URLs, users,
+  object identifiers, metadata values, CLI stdout/stderr, or raw payloads; this
+  does not add product metadata collection or browser/report/optimizer
+  surfaces.
+- Trino now has a dev-only metadata CLI summary smoke gate at
+  `scripts/trino_metadata_cli_summary_smoke.py`. It validates the safe dry-run
+  plan, executes only the existing Python-owned aggregate metadata summary
+  builder, round-trips the sanitized summary through the local metadata-summary
+  importer, and writes only raw-free smoke or aggregate summary artifacts.
+  It does not add product metadata collection, Recent, Details, trusted report,
+  optimizer, Running, query-history, generated SQL, or user SQL execution
+  surfaces.
+- Trino now has a contract-gated local metadata CLI summary builder through
+  `query-doctor-trino-metadata-cli-summary`. It validates one
+  `metadata_allowlist` source contract, uses only Python-owned read-only
+  metadata statements for Hive or Iceberg connector-family gates through an
+  operator-installed Trino CLI, passes statement text on stdin rather than argv,
+  and emits only a sanitized aggregate metadata summary or path-free safe
+  summary. It does not add Recent, Details, trusted report, optimizer, Running,
+  query-history, product metadata collection, generated SQL, or user SQL
+  execution surfaces.
+- Trino local web Recent, One Query ID, raw-free materialized Details,
+  deterministic Python Report, and guidance-only optimizer output are now
+  classified as local production support when `trino_support_mode=production`
+  is configured. The legacy `trino_beta_enabled` path remains beta-only, and
+  Running scans, query-history crawling, metadata collection, LLM reports, Query
+  Optimizer jobs, generated Trino SQL, SQL execution, and broader/shared Trino
+  production triage remain blocked.
+- Local web Trino Details can now open deterministic optimizer guidance for
+  server-owned raw-free materialized cases. The guidance is built only from
+  typed normalized Trino facts and compact diagnosis attention areas, rejects
+  raw SQL-like text, Query IDs, URLs, paths, auth material, connector internals,
+  Impala-only wording, root-cause overclaims, and generated-query wording, and
+  keeps Query Optimizer jobs, SQL drafts, LLM reports, metadata collection, and
+  SQL execution blocked.
+- Local web Trino Details can now open a deterministic Python Report for
+  server-owned raw-free materialized cases. The report is built only from typed
+  normalized Trino facts, rejects raw SQL-like text, Query IDs, URLs, paths,
+  auth material, connector internals, Impala-only wording, root-cause
+  overclaims, and generated-SQL wording, and keeps LLM reports and optimizer
+  output blocked.
+- Local web Trino Query ID and Recent-selected rows now link materialized
+  server-owned raw-free case artifacts to a Trino Details page. The page reads
+  only typed normalized facts, compact diagnosis, and the metadata-not-collected
+  summary, and it still withholds query IDs, raw payloads, paths, LLM reports,
+  optimizer actions, generated SQL, metadata collection, and SQL
+  execution.
+- Local web Trino Query ID and Recent-selected rows now materialize
+  server-owned raw-free case artifacts: normalized boundary JSON, compact
+  diagnosis JSON, metadata-not-collected summary, typed `analysis.json`, and
+  `analysis_facts.md`. The artifacts are not linked as LLM report, optimizer,
+  generated SQL, metadata collection, or SQL execution surfaces.
+- Trino local web config now has an explicit `trino_support_mode` enum
+  (`off`, `beta`, `production`). The legacy `trino_beta_enabled` key remains
+  beta-only for existing local configs and is rejected when combined with
+  production mode. Production mode marks the same bounded raw-free Recent, One
+  Query ID, materialized Details, Python Report, and optimizer guidance lanes as
+  local production support without enabling Running, metadata, LLM reports,
+  Query Optimizer jobs, generated SQL, or SQL execution.
+- Retained Impala North Star aggregate output now keeps raw-like
+  unknown-primary reason buckets in a dedicated safe closure category instead
+  of grouping them with unmapped diagnostic evidence gaps.
+- Synthetic Impala primary coverage and North Star readiness now reject
+  aggregate unknown-primary reason buckets that contain raw-like text; their
+  committed aggregate outputs now carry safe unknown-primary category counts
+  and closure labels while keeping gate fixtures raw-free.
+- Retained Impala North Star readiness now rejects loop-summary coverage
+  aggregates whose unknown-primary reason buckets contain raw-like text, while
+  keeping the suite output aggregate and raw-free.
+- Strict Impala diagnostic coverage readiness now rejects unknown-primary
+  reason buckets that contain raw-like text, while retained coverage summaries
+  now carry safe unknown-primary category counts and closure labels as
+  aggregate raw-free evidence.
+- Strict optimizer funnel readiness now rejects repeated no-recipe workload
+  groups whose retained candidate reasons contain raw-like text, while keeping
+  funnel output aggregate and raw-free.
+- Strict stats diagnostics readiness now rejects actionable stats candidates
+  whose retained candidate text contains raw-like SQL, metadata identifiers,
+  paths, URLs, or secrets, while keeping audit output raw-free.
+- Direct Impala Details now labels source context as `Source coverage and
+  limitations` and uses analyst-facing wording for unavailable Cloudera Manager
+  events, optional Prometheus runtime metrics, and bounded metadata coverage.
+- The standalone Query Optimizer page now keeps the first screen focused on the
+  pasted SQL field and `Analyze` action, with detailed input rules and safety
+  boundaries folded into one compact disclosure. The no-execution and no-echo
+  optimizer contract is unchanged.
+- Recent results default rows now route analysts with an explicit `Open Details`
+  next action and keep per-row table-stats and metadata status out of the
+  default triage table. Aggregate coverage remains in `Scan context`, while
+  stats, optimizer, and workload-specific result views keep their focused
+  columns.
+- Documentation now distinguishes active contracts, reference material, and
+  archived snapshots in the main docs index. Historical release notes and the
+  original Trino discovery spike are marked as non-current guidance, and
+  research pages now carry explicit lifecycle notes.
+- Russian documentation is now limited to README plus practical user/operator
+  instructions for demo, setup, credentials, local smoke checks, and safety.
+  Internal, agent, contributor, release, research, audit, roadmap, and
+  Trino/Spark engine deep-dive Russian companion pages were removed; English
+  remains canonical for those docs.
+- Agent-facing documentation is slimmer and role-separated: `AGENTS.md`
+  records document ownership, `agent-quickstart.md` keeps the operational path,
+  `agent-playbook.md` keeps change routing, `test-matrix.md` remains the exact
+  validation-command catalog, and `codex-handoff.md` keeps durable product and
+  safety baseline instead of detailed command inventories. Russian
+  agent/internal companion pages were removed to avoid drifting duplicates.
 
 ## 0.9.0 - 2026-06-19
 
@@ -120,10 +604,12 @@ No unreleased changes yet.
 - Added `scripts/audit_trino_beta_release_readiness.py`, a dev-only
   one-command Trino Beta demo/release readiness bundle. The bundle runs the
   existing static boundary audits, focused tests, local-config readiness, and
-  optional bounded live/UI smokes without printing local config values, Query
-  IDs, coordinator URLs, auth references, local paths, or raw payloads, and it
-  does not add SQL execution, metadata collection, trusted reports, optimizer
-  behavior, or production Trino support.
+  optional bounded live/UI smokes, plus the optional metadata CLI summary smoke
+  when explicitly configured, without printing local config values, Query IDs,
+  coordinator URLs, auth references, local paths, object identifiers, metadata
+  values, CLI stdout/stderr, or raw payloads, and it does not add user SQL
+  execution, product metadata collection, trusted reports, optimizer behavior,
+  or production Trino support.
 - Trino Beta Recent and One Query ID result pages now render an explicit
   blocked-surface status strip for Running, query-history crawling, metadata,
   Details/reports, optimizer behavior, generated SQL, and SQL execution. This
