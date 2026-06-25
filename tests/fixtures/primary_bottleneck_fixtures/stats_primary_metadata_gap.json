@@ -1,0 +1,35 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 10000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "label": "op-0"
+      },
+      {
+        "label": "op-1"
+      },
+      {
+        "label": "op-2"
+      },
+      {
+        "label": "op-3"
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "stats",
+    "confidence": "high",
+    "reasons": [
+      "stats_candidate_supported",
+      "cardinality_anomalies_4"
+    ]
+  }
+}

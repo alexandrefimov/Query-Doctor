@@ -1,0 +1,33 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 100000,
+      "confidence": "high"
+    },
+    "client_fetch": {
+      "primary_supported": true,
+      "evidence_tier": "strong",
+      "client_fetch_wait_ms": 45000,
+      "wait_share": 0.45
+    },
+    "findings": [
+      {
+        "id": "client_fetch_tail"
+      }
+    ],
+    "cardinality_anomalies": [],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "client_fetch_tail"
+    }
+  },
+  "expected": {
+    "label": "client_fetch_tail",
+    "confidence": "high",
+    "reasons": [
+      "client_fetch_wait_top_finding",
+      "client_fetch_wait_share_45pct"
+    ]
+  }
+}

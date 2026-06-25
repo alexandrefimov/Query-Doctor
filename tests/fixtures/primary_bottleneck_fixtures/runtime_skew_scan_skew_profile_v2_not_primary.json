@@ -1,0 +1,37 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "experimental_profile_v2",
+      "primary_bottleneck_policy": "non_profile_only",
+      "per_instance_evidence": "unknown"
+    },
+    "backend_tail": {
+      "data_skew": "yes",
+      "execution_skew": "unknown",
+      "execution_tail_candidate_count": 0
+    },
+    "scan_skew": {
+      "status": "supported",
+      "evidence_tier": "strong",
+      "finding_supported": true,
+      "primary_supported": true,
+      "skew_metric": "rows_produced"
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "backend_data_skew"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

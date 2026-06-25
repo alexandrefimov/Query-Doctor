@@ -1,0 +1,28 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 80000,
+      "confidence": "high"
+    },
+    "profile_resources": {
+      "available": true,
+      "admission_result": "queued",
+      "wait_start_time_ms": 5000,
+      "wait_end_time_ms": 21000
+    },
+    "cardinality_anomalies": [],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "runtime_admission",
+    "confidence": "high",
+    "reasons": [
+      "admission_wait_share_20pct",
+      "admission_wait_source_profile_resource_facts"
+    ]
+  }
+}

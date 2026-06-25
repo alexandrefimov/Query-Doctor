@@ -1,0 +1,37 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "backend_tail": {
+      "execution_skew": "yes",
+      "execution_tail_candidate_count": 2,
+      "execution_tail_candidates": [
+        {
+          "worst_value": 60000
+        }
+      ]
+    },
+    "findings": [
+      {
+        "id": "cardinality_estimate_errors",
+        "operators": [
+          {
+            "time_ms": 70000
+          }
+        ]
+      },
+      {
+        "id": "host_execution_tail_suspected"
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "findings": [
+      {
+        "id": "codegen_bottleneck"
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "codegen_finding_not_primary_supported"
+    ]
+  }
+}

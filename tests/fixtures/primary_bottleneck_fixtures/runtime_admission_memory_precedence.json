@@ -1,0 +1,43 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cm_query_context": {
+      "admission_result": "Admitted (queued)",
+      "admission_wait_ms": 45000
+    },
+    "memory_pressure": {
+      "status": "supported",
+      "evidence_tier": "strong",
+      "finding_supported": true,
+      "spill_or_scratch_evidence_count": 2,
+      "memory_estimate_anomaly_count": 1,
+      "zero_memory_estimate_gap_count": 0
+    },
+    "findings": [
+      {
+        "id": "spill_or_scratch_io",
+        "operators": [
+          {
+            "time_ms": 50000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "spill_or_scratch"
+    }
+  },
+  "expected": {
+    "label": "runtime_admission",
+    "confidence": "high",
+    "reasons": [
+      "admission_wait_share_37pct",
+      "admission_wait_source_query_context"
+    ]
+  }
+}

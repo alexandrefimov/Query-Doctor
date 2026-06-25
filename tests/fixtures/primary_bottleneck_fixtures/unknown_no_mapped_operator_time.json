@@ -1,0 +1,15 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 40000,
+      "confidence": "high"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

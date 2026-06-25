@@ -1,0 +1,35 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "experimental_profile_v2",
+      "primary_bottleneck_policy": "non_profile_only",
+      "per_instance_evidence": "unknown"
+    },
+    "findings": [
+      {
+        "id": "join_bottleneck",
+        "operators": [
+          {
+            "time_ms": 30000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "query_shape"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

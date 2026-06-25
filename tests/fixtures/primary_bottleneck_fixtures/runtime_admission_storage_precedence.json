@@ -1,0 +1,46 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cm_query_context": {
+      "admission_result": "Admitted (queued)",
+      "admission_wait_ms": 45000
+    },
+    "totals": {
+      "TotalBytesRead": {
+        "bytes": 45097156608
+      }
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HDFS SCAN",
+        "time_ms": 50000
+      }
+    ],
+    "findings": [
+      {
+        "id": "hdfs_or_storage_bottleneck",
+        "operators": [
+          {
+            "time_ms": 50000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "storage_or_hdfs"
+    }
+  },
+  "expected": {
+    "label": "runtime_admission",
+    "confidence": "high",
+    "reasons": [
+      "admission_wait_share_37pct",
+      "admission_wait_source_query_context"
+    ]
+  }
+}

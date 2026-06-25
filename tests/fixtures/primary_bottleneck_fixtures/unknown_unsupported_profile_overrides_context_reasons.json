@@ -1,0 +1,38 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 40000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "unknown",
+      "primary_bottleneck_policy": "unsupported"
+    },
+    "findings": [
+      {
+        "id": "codegen_bottleneck"
+      }
+    ],
+    "memory_pressure": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "spill_or_scratch_evidence_count": 0,
+      "memory_estimate_anomaly_count": 2,
+      "zero_memory_estimate_gap_count": 1
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HASH JOIN",
+        "time_ms": 5000
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "profile_dialect_not_supported_for_primary"
+    ]
+  }
+}

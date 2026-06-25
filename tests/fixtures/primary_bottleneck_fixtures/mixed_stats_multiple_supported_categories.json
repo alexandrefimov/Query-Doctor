@@ -1,0 +1,78 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 220
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 160
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 95
+      }
+    ],
+    "totals": {
+      "TotalBytesSent": {
+        "bytes": 45097156608
+      },
+      "TotalBytesRead": {
+        "bytes": 45097156608
+      }
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "EXCHANGE",
+        "time_ms": 45000
+      },
+      {
+        "operator_name": "HDFS SCAN",
+        "time_ms": 30000
+      }
+    ],
+    "findings": [
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      },
+      {
+        "id": "hdfs_or_storage_bottleneck",
+        "operators": [
+          {
+            "time_ms": 30000
+          }
+        ]
+      }
+    ],
+    "memory_pressure": {
+      "status": "supported",
+      "evidence_tier": "strong",
+      "finding_supported": true,
+      "spill_or_scratch_evidence_count": 2
+    },
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "exchange_or_data_movement,storage_or_hdfs,spill_or_scratch"
+    }
+  },
+  "expected": {
+    "label": "mixed",
+    "confidence": "medium",
+    "reasons": [
+      "competing_stats",
+      "competing_runtime_data_movement",
+      "competing_runtime_memory",
+      "competing_runtime_storage"
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 200
+      },
+      {
+        "operator_name": "SCAN HDFS",
+        "rows_actual_to_estimated_ratio": 140
+      },
+      {
+        "operator_name": "SORT",
+        "rows_actual_to_estimated_ratio": 75
+      }
+    ],
+    "memory_pressure": {
+      "status": "supported",
+      "evidence_tier": "strong",
+      "finding_supported": true,
+      "spill_or_scratch_evidence_count": 1,
+      "memory_estimate_anomaly_count": 1,
+      "zero_memory_estimate_gap_count": 0
+    },
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "spill_or_scratch"
+    }
+  },
+  "expected": {
+    "label": "mixed",
+    "confidence": "medium",
+    "reasons": [
+      "competing_stats",
+      "competing_runtime_memory"
+    ]
+  }
+}

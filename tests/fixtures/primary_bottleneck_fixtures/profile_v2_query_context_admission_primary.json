@@ -1,0 +1,45 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 100000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "experimental_profile_v2",
+      "primary_bottleneck_policy": "non_profile_only",
+      "per_instance_evidence": "unknown"
+    },
+    "cm_query_context": {
+      "admission_result": "Admitted (queued)",
+      "admission_wait_ms": 45000
+    },
+    "backend_tail": {
+      "data_skew": "yes",
+      "execution_skew": "yes",
+      "execution_tail_candidate_count": 2
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 200
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "backend_data_skew"
+    }
+  },
+  "expected": {
+    "label": "runtime_admission",
+    "confidence": "high",
+    "reasons": [
+      "admission_wait_share_45pct",
+      "admission_wait_source_query_context"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 180000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [],
+    "totals": {
+      "TotalBytesSent": {
+        "bytes": 45097156608
+      }
+    },
+    "findings": [
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      }
+    ],
+    "top_operators_by_time": [
+      {
+        "operator_name": "HASH JOIN",
+        "time_ms": 20000
+      }
+    ],
+    "data_movement": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "primary_supported": false,
+      "exchange_operator_count": 1
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "exchange_or_data_movement"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "data_movement_context_only",
+      "wall_clock_not_explained_by_mapped_operators"
+    ]
+  }
+}

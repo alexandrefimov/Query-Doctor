@@ -21,52 +21,90 @@ def analysis_fixture(**overrides):
     return base
 
 
-def test_data_movement_facts_support_primary_for_material_exchange_elapsed():
-    facts = build_data_movement_facts(analysis_fixture())
+def data_movement_facts(**overrides):
+    return build_data_movement_facts(analysis_fixture(**overrides))
 
-    assert facts["status"] == "supported"
-    assert facts["evidence_tier"] == "strong"
-    assert facts["finding_supported"] is True
-    assert facts["primary_supported"] is True
-    assert facts["exchange_operator_count"] == 1
-    assert facts["exchange_elapsed_share_human"] == "17%"
+
+def assert_fact_values(facts, **expected):
+    for key, value in expected.items():
+        assert facts[key] == value
+
+
+def assert_limitation_contains(facts, expected_text):
+    assert any(expected_text in item for item in facts["limitations"])
+
+
+def primary_bottleneck(**overrides):
+    return classify_case_primary_bottleneck(analysis_fixture(**overrides))
+
+
+def test_data_movement_facts_support_primary_for_material_exchange_elapsed():
+    facts = data_movement_facts()
+
+    assert_fact_values(
+        facts,
+        status="supported",
+        evidence_tier="strong",
+        finding_supported=True,
+        primary_supported=True,
+        exchange_operator_count=1,
+        exchange_elapsed_share_human="17%",
+    )
 
 
 def test_data_movement_facts_keep_large_bytes_without_exchange_context_only():
-    facts = build_data_movement_facts(
-        analysis_fixture(top_operators_by_time=[{"operator_name": "HASH JOIN", "time_ms": 20_000}])
+    facts = data_movement_facts(
+        top_operators_by_time=[{"operator_name": "HASH JOIN", "time_ms": 20_000}]
     )
 
-    assert facts["status"] == "context_only"
-    assert facts["evidence_tier"] == "context_only"
-    assert facts["finding_supported"] is False
-    assert facts["primary_supported"] is False
-    assert any("EXCHANGE operator timing" in item for item in facts["limitations"])
+    assert_fact_values(
+        facts,
+        status="context_only",
+        evidence_tier="context_only",
+        finding_supported=False,
+        primary_supported=False,
+    )
+    assert_limitation_contains(facts, "EXCHANGE operator timing")
 
 
 def test_data_movement_facts_keep_tiny_exchange_share_below_primary():
-    facts = build_data_movement_facts(
-        analysis_fixture(top_operators_by_time=[{"operator_name": "EXCHANGE", "time_ms": 2_000}])
+    facts = data_movement_facts(
+        top_operators_by_time=[{"operator_name": "EXCHANGE", "time_ms": 2_000}]
     )
 
-    assert facts["status"] == "supported"
-    assert facts["evidence_tier"] == "medium"
-    assert facts["finding_supported"] is True
-    assert facts["primary_supported"] is False
-    assert any("too small a share" in item for item in facts["limitations"])
+    assert_fact_values(
+        facts,
+        status="supported",
+        evidence_tier="medium",
+        finding_supported=True,
+        primary_supported=False,
+    )
+    assert_limitation_contains(facts, "too small a share")
+
+
+def test_data_movement_facts_block_primary_without_wall_clock():
+    facts = data_movement_facts(query_wall_clock={"duration_ms": None, "confidence": "unknown"})
+
+    assert_fact_values(
+        facts,
+        status="supported",
+        evidence_tier="medium",
+        finding_supported=True,
+        primary_supported=False,
+        exchange_elapsed_share_human="n/a",
+    )
+    assert_limitation_contains(facts, "wall-clock duration was unavailable")
 
 
 def test_primary_bottleneck_uses_structured_data_movement_gate_when_present():
-    result = classify_case_primary_bottleneck(
-        analysis_fixture(
-            data_movement={
-                "status": "context_only",
-                "evidence_tier": "context_only",
-                "finding_supported": False,
-                "primary_supported": False,
-                "exchange_operator_count": 1,
-            }
-        )
+    result = primary_bottleneck(
+        data_movement={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "primary_supported": False,
+            "exchange_operator_count": 1,
+        }
     )
 
     assert result.label == "unknown"
@@ -77,16 +115,14 @@ def test_primary_bottleneck_uses_structured_data_movement_gate_when_present():
 
 
 def test_primary_bottleneck_requires_strong_structured_data_movement_gate():
-    result = classify_case_primary_bottleneck(
-        analysis_fixture(
-            data_movement={
-                "status": "supported",
-                "evidence_tier": "medium",
-                "finding_supported": True,
-                "primary_supported": True,
-                "exchange_operator_count": 1,
-            }
-        )
+    result = primary_bottleneck(
+        data_movement={
+            "status": "supported",
+            "evidence_tier": "medium",
+            "finding_supported": True,
+            "primary_supported": True,
+            "exchange_operator_count": 1,
+        }
     )
 
     assert result.label == "unknown"

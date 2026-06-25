@@ -1,0 +1,30 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 40000,
+      "confidence": "high"
+    },
+    "scan_skew": {
+      "status": "supported",
+      "evidence_tier": "medium",
+      "finding_supported": true,
+      "primary_supported": false,
+      "skew_metric": "rows_produced"
+    },
+    "data_movement": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "primary_supported": false,
+      "exchange_operator_count": 1
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "scan_skew_medium_supporting_only",
+      "data_movement_context_only"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_id": "01",
+        "label": "01:HASH JOIN"
+      },
+      {
+        "operator_id": "02",
+        "label": "02:HASH JOIN"
+      },
+      {
+        "operator_id": "03",
+        "label": "03:HASH JOIN"
+      }
+    ],
+    "exec_node_completeness": {
+      "row_count_conclusions": "limited"
+    },
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

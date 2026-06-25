@@ -1,0 +1,29 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "runtime_diagnosis": {
+      "summary": "Object-store scan path is the strongest plausible follow-up hypothesis from deterministic facts.",
+      "signals": [
+        {
+          "key": "storage_hdfs",
+          "status": "plausible_follow_up"
+        }
+      ]
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "storage_or_hdfs"
+    }
+  },
+  "expected": {
+    "label": "runtime_storage",
+    "confidence": "medium",
+    "reasons": [
+      "storage_or_hdfs_runtime_diagnosis"
+    ]
+  }
+}

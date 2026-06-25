@@ -1,0 +1,26 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 100000,
+      "confidence": "high"
+    },
+    "client_fetch": {
+      "primary_supported": true,
+      "evidence_tier": "medium",
+      "client_fetch_wait_ms": 20000,
+      "wait_share": 0.2
+    },
+    "findings": [
+      {
+        "id": "client_fetch_tail"
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

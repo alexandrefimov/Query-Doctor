@@ -1,0 +1,55 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [],
+    "memory_pressure": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "spill_or_scratch_evidence_count": 0,
+      "memory_estimate_anomaly_count": 2,
+      "zero_memory_estimate_gap_count": 1
+    },
+    "memory_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "time_ms": 18000
+      },
+      {
+        "operator_name": "SCAN HDFS",
+        "time_ms": 9000
+      }
+    ],
+    "zero_memory_estimate_gaps": [
+      {
+        "operator_name": "HASH JOIN"
+      }
+    ],
+    "findings": [
+      {
+        "id": "memory_estimate_errors",
+        "operators": [
+          {
+            "operator_name": "HASH JOIN",
+            "time_ms": 18000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "spill_or_scratch"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "memory_estimate_context_only"
+    ]
+  }
+}

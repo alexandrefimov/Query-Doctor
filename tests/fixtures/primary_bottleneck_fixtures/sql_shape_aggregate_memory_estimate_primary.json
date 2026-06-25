@@ -1,0 +1,41 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "findings": [
+      {
+        "id": "memory_estimate_errors",
+        "operators": [
+          {
+            "operator_name": "AGGREGATE",
+            "time_ms": 18000
+          }
+        ]
+      }
+    ],
+    "memory_anomalies": [
+      {
+        "operator_name": "AGGREGATE",
+        "time_ms": 18000
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "time_ms": 15000
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "unavailable",
+      "stats_primary_bottleneck": "unknown",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "sql_shape",
+    "confidence": "medium",
+    "reasons": [
+      "aggregate_memory_estimate_top_finding"
+    ]
+  }
+}
