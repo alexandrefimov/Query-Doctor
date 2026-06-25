@@ -6,6 +6,10 @@ This document defines the safe template for recording real production
 diagnostic gaps. It is not a case archive. Do not commit raw customer,
 cluster, query, profile, metadata, telemetry, or artifact content here.
 
+Lifecycle note: entries here are sanitized research/backlog signals, not
+current analyzer findings or support contracts. Promote a gap into product work
+only through active docs, tests, and deterministic fact contracts.
+
 Use this log when a real case reveals that Query Doctor cannot yet explain,
 rank, route, or safely limit a query diagnosis with deterministic facts.
 

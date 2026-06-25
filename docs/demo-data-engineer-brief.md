@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-05-28
 
+Language: English | [Russian](i18n/ru/demo-data-engineer-brief.md)
+
 This brief is for a data-engineer demo discussion. It explains how Query Doctor
 prioritizes cases and which deterministic facts support the UI labels. It is
 not a public API contract; exact weights can change as tests and analyzer facts
