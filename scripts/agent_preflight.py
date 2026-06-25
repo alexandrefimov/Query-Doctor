@@ -99,7 +99,7 @@ RULES: tuple[Rule, ...] = (
         notes=("Never execute optimizer SQL and never echo pasted SQL after submit.",),
     ),
     Rule(
-        name="Trino bounded preview",
+        name="Trino compact/local web support",
         patterns=(
             "query_doctor/trino/**",
             "query_doctor/analyzer/trino_*.py",
@@ -127,8 +127,10 @@ RULES: tuple[Rule, ...] = (
         ),
         changelog="yes, for Trino support boundary, capability, intake, or trust-boundary changes",
         notes=(
-            "Trino remains bounded raw-free preview only; do not add Recent, Details, "
-            "trusted report, optimizer, SQL execution, or support-claim behavior.",
+            "Trino local production support is limited to raw-free Recent, One Query ID, "
+            "materialized Details, Python Report, and optimizer guidance lanes; do not add "
+            "Running, metadata, LLM reports, Query Optimizer jobs, generated SQL, SQL "
+            "execution, or broader/shared support-claim behavior.",
         ),
     ),
     Rule(
