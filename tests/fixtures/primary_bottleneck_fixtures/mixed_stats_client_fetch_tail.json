@@ -1,0 +1,46 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 180
+      },
+      {
+        "operator_name": "SCAN HDFS",
+        "rows_actual_to_estimated_ratio": 120
+      }
+    ],
+    "client_fetch": {
+      "primary_supported": true,
+      "evidence_tier": "strong",
+      "client_fetch_wait_ms": 45000,
+      "wait_share": 0.37
+    },
+    "findings": [
+      {
+        "id": "client_fetch_tail"
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "mixed",
+    "confidence": "medium",
+    "reasons": [
+      "competing_stats",
+      "competing_client_fetch_tail"
+    ]
+  }
+}

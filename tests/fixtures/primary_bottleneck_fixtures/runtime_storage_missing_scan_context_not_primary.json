@@ -1,0 +1,35 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "totals": {
+      "TotalBytesRead": {
+        "bytes": 45097156608
+      }
+    },
+    "findings": [
+      {
+        "id": "hdfs_or_storage_bottleneck",
+        "operators": [
+          {
+            "time_ms": 18000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "storage_or_hdfs"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

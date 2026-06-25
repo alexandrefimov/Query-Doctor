@@ -1,0 +1,37 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 10000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_id": "02",
+        "label": "02:HASH JOIN"
+      }
+    ],
+    "exec_node_completeness": {
+      "row_count_conclusions": "limited",
+      "affected_operators": [
+        {
+          "operator_id": "01",
+          "operator_name": "HASH JOIN",
+          "state": "cancelled"
+        }
+      ]
+    },
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "stats",
+    "confidence": "medium",
+    "reasons": [
+      "stats_candidate_supported",
+      "cardinality_anomalies_1"
+    ]
+  }
+}

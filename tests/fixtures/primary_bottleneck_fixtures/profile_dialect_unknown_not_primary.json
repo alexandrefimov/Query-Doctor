@@ -1,0 +1,51 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "unknown",
+      "primary_bottleneck_policy": "unsupported"
+    },
+    "cm_query_context": {
+      "admission_result": "Admitted (queued)",
+      "admission_wait_ms": 45000
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 200
+      },
+      {
+        "operator_name": "SCAN HDFS",
+        "rows_actual_to_estimated_ratio": 140
+      },
+      {
+        "operator_name": "SORT",
+        "rows_actual_to_estimated_ratio": 75
+      }
+    ],
+    "backend_tail": {
+      "data_skew": "yes",
+      "execution_skew": "yes",
+      "execution_tail_candidate_count": 2
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "backend_data_skew"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "profile_dialect_not_supported_for_primary"
+    ]
+  }
+}

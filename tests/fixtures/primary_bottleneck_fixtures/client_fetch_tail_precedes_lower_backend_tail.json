@@ -1,0 +1,39 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "client_fetch": {
+      "primary_supported": true,
+      "evidence_tier": "strong",
+      "client_fetch_wait_ms": 60000,
+      "wait_share": 0.5
+    },
+    "backend_tail": {
+      "execution_skew": "yes",
+      "execution_tail_candidate_count": 1,
+      "execution_tail_candidates": [
+        {
+          "worst_value": 20000
+        }
+      ]
+    },
+    "findings": [
+      {
+        "id": "client_fetch_tail"
+      },
+      {
+        "id": "host_execution_tail_suspected"
+      }
+    ]
+  },
+  "expected": {
+    "label": "client_fetch_tail",
+    "confidence": "high",
+    "reasons": [
+      "client_fetch_wait_top_finding",
+      "client_fetch_wait_share_50pct"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "unknown",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

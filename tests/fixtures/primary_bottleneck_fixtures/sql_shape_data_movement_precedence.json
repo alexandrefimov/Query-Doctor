@@ -1,0 +1,55 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 220
+      },
+      {
+        "operator_name": "SCAN HDFS",
+        "rows_actual_to_estimated_ratio": 160
+      },
+      {
+        "operator_name": "SORT",
+        "rows_actual_to_estimated_ratio": 95
+      }
+    ],
+    "totals": {
+      "TotalBytesSent": {
+        "bytes": 45097156608
+      }
+    },
+    "findings": [
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      }
+    ],
+    "top_operators_by_time": [
+      {
+        "operator_name": "EXCHANGE",
+        "time_ms": 45000
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported_by_metadata",
+      "non_stats_bottleneck_categories": "exchange_or_data_movement"
+    }
+  },
+  "expected": {
+    "label": "sql_shape",
+    "confidence": "high",
+    "reasons": [
+      "stats_not_primary",
+      "cardinality_anomalies_4"
+    ]
+  }
+}

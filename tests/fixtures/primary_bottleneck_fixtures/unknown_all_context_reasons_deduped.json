@@ -1,0 +1,57 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 40000,
+      "confidence": "high"
+    },
+    "top_elapsed_finding_id": "codegen_bottleneck",
+    "findings": [
+      {
+        "id": "codegen_bottleneck"
+      }
+    ],
+    "scan_skew": {
+      "status": "supported",
+      "evidence_tier": "medium",
+      "finding_supported": true,
+      "primary_supported": false,
+      "skew_metric": "rows_produced"
+    },
+    "memory_pressure": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "spill_or_scratch_evidence_count": 0,
+      "memory_estimate_anomaly_count": 2,
+      "zero_memory_estimate_gap_count": 1
+    },
+    "data_movement": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "primary_supported": false,
+      "exchange_operator_count": 1
+    },
+    "storage_context": {
+      "source": "table_metadata_view_only"
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HASH JOIN",
+        "time_ms": 5000
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "codegen_finding_not_primary_supported",
+      "scan_skew_medium_supporting_only",
+      "memory_estimate_context_only",
+      "data_movement_context_only",
+      "storage_context_view_only",
+      "wall_clock_not_explained_by_mapped_operators"
+    ]
+  }
+}

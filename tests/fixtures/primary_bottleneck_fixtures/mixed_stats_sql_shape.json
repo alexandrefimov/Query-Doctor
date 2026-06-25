@@ -1,0 +1,45 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 10000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "label": "op-0"
+      },
+      {
+        "label": "op-1"
+      },
+      {
+        "label": "op-2"
+      },
+      {
+        "label": "op-3"
+      }
+    ],
+    "findings": [
+      {
+        "id": "join_bottleneck",
+        "operators": [
+          {
+            "time_ms": 8000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "mixed_candidate",
+      "non_stats_bottleneck_categories": "query_shape"
+    }
+  },
+  "expected": {
+    "label": "mixed",
+    "confidence": "medium",
+    "reasons": [
+      "competing_stats",
+      "competing_sql_shape"
+    ]
+  }
+}

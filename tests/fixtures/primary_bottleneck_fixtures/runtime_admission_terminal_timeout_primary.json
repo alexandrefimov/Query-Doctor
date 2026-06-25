@@ -1,0 +1,24 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": null,
+      "confidence": "unknown"
+    },
+    "cm_query_context": {
+      "admission_result": "Timed out (queued)"
+    },
+    "cardinality_anomalies": [],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "runtime_admission",
+    "confidence": "high",
+    "reasons": [
+      "admission_timed_out"
+    ]
+  }
+}

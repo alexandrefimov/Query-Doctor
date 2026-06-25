@@ -1,0 +1,32 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 10000,
+      "confidence": "high"
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HASH JOIN",
+        "time_ms": 8000
+      }
+    ],
+    "findings": [
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      }
+    ],
+    "cardinality_anomalies": [],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "exchange_or_data_movement"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

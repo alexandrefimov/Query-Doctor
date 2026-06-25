@@ -1,0 +1,30 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cm_query_context": {
+      "admission_result": "Admitted immediately",
+      "admission_wait_ms": 0
+    },
+    "profile_resources": {
+      "available": true,
+      "admission_result": "queued",
+      "admission_wait_ms": 45000
+    },
+    "cardinality_anomalies": [],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "findings": [
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      }
+    ],
+    "top_operators_by_time": [
+      {
+        "operator_name": "EXCHANGE",
+        "time_ms": 30000
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "exchange_or_data_movement"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "data_movement_context_only"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 220
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 160
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 95
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 80
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported_by_metadata",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "sql_shape",
+    "confidence": "high",
+    "reasons": [
+      "stats_not_primary",
+      "cardinality_anomalies_5"
+    ]
+  }
+}

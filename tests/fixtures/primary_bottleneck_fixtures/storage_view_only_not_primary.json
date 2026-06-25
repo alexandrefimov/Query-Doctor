@@ -1,0 +1,24 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [],
+    "storage_context": {
+      "source": "table_metadata_view_only"
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "storage_or_hdfs"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "storage_context_view_only"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "top_elapsed_finding_id": "host_execution_tail_suspected",
+    "backend_tail": {
+      "execution_skew": "yes",
+      "execution_tail_candidate_count": 3
+    }
+  },
+  "expected": {
+    "label": "runtime_skew",
+    "confidence": "high",
+    "reasons": [
+      "execution_tail_top_finding",
+      "tail_candidates_3"
+    ]
+  }
+}

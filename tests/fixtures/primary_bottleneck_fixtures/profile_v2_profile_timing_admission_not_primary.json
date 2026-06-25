@@ -1,0 +1,39 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 70000,
+      "confidence": "medium"
+    },
+    "profile_format": {
+      "profile_dialect": "experimental_profile_v2",
+      "primary_bottleneck_policy": "non_profile_only",
+      "per_instance_evidence": "unknown"
+    },
+    "profile_resources": {
+      "available": true,
+      "admission_result": "queued"
+    },
+    "profile_timings": {
+      "available": true,
+      "query_timeline": {
+        "available": true,
+        "phase_durations": {
+          "admission_ms": 25000
+        }
+      }
+    },
+    "cardinality_anomalies": [],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

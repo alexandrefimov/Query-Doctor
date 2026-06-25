@@ -1,0 +1,49 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 220
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 160
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 95
+      }
+    ],
+    "findings": [
+      {
+        "id": "hdfs_or_storage_bottleneck",
+        "operators": [
+          {
+            "time_ms": 45000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "storage_or_hdfs"
+    }
+  },
+  "expected": {
+    "label": "stats",
+    "confidence": "high",
+    "reasons": [
+      "stats_candidate_supported",
+      "cardinality_anomalies_4"
+    ]
+  }
+}

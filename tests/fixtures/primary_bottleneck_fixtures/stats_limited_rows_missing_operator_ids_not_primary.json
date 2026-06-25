@@ -1,0 +1,44 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 220
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 160
+      }
+    ],
+    "exec_node_completeness": {
+      "row_count_conclusions": "limited",
+      "affected_operators": [
+        {
+          "operator_id": "01",
+          "operator_name": "HASH JOIN",
+          "state": "cancelled"
+        }
+      ]
+    },
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

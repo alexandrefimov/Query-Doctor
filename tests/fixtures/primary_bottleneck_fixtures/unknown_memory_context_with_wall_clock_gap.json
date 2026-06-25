@@ -1,0 +1,30 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 40000,
+      "confidence": "high"
+    },
+    "memory_pressure": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "spill_or_scratch_evidence_count": 0,
+      "memory_estimate_anomaly_count": 2,
+      "zero_memory_estimate_gap_count": 1
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HDFS_SCAN_NODE",
+        "time_ms": 5000
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "memory_estimate_context_only",
+      "wall_clock_not_explained_by_mapped_operators"
+    ]
+  }
+}

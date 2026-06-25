@@ -1,0 +1,46 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "experimental_profile_v2",
+      "primary_bottleneck_policy": "non_profile_only",
+      "per_instance_evidence": "unknown"
+    },
+    "totals": {
+      "TotalBytesRead": {
+        "bytes": 45097156608
+      }
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HDFS SCAN",
+        "time_ms": 30000
+      }
+    ],
+    "findings": [
+      {
+        "id": "hdfs_or_storage_bottleneck",
+        "operators": [
+          {
+            "time_ms": 30000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "storage_or_hdfs"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

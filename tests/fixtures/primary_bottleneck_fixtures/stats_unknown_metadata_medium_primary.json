@@ -1,0 +1,31 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 220
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "unknown",
+      "stats_primary_bottleneck": "candidate_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "stats",
+    "confidence": "medium",
+    "reasons": [
+      "stats_candidate_supported",
+      "cardinality_anomalies_2"
+    ]
+  }
+}

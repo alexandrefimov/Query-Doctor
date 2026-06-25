@@ -1,0 +1,30 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "findings": [
+      {
+        "id": "sort_bottleneck",
+        "operators": [
+          {
+            "time_ms": 18000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "query_shape"
+    }
+  },
+  "expected": {
+    "label": "sql_shape",
+    "confidence": "medium",
+    "reasons": [
+      "sort_top_finding"
+    ]
+  }
+}

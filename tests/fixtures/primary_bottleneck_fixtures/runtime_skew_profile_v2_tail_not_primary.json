@@ -1,0 +1,25 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "profile_format": {
+      "profile_dialect": "experimental_profile_v2",
+      "primary_bottleneck_policy": "non_profile_only",
+      "per_instance_evidence": "unknown"
+    },
+    "top_elapsed_finding_id": "host_execution_tail_suspected",
+    "backend_tail": {
+      "execution_skew": "yes",
+      "execution_tail_candidate_count": 2
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

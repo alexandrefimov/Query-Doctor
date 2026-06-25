@@ -1,0 +1,28 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 3000,
+      "confidence": "high"
+    },
+    "findings": [
+      {
+        "id": "codegen_bottleneck"
+      }
+    ],
+    "memory_pressure": {
+      "status": "context_only",
+      "evidence_tier": "context_only",
+      "finding_supported": false,
+      "spill_or_scratch_evidence_count": 0,
+      "memory_estimate_anomaly_count": 2,
+      "zero_memory_estimate_gap_count": 1
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "very_short_query_or_unknown_wall_clock"
+    ]
+  }
+}

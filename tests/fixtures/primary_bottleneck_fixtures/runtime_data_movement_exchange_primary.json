@@ -1,0 +1,40 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "totals": {
+      "TotalBytesSent": {
+        "bytes": 45097156608
+      }
+    },
+    "findings": [
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      }
+    ],
+    "top_operators_by_time": [
+      {
+        "operator_name": "EXCHANGE",
+        "time_ms": 45000
+      },
+      {
+        "operator_name": "HDFS SCAN",
+        "time_ms": 8000
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "exchange_or_data_movement"
+    }
+  },
+  "expected": {
+    "label": "runtime_data_movement",
+    "confidence": "medium",
+    "reasons": [
+      "large_intermediate_or_exchange_top_finding"
+    ]
+  }
+}

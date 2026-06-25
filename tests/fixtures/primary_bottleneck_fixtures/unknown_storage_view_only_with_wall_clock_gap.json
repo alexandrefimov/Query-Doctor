@@ -1,0 +1,25 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 40000,
+      "confidence": "high"
+    },
+    "storage_context": {
+      "source": "table_metadata_view_only"
+    },
+    "top_operators_by_time": [
+      {
+        "operator_name": "HDFS_SCAN_NODE",
+        "time_ms": 5000
+      }
+    ]
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "storage_context_view_only",
+      "wall_clock_not_explained_by_mapped_operators"
+    ]
+  }
+}
