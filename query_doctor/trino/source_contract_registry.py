@@ -1,7 +1,7 @@
-"""Registry for bounded Trino preview source kinds.
+"""Registry for bounded Trino source kinds.
 
 The registry is intentionally descriptive. It does not collect from Trino or
-promote any source kind into product support.
+promote any source kind beyond the bounded local production lanes.
 """
 
 from __future__ import annotations
@@ -26,6 +26,10 @@ class TrinoSourceContractRegistryEntry:
     raw_payload_storage: str = "forbidden"
     raw_metadata_storage: str = "not_applicable"
     normalized_fact_storage: str = "allowed"
+    auth_reference_policy: str = "not_applicable"
+    source_schema_gate: str = "compact_schema_required"
+    retry_policy: str = "not_performed"
+    failure_mode: str = "fail_closed"
     browser_report_output: str = "blocked"
     identifier_output: str = "not_applicable"
     product_surfaces: str = "blocked"
@@ -43,6 +47,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="evidence_package_sample",
         raw_policy="already_sanitized_package_sample",
         required_bounds=("maximum_package_json_bytes", "maximum_sample_count"),
+        source_schema_gate="evidence_package_sample_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="query_detail_export",
@@ -50,6 +55,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="evidence_package_sample",
         raw_policy="already_sanitized_package_sample",
         required_bounds=("maximum_package_json_bytes", "maximum_sample_count"),
+        source_schema_gate="evidence_package_sample_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="query_list_summary_export",
@@ -57,6 +63,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="evidence_package_sample",
         raw_policy="already_sanitized_package_sample",
         required_bounds=("maximum_package_json_bytes", "maximum_sample_count"),
+        source_schema_gate="evidence_package_sample_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="statement_stats_export",
@@ -64,6 +71,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="evidence_package_sample",
         raw_policy="already_sanitized_package_sample",
         required_bounds=("maximum_package_json_bytes", "maximum_sample_count"),
+        source_schema_gate="evidence_package_sample_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="mixed_sanitized_export",
@@ -71,6 +79,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="evidence_package_manifest",
         raw_policy="already_sanitized_package_manifest",
         required_bounds=("maximum_package_json_bytes", "maximum_sample_count"),
+        source_schema_gate="evidence_package_manifest_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="http_event_listener_archive",
@@ -85,6 +94,9 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
             "timeout_seconds",
         ),
         network_access="one_explicit_operator_archive_url",
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="event_source_contract_schema_required",
+        retry_policy="explicit_bounded_retry_or_none",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="kafka_event_listener",
@@ -98,6 +110,8 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
             "max_record_depth",
             "timeout_seconds",
         ),
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="event_source_contract_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="mysql_event_listener",
@@ -111,6 +125,8 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
             "max_record_depth",
             "timeout_seconds",
         ),
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="event_source_contract_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="http_query_detail_archive",
@@ -119,6 +135,9 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         raw_policy="operator_sanitized_archive_after_source_contract",
         required_bounds=("max_bytes", "max_query_detail_depth", "timeout_seconds"),
         network_access="one_explicit_operator_archive_url",
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="query_detail_archive_source_contract_schema_required",
+        retry_policy="explicit_bounded_retry_or_none",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="coordinator_query_info",
@@ -127,6 +146,9 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         raw_policy="one_explicit_query_info_after_source_contract",
         required_bounds=("max_query_ids", "max_bytes", "max_query_info_depth", "timeout_seconds"),
         network_access="optional_one_explicit_pruned_query_info_request",
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="coordinator_query_info_source_contract_schema_required",
+        retry_policy="explicit_bounded_retry_or_none",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="metadata_allowlist",
@@ -140,9 +162,32 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
             "max_metadata_bytes",
             "timeout_seconds",
         ),
+        auth_reference_policy="source_contract_safe_reference_required",
+        source_schema_gate="metadata_allowlist_source_contract_schema_required",
         raw_payload_storage="not_applicable",
         raw_metadata_storage="forbidden",
         identifier_output="blocked",
+    ),
+    TrinoSourceContractRegistryEntry(
+        source_type="trino_metadata_cli_summary",
+        surface_class="contract_gated_metadata_cli",
+        contract_family="metadata_source_contract",
+        raw_policy="operator_trino_cli_metadata_summary_after_allowlist_contract",
+        required_bounds=(
+            "max_relations",
+            "max_columns_per_relation",
+            "max_identifier_length",
+            "max_metadata_bytes",
+            "timeout_seconds",
+        ),
+        network_access="operator_installed_trino_cli_only",
+        auth_reference_policy="source_contract_safe_reference_required",
+        source_schema_gate="metadata_allowlist_source_contract_schema_required",
+        retry_policy="explicit_bounded_retry_or_none",
+        raw_payload_storage="forbidden",
+        raw_metadata_storage="forbidden",
+        identifier_output="blocked",
+        sql_execution="python_owned_metadata_statements_only",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="local_event_store_import",
@@ -150,6 +195,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="local_event_store_import",
         raw_policy="already_sanitized_local_event_records",
         required_bounds=("max_store_bytes", "max_records", "max_record_bytes", "max_record_depth"),
+        source_schema_gate="compact_local_import_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="local_query_detail_import",
@@ -157,6 +203,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="local_query_detail_import",
         raw_policy="already_sanitized_local_query_detail",
         required_bounds=("max_file_bytes", "max_query_detail_bytes", "max_query_detail_depth"),
+        source_schema_gate="compact_local_import_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="local_query_list_import",
@@ -164,6 +211,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="local_query_list_import",
         raw_policy="already_sanitized_local_query_list_aggregate",
         required_bounds=("max_file_bytes", "max_query_list_bytes", "max_query_list_depth"),
+        source_schema_gate="compact_local_import_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="local_statement_stats_import",
@@ -175,6 +223,7 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
             "max_statement_stats_bytes",
             "max_statement_stats_depth",
         ),
+        source_schema_gate="compact_local_import_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="local_query_info_pruned_import",
@@ -182,6 +231,8 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         contract_family="coordinator_query_info_source_contract",
         raw_policy="already_sanitized_local_pruned_query_info_after_source_contract",
         required_bounds=("max_query_ids", "max_bytes", "max_query_info_depth"),
+        auth_reference_policy="source_contract_safe_reference_required",
+        source_schema_gate="coordinator_query_info_source_contract_schema_required",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="trino_coordinator_query_info_pruned_import",
@@ -190,6 +241,13 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         raw_policy="one_explicit_pruned_query_info_after_source_contract",
         required_bounds=("max_query_ids", "max_bytes", "max_query_info_depth", "timeout_seconds"),
         network_access="one_explicit_pruned_query_info_request",
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="coordinator_query_info_source_contract_schema_required",
+        retry_policy="explicit_bounded_retry_or_none",
+        browser_report_output="python_report_and_optimizer_guidance_after_raw_free_case_materialization",
+        product_surfaces="trino_query_id_local_production_details_python_report_optimizer_guidance",
+        details_report_output="python_report_and_optimizer_guidance_after_raw_free_case_materialization",
+        optimizer_behavior="guidance_only_after_raw_free_case_materialization",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="trino_coordinator_query_list",
@@ -198,8 +256,11 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
         raw_policy="bounded_retained_query_list_after_source_contract",
         required_bounds=("max_query_ids", "max_bytes", "max_query_list_depth", "timeout_seconds"),
         network_access="one_bounded_retained_query_list_request",
-        product_surfaces="trino_recent_beta",
-        recent_scan="retained_query_list_beta",
+        auth_reference_policy="operator_managed_safe_reference_required",
+        source_schema_gate="coordinator_query_list_source_contract_schema_required",
+        retry_policy="explicit_bounded_retry_or_none",
+        product_surfaces="trino_recent_local_production",
+        recent_scan="retained_query_list_local_production",
     ),
     TrinoSourceContractRegistryEntry(
         source_type="local_metadata_summary_import",
@@ -212,6 +273,8 @@ _TRINO_SOURCE_CONTRACT_REGISTRY = (
             "max_metadata_bytes",
             "max_metadata_summary_depth",
         ),
+        auth_reference_policy="source_contract_safe_reference_required",
+        source_schema_gate="metadata_summary_contract_schema_required",
         raw_payload_storage="not_applicable",
         raw_metadata_storage="forbidden",
         identifier_output="blocked",

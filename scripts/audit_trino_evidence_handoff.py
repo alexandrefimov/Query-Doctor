@@ -95,6 +95,7 @@ class TrinoEvidenceHandoffSuiteResult:
     supported_attention_area_count: int = 0
     source_contract_counts: Counter[str] = field(default_factory=Counter)
     package_source_type_counts: Counter[str] = field(default_factory=Counter)
+    connector_family_counts: Counter[str] = field(default_factory=Counter)
     source_schema_counts: Counter[str] = field(default_factory=Counter)
     source_version_state_counts: Counter[str] = field(default_factory=Counter)
     support_status_counts: Counter[str] = field(default_factory=Counter)
@@ -502,6 +503,7 @@ def handoff_suite_summary_payload(
         },
         "source_contracts": counter_payload(batch.source_contract_counts),
         "package_source_types": counter_payload(batch.package_source_type_counts),
+        "connector_family_categories": counter_payload(batch.connector_family_counts),
         "source_schemas": counter_payload(batch.source_schema_counts),
         "source_version_states": counter_payload(batch.source_version_state_counts),
         "support_statuses": counter_payload(batch.support_status_counts),
@@ -845,6 +847,12 @@ def audit_handoff_summary_payload(
             source_contract = safe_label(source_summary.get("source_contract_version"))
             if source_contract != "redacted":
                 batch.source_contract_counts[source_contract] += 1
+            connector_categories = source_summary.get("connector_family_categories")
+            if isinstance(connector_categories, list):
+                for raw_connector_category in connector_categories:
+                    connector_category = safe_label(raw_connector_category)
+                    if connector_category != "redacted":
+                        batch.connector_family_counts[connector_category] += 1
         else:
             add_handoff_suite_issue(
                 batch,
