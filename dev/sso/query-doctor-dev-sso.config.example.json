@@ -1,0 +1,10 @@
+{
+  "source_visibility": "owner_raw",
+  "viewer_identity_header": "X-Forwarded-Preferred-Username",
+  "owner_raw_source_enabled": false,
+  "privacy_mode": true,
+  "redact": true,
+  "redact_identifiers": true,
+  "redact_hosts": true,
+  "no_llm": true
+}

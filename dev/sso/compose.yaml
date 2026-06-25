@@ -1,0 +1,70 @@
+name: query-doctor-dev-sso
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.3
+    command:
+      - start-dev
+      - --import-realm
+      - --hostname=http://query-doctor-sso.localhost:18080
+      - --http-enabled=true
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${QD_SSO_KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${QD_SSO_KEYCLOAK_ADMIN_PASSWORD:-dev-only-admin}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${QD_SSO_KEYCLOAK_PORT:-18080}:8080"
+    volumes:
+      - ./keycloak/realm-query-doctor-dev.json:/opt/keycloak/data/import/realm-query-doctor-dev.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  query-doctor:
+    image: python:3.12-slim
+    working_dir: /workspace
+    command:
+      - sh
+      - -c
+      - >-
+        python -m query_doctor.cli.demo_data --out /tmp/query-doctor-dev-sso-demo --overwrite
+        &&
+        python -m query_doctor.cli.web
+        --config /workspace/dev/sso/query-doctor-dev-sso.config.example.json
+        --batch-summary /tmp/query-doctor-dev-sso-demo/batch_summary.json
+        --host 0.0.0.0
+        --port 8765
+        --allow-nonlocal-web-bind
+        --disable-owner-raw-source
+    expose:
+      - "8765"
+    volumes:
+      - ../..:/workspace:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/', timeout=2).read(1)"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.3
+    command:
+      - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+    environment:
+      OAUTH2_PROXY_CLIENT_SECRET: ${QD_SSO_OAUTH2_PROXY_CLIENT_SECRET:-query-doctor-dev-client-secret}
+      OAUTH2_PROXY_COOKIE_SECRET: ${QD_SSO_OAUTH2_PROXY_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
+    ports:
+      - "127.0.0.1:${QD_SSO_PROXY_PORT:-4180}:4180"
+    volumes:
+      - ./oauth2-proxy/oauth2-proxy.cfg:/etc/oauth2-proxy/oauth2-proxy.cfg:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      query-doctor:
+        condition: service_healthy
