@@ -57,7 +57,7 @@ knowing the internal analyzer pipeline.
 | Read-only Impala validation access | Keep partner-specific outreach outside public docs; public docs should record only the generic validation need and safety boundaries | Real Impala/CM validation is the highest-leverage way to improve the primary product, but outreach copy is not product documentation. |
 | Minimal config | Keep `query-doctor-config.minimal.example.json` as the first-copy example | The current full example is useful, but too broad for first launch. |
 | Documentation size | Use [repository-simplification-audit.md](repository-simplification-audit.md) before pruning | The docs are now a knowledge base; the entry path needs curation. |
-| Russian docs | Treat English as canonical and keep only important Russian user paths fresh | Full mirrored deep contracts can drift faster than they help. |
+| Russian docs | Treat English as canonical and keep only README-level and practical Russian user/operator paths fresh | Full mirrored deep contracts can drift faster than they help. |
 | UI/UX | Keep refining Recent-results and Details polish | The UI should answer analyst questions before exposing diagnostics mechanics. |
 | Demo brief | Keep or shorten as external-review demo reference | Useful for demos, but should not be required reading. |
 | Synthetic Demo Mode | Keep | It is a real public-safe product/demo workflow. |

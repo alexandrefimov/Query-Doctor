@@ -14,18 +14,16 @@ is not a historical audit log. For engineering risks, use
 
 ## Current Scope
 
-- Apache Impala is the only implemented production triage SQL engine. Trino is
-  implemented only for sanitized offline evidence package import, bounded local
-  event-store import, bounded HTTP event archive import, bounded HTTP
-  query-detail archive import, bounded local query-detail import, and bounded
-  local query-list aggregate import, plus bounded local statement-stats import
-  and event-source contract checking and dry-run coordinator query-info target
-  checking, plus bounded pruned coordinator query-info probing, one-query
-  pruned coordinator fact import, and local compact diagnosis over raw-free
-  boundary JSON.
+- Apache Impala is the full production triage SQL engine. Trino has bounded
+  local production support only for retained-list Recent, one explicit Query
+  ID, raw-free materialized Details, deterministic Python Report, and optimizer
+  guidance over server-owned materialized cases, plus the supporting raw-free
+  import, source-contract, handoff, and audit surfaces listed in the support
+  matrix. Broader/shared Trino expansion remains behind separate promotion
+  gates.
 - Query Doctor is positioned as a local-first Big Data query diagnostic tool
-  focused today on Impala production triage, not as a generic AI query profile
-  analyzer.
+  focused on Impala production triage, with bounded local Trino production
+  lanes, not as a generic AI query profile analyzer.
 - Cloudera Manager is the full implemented query discovery, profile, metrics,
   and events source for Recent queries.
 - Direct Impala daemon collection supports bounded Recent scans, Running scans,
@@ -109,27 +107,31 @@ Recent scans remain the flagship production workflow, but the first operator
 experience should not require the broadest workflow to prove value.
 
 This focus does not remove bounded Trino or Spark contract work from the
-repository, but it keeps that work below product support and out of the main
-customer path until the Impala Recent and Details experience is strong enough
-for design-partner review.
+repository. It keeps the main customer path Impala-first, keeps Trino limited
+to the bounded local production lanes in the support matrix, and keeps Spark
+below product support until the Impala Recent and Details experience is strong
+enough for design-partner review.
 
 ## Product Direction
 
 Query Doctor should be positioned and developed as a local-first Big Data query
-diagnostic tool focused today on Impala production triage, not as an "AI
-profile analyzer" button or an "AI SQL optimizer" whose primary promise is
-automatic SQL rewriting.
+diagnostic tool focused on Impala production triage, with bounded local Trino
+production lanes, not as an "AI profile analyzer" button or an "AI SQL
+optimizer" whose primary promise is automatic SQL rewriting.
 
 - Keep Big Data SQL/lakehouse diagnostics as the long-term category, but make
-  the current product promise Impala-first until another engine has implemented
-  facts, fixtures, collection contracts, and safety tests.
+  the current product promise Impala-first. Trino wording must stay limited to
+  the bounded local production lanes until any broader/shared surface has
+  implemented facts, fixtures, collection contracts, retained evidence, docs,
+  and safety tests.
 - Treat upstream native Impala AI profile analysis as a reason to strengthen
   Query Doctor's cross-engine operator-workbench direction, not as permission to
-  claim multi-engine support early.
+  claim broad multi-engine support early.
 - Start second-engine exploration when it helps shape the real engine fact
-  contract, even before support-claim gates are complete. Keep that work
-  fixture-driven, non-public, and unable to affect normal Impala workflows until
-  it has safety coverage and diagnostic value.
+  contract, even before support-claim gates are complete. Keep exploratory work
+  fixture-driven, non-public, and unable to affect normal Impala workflows or
+  the bounded Trino local production claim until it has safety coverage and
+  diagnostic value.
 - The primary product value is ranking suspicious Recent queries, explaining
   which evidence is supported, not observed, or unknown, and routing operators
   toward a safe inspection/change/verification loop.
@@ -162,11 +164,11 @@ automatic SQL rewriting.
   instance-level detail. Impala-provided counter significance/stability labels
   should improve future profile evidence quality when available, but they do
   not replace deterministic analyzer support.
-- Product growth should deepen the current Impala wedge while preparing the
-  engine fact contract that makes a future second engine real. Spark SQL is not
-  a near-term direction: it would require a different runtime/profile fact
-  model, collector surface, optimizer contract, and market positioning before
-  Query Doctor has proven enough value on Impala workloads.
+- Product growth should deepen the current Impala wedge while keeping Trino's
+  local production lanes narrow and evidence-gated. Spark SQL is not a
+  near-term direction: it would require a different runtime/profile fact model,
+  collector surface, optimizer contract, and market positioning before Query
+  Doctor has proven enough value on Impala workloads.
 
 ## Success Metrics
 
@@ -187,7 +189,8 @@ Primary diagnosis metrics:
 - `case_primary_bottleneck` has medium-or-better confidence on at least 70% of
   representative real-case batches.
 - `case_primary_bottleneck = unknown` is below 30% for normal Impala diagnosis
-  work, and below roughly 20% before adding another SQL engine.
+  work, and below roughly 20% before adding another broad SQL-engine product
+  surface.
 - Representative calibration should run
   `scripts/audit_impala_diagnostic_loop.py <batch_summary.json>` as the
   aggregate strict gate over Details, profile evidence, diagnostic coverage,

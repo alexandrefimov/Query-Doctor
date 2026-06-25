@@ -20,8 +20,10 @@ Cloudera Manager / local case inputs
   -> localhost web UI
 ```
 
-The implemented production engine is Apache Impala. Future engine/source-provider
-work should add narrow seams and fixtures, not fake runtime support.
+The full production triage engine is Apache Impala. Trino local production
+support is limited to the bounded raw-free web lanes in the support matrix.
+Future engine/source-provider work should add narrow seams and fixtures, not
+fake runtime support.
 
 ## Where To Change Things
 

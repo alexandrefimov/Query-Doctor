@@ -1,7 +1,5 @@
 # Model Route Evaluation Protocol
 
-Language: English | [Russian](i18n/ru/model-bakeoff.md)
-
 This public document defines the safety protocol for comparing model routes
 inside Query Doctor. It intentionally does not publish local bake-off results,
 model latency tables, case IDs, private provider setup, or historical

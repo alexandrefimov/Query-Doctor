@@ -105,13 +105,96 @@ web-router, and audit-script lists.
 
 Implemented guard for Trino preview source-contract drift: accepted Trino
 preview `source_type` values, raw policy, required bounds, network-access
-class, and promotion gate now live in
+class, auth-reference policy, source-schema gate, retry policy, fail-closed
+policy, and promotion gate now live in
 `query_doctor/trino/source_contract_registry.py`. The support-gap audit checks
-that implemented preview source types are registered and that registry entries
-do not enable product surfaces, Details/trusted reports, Recent scans,
-optimizer behavior, SQL execution, raw storage, browser/report output, or
-metadata identifier output. Future Trino intake surfaces must update this
-registry and focused tests before support wording or routing changes.
+that implemented preview source types are registered, that network-capable
+source entries require safe auth references and bounded retry behavior, and
+that registry entries do not enable product surfaces, Details/trusted reports,
+Recent scans, optimizer behavior, SQL execution, raw storage,
+browser/report output, or metadata identifier output. Future Trino intake
+surfaces must update this registry and focused tests before support wording or
+routing changes.
+
+Implemented guard for Trino bounded-reader drift: the production collector
+contract audit now pins reader status, bounded scope, implementation module,
+CLI role, and capability surface for existing local lanes, preview readers,
+local imports, contract-only checks, and aggregate metadata CLI summary. It
+also rejects broad query-history, Running, broad QueryInfo, statement, or
+`EXPLAIN ANALYZE` reader roles/capabilities before their closure gates exist.
+Future Trino reader additions must update the production collector contract
+audit, command/capability manifests, focused tests, and support matrix before
+support wording or product-surface changes.
+
+Implemented guard for Trino query-linked production-review drift: the
+query-linked fact coverage audit now records the
+`production_review_query_linked_v1` profile over raw-free bounded core fact
+families, linkage scopes, one-query source granularities, and retained
+operator/split-detail/telemetry blockers. The broader production closure gate
+rejects missing or drifted profile/status/requirement tracking before support
+wording can claim broader Trino production readiness.
+
+Implemented guard for Trino operator/connector/telemetry decision drift: the
+query-linked fact coverage audit records
+`operator_connector_telemetry_decision_v1`, with connector metric signal as the
+only current bounded-supported decision and operator-level, split-detail, and
+JMX/OpenMetrics/OpenTelemetry linkage as deliberate unsupported gaps until
+raw-free source contracts exist. The broader production closure gate rejects
+missing or drifted decision-profile status, requirements, and counts.
+
+Implemented guard for Trino product-metadata production-review drift: the
+product metadata collection audit records `production_review_metadata_v1` over
+the allowlist/source lanes, aggregate-only metadata boundary, metadata fact
+namespace, bounded sources, redaction blocks, explicit metadata SQL policy,
+product-surface blocks, and retained product-metadata open blocker. The broader
+production closure gate rejects missing or drifted metadata profile status,
+requirements, and counts before product metadata support wording can change.
+
+Implemented guard for Trino report/optimizer production-review drift: the
+report optimizer safety audit records `production_review_report_optimizer_v1`
+over report/guidance families, materialized capabilities, raw-source policy
+fields, validator sentinel matrix, and blocked product-surface requirements.
+The broader production closure gate rejects missing or drifted report/optimizer
+profile status, requirements, and counts before LLM report, Query Optimizer job,
+generated SQL, SQL execution, or support wording can change.
+
+Implemented guard for Trino shared-deployment production-review drift: the
+shared deployment boundary audit records
+`production_review_shared_deployment_v1` over review families,
+deployment-config requirements, product-boundary requirements, capability
+requirements, release requirements, documentation requirements, and
+unsupported-surface blocks. The broader production closure gate rejects missing
+or drifted shared-deployment profile status, requirements, and counts before
+shared/non-local Trino deployment hardening or support wording can change.
+
+Implemented guard for Trino browser/report production-review drift: the
+browser/report regression audit records `production_review_browser_report_v1`
+over regression families, test files, materialized route capabilities,
+raw-output blocks, unsupported-surface blocks, download regressions, and
+public-claim regressions. The broader production closure gate rejects missing
+or drifted browser/report profile status, requirements, and counts before
+browser/report support wording or broad Trino release claims can change.
+
+Implemented guard for Trino bounded production support-claim drift: the
+support-gap audit now pins `bounded_production_claim_pinned` plus
+`bounded_production_claim_ready`, product-surface summaries use
+local-production machine labels for retained-list Recent and One Query ID, and
+the production-closure audit reports the bounded claim ready only when every
+current raw-free tracking summary is accepted and collector evidence is linked
+to representative evidence. Broader/shared Trino expansion, Running,
+query-history crawling, product metadata collection, LLM reports, Query
+Optimizer jobs, generated SQL, and SQL execution remain separately blocked.
+
+Implemented guard for Trino representative-evidence promotion-review drift:
+the retained representative evidence audit now requires the
+`production_review_breadth_v1` profile to include raw-free handoff-suite,
+compact-readiness, product-surface, and support-gap summary kinds, with
+accepted `ok` input statuses. The audit also rejects product-surface or
+support-gap summary boundary drift that would imply broader closure or Trino
+SQL execution. Future retained evidence promotion work must keep those
+summary-kind, status, and boundary checks aligned with focused tests,
+collector-linkage checks, and the support matrix before support wording or
+release-claim changes.
 
 Implemented guard for cross-engine fact-promotion drift:
 shared/distributed-SQL-family/source-boundary/support-boundary normalized fact
@@ -554,7 +637,8 @@ distributed-SQL-family fact with `allowed_engines={"impala", "trino"}`, not a
 Trino engine-specific fact. Any new Trino engine-specific fact must use a
 `trino_*`, `query_detail_*`, `query_list_*`, or neutral `no_*` prefix.
 
-Before broader Trino support or any Details/trusted-report promotion:
+Before broader Trino support, trusted-report promotion, or any Details surface
+beyond the raw-free materialized local Trino case view:
 
 - keep Trino-only facts behind `trino_*`/source-shape prefixes unless a
   separate contract change promotes a specific fact to a family/shared scope
@@ -574,9 +658,10 @@ Before broader Trino support or any Details/trusted-report promotion:
 - run `scripts/audit_trino_product_surface_boundary.py` on retained compact
   boundary/diagnosis artifacts or a retained handoff-suite manifest before any
   product-surface promotion decision so
-  `live_known_query_diagnosis=one_query_pruned_query_info_beta`,
-  `live_recent_scan=retained_query_list_beta`, the beta-only support claim, and
-  the compact-preview plus Recent/One Query ID web registry limits stay pinned;
+  `live_known_query_diagnosis=one_query_pruned_query_info_local_production`,
+  `live_recent_scan=retained_query_list_local_production`, the local production
+  support claim, and the compact-preview plus Recent/One Query ID web registry
+  limits stay pinned;
   manifest mode must require diagnosis artifacts for every entry, and this
   audit must reject metadata-summary boundaries as aggregate coverage evidence,
   not product-surface diagnosis artifacts; keep its static source-import guard
@@ -590,10 +675,11 @@ Before broader Trino support or any Details/trusted-report promotion:
   support-gap matrix;
 - keep the engine adapter and console-script registry language precise: Trino is
   registered only for bounded raw-free preview surfaces and the local One Query
-  ID beta surface, including metadata source-contract checking and bounded
-  local metadata summary import, not production Recent, Details, trusted
-  reports, optimizer, live metadata collection, SQL execution, query-history
-  crawling, or production Query ID support.
+  ID beta surface, including metadata source-contract checking, bounded local
+  metadata CLI summary building, and bounded local metadata summary import, not
+  unsupported production Recent surfaces, trusted report source reads, optimizer
+  jobs, product metadata collection, user SQL execution, query-history crawling,
+  or standalone production Query ID support.
 
 ### 17. Public documentation must not become a local run journal
 

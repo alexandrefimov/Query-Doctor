@@ -2,8 +2,6 @@
 
 Last reviewed: 2026-06-15
 
-Language: English | [Russian](i18n/ru/architecture.md)
-
 Query Doctor keeps fact extraction deterministic. LLMs may write report wording
 only from facts that Python has already extracted and validated. The global
 `language` config controls Help, Details static UI copy, and newly generated
@@ -11,12 +9,13 @@ trusted reports; English is the default and Russian uses the same
 language-specific prompt, normalizer, and validator boundary.
 
 The product architecture is a local-first Big Data query diagnostic tool
-focused today on Apache Impala production triage: Recent Scan ranks many
-suspicious queries first, Query ID diagnosis handles one known query as a
-secondary mode, and Query Optimizer remains a separate read-only SQL analysis
-workflow. Native Impala AI profile-analysis work tracked upstream should be
-treated as a compatibility direction and a signal to prepare real cross-engine
-diagnostic contracts, not a reason to duplicate a one-profile AI tab.
+focused on Apache Impala production triage, with bounded local Trino production
+lanes: Recent Scan ranks many suspicious queries first, Query ID diagnosis
+handles one known query as a secondary mode, and Query Optimizer remains a
+separate read-only SQL analysis workflow. Native Impala AI profile-analysis work
+tracked upstream should be treated as a compatibility direction and a signal to
+prepare real cross-engine diagnostic contracts, not a reason to duplicate a
+one-profile AI tab.
 
 ## Current Architecture
 
@@ -25,6 +24,7 @@ flowchart TD
     subgraph External["External read-only sources"]
         CM[Cloudera Manager summaries and profiles]
         ImpalaDaemon[Direct Impala daemon query-list and profile endpoints]
+        TrinoCoordinator[Bounded Trino coordinator query-list and QueryInfo reads]
         ImpalaMeta[Allowlisted Impala metadata]
         CMMetrics[Bounded Cloudera Manager time-series summaries]
         PromMetrics[Bounded Prometheus runtime summaries]
@@ -60,6 +60,7 @@ flowchart TD
 
     CM --> Collector
     ImpalaDaemon --> Collector
+    TrinoCoordinator --> Collector
     ImpalaMeta --> Collector
     CMMetrics --> Collector
     PromMetrics --> Collector
@@ -96,7 +97,10 @@ or automatic LLM execution path.
 
 Current support is intentionally narrow:
 
-- Apache Impala is the only current production query engine support.
+- Apache Impala is the full production triage query engine. Trino has bounded
+  local production support only for the raw-free retained-list Recent, one
+  explicit Query ID, materialized Details, deterministic Python Report, and
+  optimizer guidance lanes listed in the support matrix.
 - Cloudera Manager summaries, profiles, metrics, and events are the full
   implemented Recent queries source.
 - Direct Impala daemon query-list and profile endpoints support bounded Recent
@@ -144,17 +148,20 @@ Current support is intentionally narrow:
 - The engine fact contract currently supports an Impala analyzer projection,
   sanitized Trino offline evidence package import, bounded local Trino
   event-store import, bounded HTTP Trino event archive import, bounded HTTP
-  Trino query-detail archive import, bounded local Trino query-detail
-  import, and bounded local Trino query-list aggregate import, plus bounded
-  local Trino statement-stats import, event-source contract checks, and dry-run
-  coordinator query-info target checks, plus bounded pruned coordinator
-  query-info probes, one-query pruned coordinator fact import, and local
-  compact diagnosis over raw-free direct boundary JSON excluding metadata
-  summary boundaries or selected package sample boundaries plus isolated local `/trino/compact-diagnosis` rendering
-  for the same already raw-free inputs.
-  Trino import and diagnosis paths are not connected to Details, trusted
-  reports, broader live Trino coordinator collection, metadata, optimizer, or
-  live query-source diagnosis paths.
+  Trino query-detail archive import, bounded local Trino query-detail import,
+  bounded local Trino query-list aggregate import, bounded local Trino
+  statement-stats import, local pruned QueryInfo import, bounded local metadata
+  summary import, event-source contract checks, dry-run coordinator query-info
+  target checks, bounded pruned coordinator query-info probes, one-query pruned
+  coordinator fact import, local compact diagnosis over raw-free direct
+  boundary JSON excluding metadata summary boundaries or selected package sample
+  boundaries, isolated local `/trino/compact-diagnosis` rendering for the same
+  already raw-free inputs, and the local production Trino retained-list Recent
+  and One Query ID lanes. Only server-owned materialized cases from those Trino
+  lanes may open raw-free Details, deterministic Python Report, and optimizer
+  guidance. Broader live Trino coordinator collection, Running scans,
+  query-history crawling, product metadata collection, LLM reports, Query
+  Optimizer jobs, generated Trino SQL, and SQL execution remain unsupported.
 
 ## Source-Provider Architecture
 

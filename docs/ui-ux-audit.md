@@ -14,10 +14,12 @@ without weakening the safety contract or exposing raw artifacts.
 - Preserve the first user path: install, generate the synthetic demo pack,
   launch the local web UI, inspect Scan context workload follow-up links, then
   follow Details for why/where/change/verify guidance.
-- Keep support boundaries short and unambiguous in root README. Apache Impala is
-  the only production engine support; Trino private preview and Spark compact
-  intake stay below public support and link to the engine support matrix for the
-  detailed contract.
+- Keep support boundaries short and unambiguous in root README. Apache Impala
+  is the full production triage engine; Trino has bounded local production
+  lanes only for retained-list Recent, One Query ID, raw-free materialized
+  Details, Python Report, and optimizer guidance; Spark compact intake stays
+  below public support. Link to the engine support matrix for the detailed
+  contract.
 - Remove the full console-script catalog from root README. Keep only the
   commands needed for the demo and a few high-signal `--help` entry points; the
   full command surface belongs in package metadata, local smoke docs, and
