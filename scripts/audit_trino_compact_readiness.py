@@ -978,13 +978,16 @@ def audit_product_surface_summary(
         )
     boundary = mapping(product_surface_summary_payload.get("boundary"))
     expected_boundary = {
-        "product_surface": "query_id_beta",
-        "support_claim": "beta_only",
-        "details_trusted_report_surface": "not_wired",
-        "trusted_reports": "not_wired",
-        "optimizer_behavior": "not_wired",
-        "live_recent_scan": "not_wired",
-        "live_known_query_diagnosis": "one_query_pruned_query_info_beta",
+        "product_surface": "recent_query_id_raw_free_details_python_report_optimizer_guidance",
+        "support_claim": "local_production",
+        "details_case_view": "raw_free_materialized",
+        "python_report": "raw_free_materialized",
+        "optimizer_guidance": "raw_free_materialized",
+        "llm_reports": "not_wired",
+        "trusted_reports": "python_report_only",
+        "optimizer_behavior": "guidance_only",
+        "live_recent_scan": "retained_query_list_local_production",
+        "live_known_query_diagnosis": "one_query_pruned_query_info_local_production",
         "trino_sql_execution": "not_performed",
     }
     for key, expected in expected_boundary.items():
@@ -992,7 +995,7 @@ def audit_product_surface_summary(
             add_issue(
                 result,
                 "product_surface_summary_boundary_drift",
-                "Trino product-surface summary must keep the no-product-surface boundary.",
+                "Trino product-surface summary must keep the bounded local production boundary.",
             )
     counts = mapping(product_surface_summary_payload.get("counts"))
     if counts.get("boundary_json_count") != 1:

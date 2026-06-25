@@ -309,6 +309,7 @@ def test_trino_evidence_handoff_suite_audits_retained_summaries_without_path_ech
     assert "Issues: none" in captured.out
     assert set(summary) == {
         "boundary",
+        "connector_family_categories",
         "counts",
         "diagnostic_lane",
         "issues",
@@ -357,6 +358,7 @@ def test_trino_evidence_handoff_suite_audits_retained_summaries_without_path_ech
     assert summary["counts"]["package_sample_count"] == 46
     assert summary["counts"]["boundary_count"] == 46
     assert summary["source_contracts"] == {"synthetic_trino_event_listener_v1": 2}
+    assert summary["connector_family_categories"] == {"lakehouse": 2}
     assert summary["package_source_types"] == {"mixed_sanitized_export": 2}
     assert summary["diagnostic_lane"]["source_granularity"] == {
         "aggregate_query_list": 4,

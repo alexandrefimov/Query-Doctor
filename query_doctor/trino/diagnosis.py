@@ -482,7 +482,10 @@ def trino_diagnosis_limitations(
         {
             "id": "no_browser_report_surface",
             "state": "not_observed",
-            "summary": "Trino compact diagnosis is not wired into Details or trusted reports.",
+            "summary": (
+                "Trino compact diagnosis does not open materialized Details or Python Report "
+                "by itself."
+            ),
         },
         {
             "id": "no_trino_sql_execution",

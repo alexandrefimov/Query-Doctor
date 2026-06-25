@@ -627,8 +627,16 @@ def test_trino_one_query_live_handoff_can_write_product_surface_summary(
     assert "Trino product-surface boundary audit: ok" in captured.out
     assert summary["summary_kind"] == "trino_product_surface_boundary_audit_v1"
     assert summary["status"] == "ok"
-    assert summary["boundary"]["live_known_query_diagnosis"] == "one_query_pruned_query_info_beta"
-    assert summary["boundary"]["product_surface"] == "recent_and_query_id_beta"
+    assert (
+        summary["boundary"]["live_known_query_diagnosis"]
+        == "one_query_pruned_query_info_local_production"
+    )
+    assert summary["boundary"]["product_surface"] == (
+        "recent_query_id_raw_free_details_python_report_optimizer_guidance"
+    )
+    assert summary["boundary"]["details_case_view"] == "raw_free_materialized"
+    assert summary["boundary"]["optimizer_guidance"] == "raw_free_materialized"
+    assert summary["boundary"]["optimizer_behavior"] == "guidance_only"
     assert summary["counts"]["boundary_json_count"] == 1
     assert summary["counts"]["diagnosis_json_checked_count"] == 1
     assert summary["counts"]["diagnostic_lane_checked_count"] == 1
@@ -640,7 +648,9 @@ def test_trino_one_query_live_handoff_can_write_product_surface_summary(
         "source_granularity": {"one_query_boundary": 1},
         "verification_scope": {"comparable_one_query_rerun": 1},
     }
-    assert summary["registry"]["trino_product_routes"] == "recent_and_query_id_beta"
+    assert summary["registry"]["trino_product_routes"] == (
+        "recent_query_id_raw_free_details_python_report_optimizer_guidance"
+    )
     assert summary["registry"]["trino_product_cli"] == "blocked"
     assert summary["issues"] == {"counts": {}, "items": []}
     assert captured.err == ""

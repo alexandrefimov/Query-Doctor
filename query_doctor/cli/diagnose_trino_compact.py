@@ -22,7 +22,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Diagnose an accepted raw-free Trino engine fact boundary JSON file. "
-            "This does not submit Trino SQL and is not Details/trusted-report output."
+            "This does not submit Trino SQL and is not materialized Details or "
+            "Python Report output."
         )
     )
     parser.add_argument(

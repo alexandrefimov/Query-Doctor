@@ -1258,10 +1258,10 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
 
     for phrase in (
         "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, plus bounded local statement-stats import and bounded local pruned QueryInfo import",
-        "Query Doctor also has raw-free event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing, one-query pruned coordinator fact import, local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local `/trino/compact-diagnosis` page over the same already raw-free inputs. The product-facing Trino Beta surfaces are local web retained-list Recent diagnosis over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads, and local web One Query ID diagnosis over one bounded pruned coordinator QueryInfo read",
+        "Query Doctor also has raw-free event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata CLI summary building, bounded local metadata summary import, dev-only metadata CLI summary smoke round-trip, plus one-query pruned coordinator query-info probing, one-query pruned coordinator fact import, local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local `/trino/compact-diagnosis` page over the same already raw-free inputs. The local production product-facing Trino surfaces are local web retained-list Recent diagnosis over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads, and local web One Query ID diagnosis over one bounded pruned coordinator QueryInfo read",
         "Minimum Raw-Free Intake Contract",
         "Consumers must not read raw Trino JSON directly.",
-        "current browser exceptions are the isolated local `/trino/compact-diagnosis` page and the local Trino Beta retained-list Recent/One Query ID lanes",
+        "current browser exceptions are the isolated local `/trino/compact-diagnosis` page and the local Trino retained-list Recent/One Query ID lanes plus raw-free materialized Details, deterministic Python Report, and optimizer guidance",
         "single-boundary Trino import commands may write the same diagnosis through `--diagnosis-out` after their accepted boundary is built",
         "excluding local metadata summary boundaries because aggregate `trino_metadata_*` facts are metadata-coverage evidence, not compact diagnosis inputs",
         "Planning-heavy compact diagnosis may be emitted only from supported `planning_time_ms` and `trino_elapsed_time_ms` facts",
@@ -1292,6 +1292,13 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "accept only `metadata_allowlist`, a safe auth-reference label, explicit relation/column allowlist entries",
         "`raw_metadata_storage: forbidden`, `normalized_fact_storage: allowed`, `browser_report_output: blocked`, and `identifier_output: blocked`",
         "must not contact Trino, read metadata, execute metadata SQL, crawl objects, collect metadata facts, become metadata collection support, or expose browser/report output",
+        "metadata CLI summary building may read one accepted `metadata_allowlist` source contract and use one explicit operator-installed Trino CLI plus one HTTPS coordinator URL",
+        "build only Python-owned read-only metadata statements from validated relation/column identifiers",
+        "pass statement text on stdin rather than argv",
+        "It must not add browser/report output, crawl objects, become a Recent/Details/report/optimizer surface, or become product metadata collection support.",
+        "the dev-only metadata CLI summary smoke gate may run the same safe dry-run plan, aggregate metadata summary collection, and local metadata summary import round-trip",
+        "It must write or print only raw-free machine summaries with statement text, object identifiers, endpoint URLs, local paths, raw metadata values, and CLI stdout/stderr marked not output",
+        "it must not become a Recent/Details/report/optimizer surface or product metadata collection support",
         "local metadata summary import may read one explicit compact sanitized local aggregate JSON object after an accepted `metadata_allowlist` source contract",
         "It may map only relation and column coverage counts plus stats-completeness counts to a raw-free `EngineFactBundle`",
         "It must require redaction-review confirmation, require object identifiers and raw metadata values to be omitted, and enforce source-contract relation/column counts before mapping",
@@ -1299,7 +1306,7 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "pruned coordinator query-info probing may issue only one bounded `GET /v1/query/{queryId}?pruned=true` request after the same accepted `coordinator_query_info` contract passes with `operator_managed_reference`",
         "must keep raw QueryInfo outside storage, summaries, prompts, reports, and normalized facts",
         "must not expose URL, Query ID, query text, session fields, endpoint URLs, object names, or raw payload content",
-        "It must not crawl query history, submit SQL, become production Query ID support, or expose browser/report output outside the explicit Trino Beta Recent/One Query ID lanes.",
+        "It must not crawl query history, submit SQL, become standalone production Query ID support, or expose browser/report output outside the explicit local production Trino Recent/One Query ID lanes.",
         "pruned coordinator query-info import may use the same one-query bounded request and source contract to emit a raw-free `EngineFactBundle`",
         "It may map only top-level lifecycle state and allowlisted `queryStats` fields",
         "accepted pruned coordinator query-info imports may support only lifecycle, elapsed, queued, planning, execution, CPU timing, processed/output row and byte counts, peak memory, spilled bytes, blocked signal, total task count, and failed task count",
@@ -1327,9 +1334,9 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "non-finite numeric values are rejected before mapping",
         "negative timing, resource, split, stage-count, queue-time, or ratio values",
         "Unknown remains a valid result.",
-        "Trino remains limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, and event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing and one-query pruned coordinator fact import, plus local compact diagnosis over already raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, the isolated local `/trino/compact-diagnosis` page, the local web retained-list Recent beta lane, and the local web One Query ID beta lane, until the following are true:",
+        "Trino remains limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, and event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata CLI summary building, bounded local metadata summary import, dev-only metadata CLI summary smoke round-trip, plus one-query pruned coordinator query-info probing and one-query pruned coordinator fact import, plus local compact diagnosis over already raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, the isolated local `/trino/compact-diagnosis` page, the local production web retained-list Recent lane, the local production web One Query ID lane, raw-free materialized Details, deterministic Python Report, and optimizer guidance, until the following are true:",
         "One-query readiness checks distinguish query-specific boundaries from aggregate query-list and metadata-summary boundaries",
-        "Browser and trusted-report safety tests exist before any Trino facts render outside the isolated compact-diagnosis page or Recent/One Query ID beta lanes.",
+        "Browser, Python Report, and optimizer guidance safety tests exist before any Trino facts render outside the isolated compact-diagnosis page, local production Recent/One Query ID lanes, or raw-free materialized Details.",
     ):
         assert phrase in normalized_text
 
