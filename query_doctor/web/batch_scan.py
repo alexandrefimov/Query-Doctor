@@ -637,9 +637,7 @@ def build_batch_command(
     settings = settings_for_cluster_key(settings, config.cluster_key)
     validate_batch_config_for_settings(config, settings)
     if config.engine == ENGINE_TRINO:
-        raise WebError(
-            "Trino Beta Recent uses the local web beta job and has no Impala batch command."
-        )
+        raise WebError("Trino Recent uses the local web Trino job and has no Impala batch command.")
     source_owner_users = effective_source_owner_users(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)

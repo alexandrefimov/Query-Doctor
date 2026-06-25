@@ -26,6 +26,7 @@ from query_doctor.web.trino_beta_query import (
     normalize_query_engine,
     trino_not_configured_error,
     trino_beta_query_configured,
+    trino_workflow_label,
     validate_trino_query_id,
 )
 
@@ -179,7 +180,9 @@ def settings_with_selected_engine(settings: WebSettings, engine: str) -> WebSett
 
 def require_selected_engine_ready(settings: WebSettings) -> None:
     if settings.selected_engine == ENGINE_TRINO and not trino_beta_query_configured(settings):
-        raise trino_not_configured_error("Trino Beta Query ID diagnosis")
+        raise trino_not_configured_error(
+            trino_workflow_label(settings, "Trino Beta Query ID diagnosis")
+        )
 
 
 def require_selected_query_id_ready(query_id: str, settings: WebSettings) -> None:

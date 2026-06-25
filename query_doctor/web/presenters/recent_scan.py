@@ -1140,9 +1140,15 @@ def present_recent_scan_source_limitations(
     provenance_items = source_provenance_items_by_kind(source_provenance)
     events_status = source_provenance_status(provenance_items, "events")
     if events_status in {"none", "unavailable", "partial", "unknown"}:
-        limitations.append("Direct Impala scans do not include Cloudera Manager event context.")
+        limitations.append(
+            "Cluster event context is unavailable for Direct Impala scans because "
+            "Cloudera Manager events are not collected on this source."
+        )
     elif not source_provenance:
-        limitations.append("Direct Impala scans do not include Cloudera Manager event context.")
+        limitations.append(
+            "Cluster event context is unavailable for Direct Impala scans because "
+            "Cloudera Manager events are not collected on this source."
+        )
 
     engine_status = source_provenance_status(provenance_items, "engine")
     if engine_status == "unknown":
@@ -1160,20 +1166,20 @@ def present_recent_scan_source_limitations(
     if metrics_status in {"partial", "unavailable"}:
         limitations.append(
             "Optional Prometheus runtime metrics are incomplete or unavailable for this case; "
-            "runtime interpretation relies on profile and query-context facts."
+            "runtime review should rely on profile and query context."
         )
     elif metrics_status in {"none", "unknown"} or (
         not source_provenance and cm_metrics.unavailable
     ):
         limitations.append(
             "Optional Prometheus runtime metrics were not collected for this case; runtime "
-            "interpretation relies on profile and query-context facts."
+            "review should rely on profile and query context."
         )
 
     metadata_status = source_provenance_status(provenance_items, "metadata")
     if metadata_status == "partial":
         limitations.append(
-            "Bounded Impala metadata is partial for this case; stats and table-layout checks "
+            "Bounded Impala metadata is partial for this case; stats and table-layout review "
             "remain limited."
         )
     elif metadata_status in {"none", "unavailable", "unknown"} or (
@@ -1181,7 +1187,7 @@ def present_recent_scan_source_limitations(
     ):
         limitations.append(
             "Bounded Impala metadata is unavailable for this case; stats and table-layout "
-            "checks remain limited."
+            "review remain limited."
         )
     return tuple(dict.fromkeys(limitations))
 
