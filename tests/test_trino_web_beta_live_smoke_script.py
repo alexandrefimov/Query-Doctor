@@ -75,7 +75,7 @@ def test_trino_web_beta_live_smoke_prints_safe_json(
     assert rc == 0
     assert payload["summary_kind"] == "trino_web_beta_live_smoke_v1"
     assert payload["status"] == "ok"
-    assert payload["support_claim"] == "beta_only"
+    assert payload["support_claim"] == "local_production"
     assert payload["counts"]["records_seen"] == 100
     assert payload["counts"]["records_selected"] == 1
     assert payload["counts"]["records_diagnosed"] == 1

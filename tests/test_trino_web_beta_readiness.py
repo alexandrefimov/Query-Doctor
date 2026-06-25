@@ -43,8 +43,12 @@ def test_trino_web_beta_readiness_accepts_recent_and_query_id_config(tmp_path: P
     assert payload["counts"]["recent_ready_cluster_count"] == 1
     assert payload["surface_boundary"]["network_read_performed"] is False
     assert payload["surface_boundary"]["sql_execution_performed"] is False
-    assert payload["surface_boundary"]["details_trusted_report_output"] == "not_wired"
-    assert payload["surface_boundary"]["optimizer_behavior"] == "not_wired"
+    assert payload["surface_boundary"]["details_python_report_output"] == (
+        "materialized_details_only"
+    )
+    assert payload["surface_boundary"]["optimizer_guidance_output"] == ("materialized_details_only")
+    assert payload["surface_boundary"]["llm_report_output"] == "not_wired"
+    assert payload["surface_boundary"]["optimizer_behavior"] == "guidance_only"
     assert "Trino web beta readiness: ready" in rendered
     for text in (json.dumps(payload, sort_keys=True), rendered):
         assert COORDINATOR_URL not in text
