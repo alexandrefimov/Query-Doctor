@@ -5,9 +5,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TRINO_EVIDENCE_TEMPLATES_DOC = (
     REPO_ROOT / "docs" / "engines" / "trino-evidence-package-templates.md"
 )
-TRINO_EVIDENCE_TEMPLATES_RU_DOC = (
-    REPO_ROOT / "docs" / "engines" / "i18n" / "ru" / "trino-evidence-package-templates.md"
-)
 DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
 RU_DOCS_INDEX = REPO_ROOT / "docs" / "i18n" / "ru" / "README.md"
 TRINO_EVIDENCE_CHECKLIST_DOC = (
@@ -23,7 +20,7 @@ def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
     for required in (
         "not a live Trino coordinator collector",
         "production engine selector",
-        "Details/trusted-report surface",
+        "LLM report surface",
         "optimizer workflow",
         "permission to execute Trino SQL",
         "query-doctor-trino-import",
@@ -74,12 +71,12 @@ def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
         "stored diagnosis artifact is checked against the deterministic boundary-derived diagnosis",
         "performs no network read, accepts only top-level state and allowlisted queryStats fields",
         "rejects raw QueryInfo fields such as Query IDs, query text, session fields, endpoint URLs, object names, and stage/task detail",
-        "does not map QueryInfo to facts, submit SQL, crawl query history, collect production Query ID support",
+        "does not map QueryInfo to facts, submit SQL, crawl query history, collect standalone production Query ID support",
         "may contain only one operator-managed Authorization header line",
         "prints no auth header path or value",
         "output boundary path",
         "maps only allowlisted lifecycle, timing, row/byte, memory/spill, blocked, and task-count fields",
-        "claim root causes, submit SQL, crawl query history, collect production Query ID support, or add browser/report output outside the explicit Trino Beta Recent/One Query ID lanes or optimizer output",
+        "claim root causes, submit SQL, crawl query history, collect standalone production Query ID support, or add browser/report output outside the explicit local production Trino Recent/One Query ID, raw-free materialized Details, deterministic Python Report, and optimizer guidance lanes or Query Optimizer job output",
         "reads only one already raw-free engine_fact_boundary_v1 payload",
         "rejects non-Trino boundaries and local metadata summary boundaries",
         "Planning-heavy timing can become an attention area only from supported planning_time_ms and trino_elapsed_time_ms facts; high peak memory can become an attention area only from supported one-query trino_peak_memory_bytes at or above 100 GiB; queue or resource-group delay can become an attention area only from supported one-query trino_queued_time_ms, trino_resource_group_queue_time_ms, or trino_blocked_signal facts; task retry/failure attention can become an attention area only from supported one-query trino_retried_task_count or trino_failed_task_count facts; and connector-metric attention can become an attention area only from supported one-query trino_connector_metric_signal facts.",
@@ -164,7 +161,7 @@ def test_trino_evidence_package_acceptance_gate_stays_offline_only():
         "python3 scripts/audit_trino_evidence_handoff.py <sanitized-package.json> --summary-json <raw-free-trino-package-handoff-summary.json>",
         "converts accepted samples to raw-free boundary payloads in memory",
         "Full packages keep supported-attention and known-parser-coverage requirements off by default",
-        "requires no live reader, Details route, trusted report behavior",
+        "requires no live reader, materialized Details route, Python Report behavior",
         "separate isolated compact-diagnosis page accepts only already raw-free direct boundary JSON excluding local metadata summary boundaries or one selected sample boundary from a package boundary export",
         "wire only raw-free normalized facts into future consumers",
     ):
@@ -173,36 +170,18 @@ def test_trino_evidence_package_acceptance_gate_stays_offline_only():
 
 def test_trino_evidence_package_templates_are_indexed_and_linked():
     docs_index = DOCS_INDEX.read_text(encoding="utf-8")
-    ru_docs_index = RU_DOCS_INDEX.read_text(encoding="utf-8")
+    ru_docs_index = " ".join(RU_DOCS_INDEX.read_text(encoding="utf-8").split())
     checklist = TRINO_EVIDENCE_CHECKLIST_DOC.read_text(encoding="utf-8")
     live_design = TRINO_LIVE_COLLECTION_DOC.read_text(encoding="utf-8")
     spike = TRINO_DISCOVERY_SPIKE_DOC.read_text(encoding="utf-8")
 
     assert "engines/trino-evidence-package-templates.md" in docs_index
-    assert "engines/i18n/ru/trino-evidence-package-templates.md" in docs_index
-    assert "../../engines/i18n/ru/trino-evidence-package-templates.md" in ru_docs_index
+    assert "engines/i18n/ru/trino-evidence-package-templates.md" not in docs_index
+    assert "../../engines/i18n/ru/trino-evidence-package-templates.md" not in ru_docs_index
+    assert "engine deep-dive документы остаются English-only" in ru_docs_index
     assert "trino-evidence-package-templates.md" in checklist
     assert "trino-evidence-package-templates.md" in live_design
     assert "engines/trino-evidence-package-templates.md" in spike
-
-
-def test_trino_evidence_package_templates_have_russian_companion():
-    text = _normalized_doc_text(TRINO_EVIDENCE_TEMPLATES_RU_DOC)
-
-    for required in (
-        "Шаблоны Trino evidence package",
-        "Это не live collector",
-        "query-doctor-trino-statement-stats-import",
-        "offline_evidence_import",
-        "Manifest Template",
-        "Redaction Note Template",
-        "Acceptance Checklist",
-        "python3 scripts/audit_trino_evidence_handoff.py",
-        "raw-free-trino-package-handoff-summary.json",
-        "task retry/failure attention может стать attention area только из supported one-query trino_retried_task_count или trino_failed_task_count facts",
-        "connector-metric attention может стать attention area только из supported one-query trino_connector_metric_signal facts",
-    ):
-        assert required in text
 
 
 def _normalized_doc_text(path: Path) -> str:

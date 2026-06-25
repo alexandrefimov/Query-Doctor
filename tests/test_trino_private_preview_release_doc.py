@@ -3,17 +3,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TRINO_PRIVATE_PREVIEW_DOC = REPO_ROOT / "docs" / "engines" / "trino-private-preview-release.md"
-TRINO_PRIVATE_PREVIEW_RU_DOC = (
-    REPO_ROOT / "docs" / "engines" / "i18n" / "ru" / "trino-private-preview-release.md"
-)
 DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
 RU_DOCS_INDEX = REPO_ROOT / "docs" / "i18n" / "ru" / "README.md"
 README = REPO_ROOT / "README.md"
 README_RU = REPO_ROOT / "README.ru.md"
 RELEASE_CHECKLIST = REPO_ROOT / "docs" / "release-checklist.md"
-RU_RELEASE_CHECKLIST = REPO_ROOT / "docs" / "i18n" / "ru" / "release-checklist.md"
 PUBLIC_READINESS = REPO_ROOT / "docs" / "public-release-readiness.md"
-RU_PUBLIC_READINESS = REPO_ROOT / "docs" / "i18n" / "ru" / "public-release-readiness.md"
 TRINO_LIVE_COLLECTION_DOC = REPO_ROOT / "docs" / "engines" / "trino-live-collection-design.md"
 TRINO_EVIDENCE_CHECKLIST_DOC = (
     REPO_ROOT / "docs" / "engines" / "trino-test-cluster-evidence-checklist.md"
@@ -24,19 +19,19 @@ def test_trino_private_preview_release_path_stays_live_non_supporting():
     text = _normalized_doc_text(TRINO_PRIVATE_PREVIEW_DOC)
 
     for required in (
-        "early closed test-cluster integration",
-        "not a live collector",
-        "not a production engine selector",
-        "not a Details/trusted-report surface",
+        "bounded local Trino production claim and retained private-preview evidence",
+        "not a broad live collector",
+        "not a broad production engine selector",
+        "not an LLM report surface",
         "not an optimizer workflow",
         "not permission to execute user SQL through Query Doctor",
-        "The Trino browser surfaces are the isolated local compact-diagnosis page for already raw-free direct boundary JSON excluding local metadata summary boundaries or a selected sample boundary from a package boundary export, plus the local Trino Beta retained-list Recent lane over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads, plus the local Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo read, both with the same raw-free compact diagnosis.",
-        "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, event-source contract checking, dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, one-query pruned coordinator query-info probing/import, dev-only package-to-boundary evidence handoff audit, dev-only product-surface boundary audit over retained raw-free compact artifacts, dev-only one-query handoff and handoff-suite readiness over raw-free handoff artifacts, dev-only support-gap audit coverage for source-type registry and engine fact promotion policy, and local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local /trino/compact-diagnosis page over the same already raw-free inputs, plus the local web Trino Beta retained-list Recent lane over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads, plus the local web Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo read, both with the same raw-free compact diagnosis.",
-        "A separate event-source contract check remains the source gate for event archive readers, the coordinator query-info target check remains a dry-run gate, and the pruned coordinator query-info probe remains probe-only; the metadata source-contract check is only a dry-run relation/column allowlist gate; the local metadata summary import maps only aggregate coverage counts from an operator-prepared sanitized file; the pruned query-info import maps only allowlisted facts and can feed only the explicit Trino Beta Recent/One Query ID lanes or raw-free local artifacts.",
-        "Compact diagnosis consumes only already raw-free direct boundary JSON excluding local metadata summary boundaries or a selected sample boundary from a package export, and the isolated page plus Recent/One Query ID beta lanes render only sanitized diagnosis fields; all remain outside Details/trusted reports, optimizer behavior, Running scans, metadata collection, query-history crawling, SQL execution, and production Query ID support.",
+        "The Trino browser surfaces are the isolated local compact-diagnosis page for already raw-free direct boundary JSON excluding local metadata summary boundaries or a selected sample boundary from a package boundary export, plus the local production web Trino retained-list Recent lane over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads, plus the local production web Trino One Query ID lane over one bounded pruned coordinator QueryInfo read, both with the same raw-free compact diagnosis, plus raw-free materialized Details and deterministic Python Report plus optimizer guidance after server-owned case materialization.",
+        "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, event-source contract checking, dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata CLI summary building, bounded local metadata summary import, dev-only metadata CLI summary smoke round-trip, one-query pruned coordinator query-info probing/import, dev-only package-to-boundary evidence handoff audit, dev-only product-surface boundary audit over retained raw-free compact artifacts, dev-only one-query handoff and handoff-suite readiness over raw-free handoff artifacts, dev-only support-gap audit coverage for source-type registry and engine fact promotion policy, and local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local /trino/compact-diagnosis page over the same already raw-free inputs, plus the local production web Trino retained-list Recent lane over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads, plus the local production web Trino One Query ID lane over one bounded pruned coordinator QueryInfo read, both with the same raw-free compact diagnosis, raw-free materialized Details, deterministic Python Report, and optimizer guidance.",
+        "A separate event-source contract check remains the source gate for event archive readers, the coordinator query-info target check remains a dry-run gate, and the pruned coordinator query-info probe remains probe-only; the metadata source-contract check is only a dry-run relation/column allowlist gate; the metadata CLI summary builder can use one accepted allowlist and an operator-installed Trino CLI to produce only aggregate coverage counts; the local metadata summary import maps only aggregate coverage counts from an operator-prepared sanitized file; the dev-only metadata CLI smoke wrapper can verify dry-run, aggregate collection, and importer round-trip while writing only raw-free summaries; the pruned query-info import maps only allowlisted facts and can feed only the explicit local production Trino Recent/One Query ID lanes or raw-free local artifacts.",
+        "Compact diagnosis consumes only already raw-free direct boundary JSON excluding local metadata summary boundaries or a selected sample boundary from a package export, and the isolated page plus local production Recent/One Query ID lanes render only sanitized diagnosis fields, with materialized Details, deterministic Python Report, and optimizer guidance available only from server-owned raw-free cases; all remain outside LLM reports, Query Optimizer jobs, Running scans, product metadata collection, query-history crawling, user SQL execution, and broader/shared Query ID support.",
         "trino-beta-ui-readiness.md",
         "local UI beta show-readiness gate",
-        "production product workflows still treat Trino as unsupported",
+        "broader/shared product workflows outside those lanes still treat Trino as unsupported",
     ):
         assert required in text
 
@@ -70,6 +65,9 @@ def test_trino_private_preview_release_path_defines_demo_storyline():
         "query-doctor-trino-event-source-contract-check",
         "query-doctor-trino-coordinator-query-info-target-check",
         "query-doctor-trino-metadata-source-contract-check",
+        "query-doctor-trino-metadata-cli-summary",
+        "python3 scripts/trino_metadata_cli_summary_smoke.py",
+        "trino_metadata_cli_summary_smoke_v1",
         "query-doctor-trino-metadata-summary-import",
         "query-doctor-trino-coordinator-query-info-pruned-probe",
         "query-doctor-trino-coordinator-query-info-pruned-import",
@@ -128,6 +126,7 @@ def test_trino_private_preview_release_path_defines_demo_storyline():
         "<sanitized-query-detail-archive-contract.json>",
         "<sanitized-query-info-target-contract.json>",
         "<sanitized-metadata-source-contract.json>",
+        "<operator-trino-cli>",
         "<sanitized-metadata-summary.json>",
         "https://<operator-event-archive>",
         "https://<operator-query-detail-archive>",
@@ -142,6 +141,11 @@ def test_trino_private_preview_release_path_defines_demo_storyline():
         "does not contact Trino, issue /v1/query, fetch query-info JSON",
         "safe trino_version_family",
         "does not contact Trino, read metadata, execute metadata SQL",
+        "passes statement text on stdin instead of argv",
+        "safe dry-run plan, aggregate metadata collection, and local metadata-summary import round-trip",
+        "The release-readiness bundle can run the same optional gate with its --metadata-smoke-* flags only after --metadata-smoke-redaction-reviewed",
+        "does not turn metadata CLI output into product metadata collection",
+        "not an installed product CLI",
         "relation/column coverage and stats-completeness counts only",
         "without metadata reads, metadata SQL, object identifiers, metadata values, or compact diagnosis output",
         "GET /v1/query/{queryId}?pruned=true",
@@ -149,7 +153,7 @@ def test_trino_private_preview_release_path_defines_demo_storyline():
         "rejects raw QueryInfo fields such as Query IDs, query text, session fields, endpoint URLs, object names, and stage/task detail",
         "operator-managed Authorization header line",
         "auth header path/value",
-        "does not map QueryInfo to facts, crawl query history, submit SQL, collect production Query ID support, or add browser/report output",
+        "submit SQL, run live Recent scans, collect standalone production Query ID support, or add materialized Details, Python Report, or optimizer guidance by itself",
         "maps only allowlisted lifecycle and queryStats fields into raw-free boundary JSON",
         "scripts/audit_trino_compact_readiness.py <raw-free-trino-boundary.json> --require-one-query-boundary",
         "python3 scripts/audit_trino_product_surface_boundary.py <raw-free-trino-boundary.json> --diagnosis-json <raw-free-trino-diagnosis.json> --summary-json <raw-free-trino-product-surface-summary-json>",
@@ -161,8 +165,8 @@ def test_trino_private_preview_release_path_defines_demo_storyline():
         "python3 scripts/audit_trino_support_gap_matrix.py --summary-json <raw-free-trino-support-gap-summary-json>",
         "trino_support_gap_matrix_audit_v1",
         "registered Trino fact families, neutral no_* gaps, blocked product adapter flags",
-        "live_known_query_diagnosis=one_query_pruned_query_info_beta",
-        "allowed Trino web registry is still limited to compact preview surfaces plus the local Recent and One Query ID beta surfaces",
+        "live_known_query_diagnosis=one_query_pruned_query_info_local_production",
+        "allowed Trino web registry is still limited to compact preview surfaces plus the local production Recent and One Query ID surfaces",
         "Trino CLI stays preview/dev-only",
         "--require-source-version trino_coordinator_query_info_target_v1",
         "--diagnosis-json <raw-free-trino-diagnosis.json>",
@@ -174,7 +178,7 @@ def test_trino_private_preview_release_path_defines_demo_storyline():
         "product-surface boundary audit over the written boundary/diagnosis artifacts",
         "dry-run plan cannot count as an executed test-cluster smoke",
         "output boundary path",
-        "It does not crawl query history, submit SQL, collect production Query ID support, or add browser/report output.",
+        "It does not crawl query history, submit SQL, collect standalone production Query ID support, or add browser/report output.",
         "reads one already raw-free engine_fact_boundary_v1 payload",
         "Single-boundary local query-detail, local query-list aggregate, local statement-stats, local pruned QueryInfo, HTTP query-detail archive, and pruned coordinator query-info import commands",
         "does not ingest raw Trino payloads, copy input summaries or string metric values, claim root causes",
@@ -193,12 +197,12 @@ def test_trino_private_preview_release_path_pins_release_gates():
     text = _normalized_doc_text(TRINO_PRIVATE_PREVIEW_DOC)
 
     for required in (
-        "Before a release may describe Trino as private preview",
+        "Before a release may publish the bounded local Trino production and retained private-preview positioning",
         "demo_trino_evidence_package.py passes and prints only the safe summary",
         "approved test cluster",
         "explicit read-only smoke tables",
         "validate_trino_evidence_package.py without --partial-ok",
-        "retained Trino compact diagnosis artifacts used to discuss product-surface readiness pass python3 scripts/audit_trino_product_surface_boundary.py <raw-free-trino-boundary.json> --diagnosis-json <raw-free-trino-diagnosis.json> --summary-json <raw-free-trino-product-surface-summary-json>, or the same audit over --handoff-suite-manifest <trino-one-query-handoff-suite.json>, with trino_product_surface_boundary_audit_v1, path-free output, required diagnosis artifacts in manifest mode, optional retained product-surface summary drift checks, retained handoff summaries treated as protected input artifacts, checked diagnostic_lane source granularity, evidence readiness, verification scope, supported-attention count, fact-state counts, and live_known_query_diagnosis=one_query_pruned_query_info_beta",
+        "retained Trino compact diagnosis artifacts used to discuss product-surface readiness pass python3 scripts/audit_trino_product_surface_boundary.py <raw-free-trino-boundary.json> --diagnosis-json <raw-free-trino-diagnosis.json> --summary-json <raw-free-trino-product-surface-summary-json>, or the same audit over --handoff-suite-manifest <trino-one-query-handoff-suite.json>, with trino_product_surface_boundary_audit_v1, path-free output, required diagnosis artifacts in manifest mode, optional retained product-surface summary drift checks, retained handoff summaries treated as protected input artifacts, checked diagnostic_lane source granularity, evidence readiness, verification scope, supported-attention count, fact-state counts, and live_known_query_diagnosis=one_query_pruned_query_info_local_production",
         "optional retained product-surface summary drift checks",
         "retained handoff summaries treated as protected input artifacts",
         "aggregate metadata-summary boundaries must be rejected as coverage evidence, not product-surface diagnosis artifacts",
@@ -206,58 +210,48 @@ def test_trino_private_preview_release_path_pins_release_gates():
         "trino_support_gap_matrix_audit_v1 evidence stay aligned with the support-gap matrix",
         "package handoff audit passes python3 scripts/audit_trino_evidence_handoff.py <sanitized-package.json> --summary-json <raw-free-trino-package-handoff-summary.json> with only raw-free machine evidence",
         "retained set of one-query handoff results passes the trino_one_query_handoff_suite_v1 manifest gate with diagnosis, executed-smoke, per-entry readiness-summary, per-entry handoff-summary, one-query, source-version, version-family breadth, parser-coverage, and supported-attention requirements, a configured minimum retained input count, and a raw-free machine summary artifact",
-        "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, and bounded HTTP event archive, HTTP query-detail archive, local query-detail, query-list aggregate, statement-stats, local pruned QueryInfo import, and local metadata summary import, plus event-source contract checking, dry-run coordinator query-info target checking, metadata source-contract checking, one-query pruned coordinator query-info probing/import, dev-only package-to-boundary evidence handoff audit, dev-only product-surface boundary audit over retained raw-free compact artifacts, dev-only one-query handoff and handoff-suite readiness over raw-free handoff artifacts, dev-only support-gap audit coverage for source-type registry and engine fact promotion policy, and local compact diagnosis over raw-free direct boundary JSON excluding metadata summary boundaries or selected package sample boundaries, the isolated local compact-diagnosis page over the same already raw-free inputs, and the local web Trino Beta retained-list Recent and One Query ID lanes",
+        "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, and bounded HTTP event archive, HTTP query-detail archive, local query-detail, query-list aggregate, statement-stats, local pruned QueryInfo import, local metadata CLI summary building, local metadata summary import, and dev-only metadata CLI summary smoke round-trip, plus event-source contract checking, dry-run coordinator query-info target checking, metadata source-contract checking, one-query pruned coordinator query-info probing/import, dev-only package-to-boundary evidence handoff audit, dev-only product-surface boundary audit over retained raw-free compact artifacts, dev-only one-query handoff and handoff-suite readiness over raw-free handoff artifacts, dev-only support-gap audit coverage for source-type registry and engine fact promotion policy, and local compact diagnosis over raw-free direct boundary JSON excluding metadata summary boundaries or selected package sample boundaries, the isolated local compact-diagnosis page over the same already raw-free inputs, and the local production web Trino retained-list Recent, One Query ID, raw-free materialized Details, deterministic Python Report, and optimizer guidance lanes",
         "keep scripts/audit_trino_support_gap_matrix.py green while closing the support-gap matrix for Trino facts versus Impala facts",
-        "No production Trino engine selector",
-        "Details/trusted report path",
-        "optimizer behavior",
+        "No broad production Trino engine selector",
+        "LLM report path",
+        "Query Optimizer jobs",
         "metadata collector",
         "query-history reader",
-        "production support claim",
-        "browser workflow beyond the isolated compact-diagnosis page and Recent/One Query ID beta lanes",
+        "broader/shared production expansion claim",
+        "browser workflow beyond the isolated compact-diagnosis page and Recent/One Query ID, raw-free materialized Details, deterministic Python Report, and optimizer guidance lanes",
     ):
         assert required in text
 
 
 def test_public_release_readiness_names_trino_beta_without_support_expansion():
     text = _normalized_doc_text(PUBLIC_READINESS)
-    ru_text = _normalized_doc_text(RU_PUBLIC_READINESS)
 
     for required in (
-        "local web Trino Beta retained-list Recent over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads",
-        "local web Trino Beta One Query ID over one bounded pruned coordinator QueryInfo read",
-        "Trino is not Running live collection, query-history coordinator crawling, Details/trusted report output, optimizer behavior, metadata collection, Query Doctor-generated SQL, SQL execution, or production Trino support beyond the local retained-list Recent and One Query ID beta lanes.",
+        "local production web Trino retained-list Recent over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads",
+        "local production web Trino One Query ID over one bounded pruned coordinator QueryInfo read",
+        "raw-free Trino Details over server-owned materialized web cases from those lanes",
+        "Trino is not Running live collection, query-history coordinator crawling, LLM report output, Query Optimizer jobs, metadata collection, Query Doctor-generated SQL, SQL execution, or broader/shared Trino production support beyond the local retained-list Recent, One Query ID, raw-free materialized Details, Python Report, and optimizer guidance local production lanes.",
     ):
         assert required in text
-
-    for required in (
-        "Trino Beta упоминается, он описан только как local web retained-list Recent beta lane over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads",
-        "без public engine support, Running scans, query-history crawling, metadata collection, Details/trusted report output, optimizer behavior, Query Doctor-generated Trino SQL или SQL execution",
-        "local Trino Beta Recent/One Query ID boundary без public Trino support claim",
-    ):
-        assert required in ru_text
 
 
 def test_trino_private_preview_release_path_is_indexed_and_linked():
     docs_index = DOCS_INDEX.read_text(encoding="utf-8")
-    ru_docs_index = RU_DOCS_INDEX.read_text(encoding="utf-8")
+    ru_docs_index = " ".join(RU_DOCS_INDEX.read_text(encoding="utf-8").split())
     live_design = TRINO_LIVE_COLLECTION_DOC.read_text(encoding="utf-8")
     evidence_checklist = TRINO_EVIDENCE_CHECKLIST_DOC.read_text(encoding="utf-8")
 
     assert "engines/trino-private-preview-release.md" in docs_index
-    assert "engines/i18n/ru/trino-private-preview-release.md" in docs_index
-    assert "../../engines/i18n/ru/trino-private-preview-release.md" in ru_docs_index
+    assert "engines/i18n/ru/trino-private-preview-release.md" not in docs_index
+    assert "../../engines/i18n/ru/trino-private-preview-release.md" not in ru_docs_index
+    assert "engine deep-dive документы остаются English-only" in ru_docs_index
     assert "trino-beta-ui-readiness.md" in TRINO_PRIVATE_PREVIEW_DOC.read_text(encoding="utf-8")
-    assert "trino-beta-ui-readiness.md" in TRINO_PRIVATE_PREVIEW_RU_DOC.read_text(encoding="utf-8")
     assert "trino-private-preview-release.md" in live_design
     assert "trino-private-preview-release.md" in evidence_checklist
-    assert "local Trino Beta Recent + One Query ID boundary без public support claim" in (
-        _normalized_doc_text(RU_DOCS_INDEX)
-    )
 
 
 def test_readme_and_release_docs_keep_trino_limited_to_offline_import():
-    for path in (README, README_RU, RELEASE_CHECKLIST, RU_RELEASE_CHECKLIST, PUBLIC_READINESS):
+    for path in (README, README_RU, RELEASE_CHECKLIST, PUBLIC_READINESS):
         text = _normalized_doc_text(path)
         lower_text = text.lower()
         assert "Trino" in text
@@ -265,35 +259,29 @@ def test_readme_and_release_docs_keep_trino_limited_to_offline_import():
         assert "public" in lower_text
         assert "offline" in lower_text
         assert "live collection" in lower_text
-        assert "details/trusted report output" in lower_text
+        assert "llm report output" in lower_text
+        assert "raw-free" in lower_text
         assert "Query Doctor-generated" in text
         assert "SQL" in text
 
 
 def test_release_checklists_name_trino_beta_without_support_expansion():
     text = _normalized_doc_text(RELEASE_CHECKLIST)
-    ru_text = _normalized_doc_text(RU_RELEASE_CHECKLIST)
 
     for required in (
-        "local web Trino Beta retained-list Recent lane over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads",
-        "local web Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo read",
+        "local production web Trino retained-list Recent lane over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads",
+        "local production web Trino One Query ID lane over one bounded pruned coordinator QueryInfo read",
         "not Running live collection",
         "broader Trino coordinator query-history collection",
         "Query Doctor-generated Trino SQL",
-        "production Trino support beyond the local retained-list Recent and One Query ID beta lanes",
+        "raw-free Trino Details over server-owned materialized web cases",
+        "broader/shared Trino production support beyond the local retained-list Recent, One Query ID, raw-free materialized Details, Python Report, and optimizer guidance local production lanes",
     ):
         assert required in text
 
-    for required in (
-        "Trino Beta упоминается",
-        "local web retained-list Recent beta lane over one bounded retained pruned coordinator query-list read plus selected pruned QueryInfo reads",
-        "local web One Query ID beta lane over one bounded pruned coordinator QueryInfo read",
-        "без public engine support",
-        "Running scans",
-        "query-history crawling",
-        "Query Doctor-generated Trino SQL или SQL execution",
-    ):
-        assert required in ru_text
+    ru_docs_index = " ".join(RU_DOCS_INDEX.read_text(encoding="utf-8").split())
+    assert "release-checklist.md" not in ru_docs_index
+    assert "release, research и engine deep-dive документы остаются English-only" in ru_docs_index
 
 
 def test_russian_readme_names_current_trino_pruned_query_info_surfaces():
@@ -314,81 +302,13 @@ def test_russian_readme_names_current_trino_pruned_query_info_surfaces():
         assert required in text
 
 
-def test_trino_private_preview_release_path_has_russian_companion():
-    text = _normalized_doc_text(TRINO_PRIVATE_PREVIEW_RU_DOC)
+def test_trino_private_preview_release_path_is_english_only():
+    ru_path = REPO_ROOT / "docs" / "engines" / "i18n" / "ru" / "trino-private-preview-release.md"
+    ru_docs_index = " ".join(RU_DOCS_INDEX.read_text(encoding="utf-8").split())
 
-    for required in (
-        "Trino private preview release path",
-        "раннюю закрытую интеграцию с тестовым кластером",
-        "Trino support ограничен sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail/query-list aggregate import и bounded local statement-stats import, bounded local pruned QueryInfo import, plus event-source contract checking, dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing/import, dev-only package-to-boundary evidence handoff audit, dev-only product-surface boundary audit over retained raw-free compact artifacts, dev-only one-query handoff and handoff-suite readiness over raw-free handoff artifacts, dev-only support-gap audit coverage for source-type registry и engine fact promotion policy, local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries или selected package sample boundaries, isolated local /trino/compact-diagnosis page over the same already raw-free inputs, local web Trino Beta retained-list Recent lane over one bounded retained pruned coordinator query-list read and selected pruned QueryInfo reads, и local web Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo read, both with the same raw-free compact diagnosis.",
-        "Отдельный event-source contract check остается source gate для event archive readers, coordinator query-info target check остается dry-run gate, а pruned coordinator query-info probe остается probe-only; metadata source-contract check остается dry-run relation/column allowlist gate; local metadata summary import мапит только aggregate coverage counts из operator-prepared sanitized file; pruned query-info import мапит только allowlisted facts и может feed-ить только explicit Trino Beta Recent/One Query ID lanes или raw-free local artifacts.",
-        "query-doctor-trino-event-store-import",
-        "query-doctor-trino-http-event-archive-import",
-        "query-doctor-trino-http-query-detail-archive-import",
-        "query-doctor-trino-query-detail-import",
-        "query-doctor-trino-query-list-import",
-        "query-doctor-trino-statement-stats-import",
-        "query-doctor-trino-event-source-contract-check",
-        "query-doctor-trino-coordinator-query-info-target-check",
-        "query-doctor-trino-metadata-source-contract-check",
-        "query-doctor-trino-metadata-summary-import",
-        "query-doctor-trino-coordinator-query-info-pruned-probe",
-        "query-doctor-trino-coordinator-query-info-pruned-import",
-        "python3 scripts/audit_trino_evidence_handoff.py",
-        "--summary-json <raw-free-trino-package-handoff-summary.json>",
-        "trino_evidence_handoff_summary_v1",
-        "Retained handoff-suite audits требуют diagnostic-lane source, readiness, verification и fact-state counters и reject-ят source-granularity или fact-state counter drift между diagnostic_lane и top-level retained summary counters.",
-        "Strict retained suites могут также требовать selected safe source-contract labels, например synthetic_trino_event_listener_v1, из retained package source summaries, плюс selected source-granularity labels, например one_query_boundary или aggregate_query_list, и selected verification-scope labels, например comparable_one_query_rerun, representative_query_selection или source_contract_review, из уже retained diagnostic-lane counters без reopening packages.",
-        "Они также reject-ят duplicate retained handoff-summary artifact references, включая path aliases, чтобы suite-width counts не могли reuse one summary.",
-        "python3 scripts/audit_trino_product_surface_boundary.py",
-        "raw-free-trino-product-surface-summary-json",
-        "trino_product_surface_boundary_audit_v1",
-        "live_known_query_diagnosis=one_query_pruned_query_info_beta",
-        "live_recent_scan=retained_query_list_beta",
-        "allowed Trino web registry остается ограничен compact preview surfaces plus the local Recent and One Query ID beta surfaces",
-        "Trino CLI stays preview/dev-only",
-        "--handoff-suite-manifest <trino-one-query-handoff-suite.json>",
-        "Product-surface summary output должен отличаться от manifest и каждого referenced boundary, diagnosis, smoke-summary, readiness-summary, handoff-summary или product-surface-summary artifact",
-        "валидирует retained per-entry product-surface summaries when present",
-        "--product-surface-summary-out <raw-free-trino-product-surface-summary-json>",
-        "--query-id-file <operator-query-id-file>",
-        "Finished QueryInfo может быть evicted раньше, чем старые QueryMonitor timeline entries исчезнут из logs",
-        "HTTP 404",
-        "stale-QueryInfo hint",
-        "HTTP 401",
-        "auth-rejected hint",
-        "aggregate metadata-summary boundaries должны reject-иться как coverage evidence, а не product-surface diagnosis artifacts",
-        "python3 scripts/build_trino_handoff_suite_manifest.py",
-        "trino_one_query_handoff_suite_v1 manifest",
-        "--boundary-json <raw-free-trino-boundary-1.json>",
-        "--readiness-summary-json <raw-free-trino-readiness-summary-1.json>",
-        "--handoff-summary-json <raw-free-trino-one-query-handoff-summary-json>",
-        "--product-surface-summary-json <raw-free-trino-product-surface-summary-json>",
-        "--handoff-suite-manifest <trino-one-query-handoff-suite.json>",
-        "--require-readiness-summary-json",
-        "--require-handoff-summary-json",
-        "--summary-json <raw-free-trino-suite-summary.json>",
-        "duplicate boundary/diagnosis/readiness-summary/handoff-summary/product-surface-summary references including path aliases",
-        "allows one shared smoke summary across entries",
-        "rejects any smoke summary artifact that overlaps a boundary, diagnosis, readiness-summary, handoff-summary, or product-surface summary artifact",
-        "statement-count/check-count consistency",
-        "known safe error categories",
-        "internally consistent planned/executed counters",
-        "explicit not_written redaction assertions",
-        "dev-only/no-product-support limitations",
-        "one product-surface summary per boundary",
-        "trino_one_query_handoff_summary_v1",
-        "structured diagnostic_lane block для source granularity, evidence readiness, verification scope и fact-state counters",
-        "валидирует их structured diagnostic_lane blocks и reject-ит missing или drifted source-granularity, readiness, verification-scope или fact-state counters",
-        "--require-min-trino-version-families <minimum-trino-version-family-count>",
-        "--require-trino-version-family <safe-trino-version-family>",
-        "Single-boundary local query-detail, local query-list aggregate, local statement-stats, local pruned QueryInfo, HTTP query-detail archive и pruned coordinator query-info import commands",
-        "bounded Kerberos/SPNEGO smoke",
-        "sanitized evidence-package intake",
-        "Не добавлены production Trino engine selector",
-        "browser workflow beyond the isolated compact-diagnosis page and Recent/One Query ID beta lanes",
-    ):
-        assert required in text
+    assert not ru_path.exists()
+    assert "trino-private-preview-release.md" not in ru_docs_index
+    assert "engine deep-dive документы остаются English-only" in ru_docs_index
 
 
 def _normalized_doc_text(path: Path) -> str:

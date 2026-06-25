@@ -9,18 +9,21 @@ query-detail archive import, bounded local query-detail import, and bounded
 local query-list aggregate import, plus bounded local statement-stats import
 and bounded local pruned QueryInfo import; Query Doctor also has raw-free
 event-source contract checking and dry-run coordinator query-info target
-checking, metadata source-contract checking, bounded local metadata summary
-import, plus one-query pruned coordinator query-info probing, one-query pruned
+checking, metadata source-contract checking, bounded local metadata CLI summary
+building, bounded local metadata summary import, dev-only metadata CLI summary
+smoke round-trip, plus one-query pruned coordinator query-info probing, one-query pruned
 coordinator fact import, local compact diagnosis over raw-free direct boundary
 JSON excluding local metadata summary boundaries or selected package sample
 boundaries, and the isolated local
 `/trino/compact-diagnosis` page over the same already raw-free inputs. The
-product-facing Trino Beta surfaces are local web retained-list Recent diagnosis
+local production product-facing Trino surfaces are local web retained-list Recent diagnosis
 over one bounded retained pruned coordinator query-list read plus selected
 pruned QueryInfo reads, and local web One Query ID diagnosis over one bounded
-pruned coordinator QueryInfo read; both use the same raw-free compact diagnosis.
-Running scans, query-history crawling, metadata collection, Details/trusted
-reports, optimizer behavior, and SQL execution remain unsupported.
+pruned coordinator QueryInfo read; both use the same raw-free compact diagnosis
+and may open raw-free Details plus deterministic Python Report and optimizer
+guidance only after server-owned case materialization. Running scans, query-history crawling,
+product metadata collection, LLM reports, Query Optimizer jobs, and user SQL execution remain
+unsupported.
 Query Doctor production triage remains Apache Impala until the live support gates in
 [engine-expansion-plan.md](../engine-expansion-plan.md) and
 [engine-support-gap-matrix.md](../engine-support-gap-matrix.md) are closed.
@@ -47,14 +50,15 @@ resource-group, and connector-driven engine.
 - Do not turn OpenMetrics, JMX, OpenTelemetry, resource-group config, vendor
   docs, or unlinked cluster signals into root-cause claims without
   query-specific deterministic support.
-- Do not expose Trino-derived facts in browser UI or trusted reports until
-  parser, redaction, source-bound, and browser/report safety tests exist. The
-  current browser exceptions are the isolated local `/trino/compact-diagnosis`
-  page and the local Trino Beta retained-list Recent/One Query ID lanes. They consume already
+- Do not expose Trino-derived facts in browser UI or reports until parser,
+  redaction, source-bound, and browser/report safety tests exist. The current
+  browser exceptions are the isolated local `/trino/compact-diagnosis` page and
+  the local Trino retained-list Recent/One Query ID lanes plus raw-free
+  materialized Details, deterministic Python Report, and optimizer guidance.
+  They consume already
   raw-free direct boundary JSON excluding local metadata summary boundaries or
-  one selected package sample boundary, and stay outside Details, trusted
-  reports, Running scans, metadata collection, SQL execution, and optimizer
-  workflows.
+  one selected package sample boundary, and stay outside LLM reports, Running
+  scans, product metadata collection, user SQL execution, and Query Optimizer jobs.
 
 ## Candidate Source Classes
 
@@ -187,10 +191,12 @@ Trino diagnosis must be connector-aware from the first live design:
 
 There is an accepted Trino metadata source-contract gate for one explicit
 relation/column allowlist shape. It validates the local contract and emits only
-path-free, identifier-free summaries. It does not read Trino metadata, execute
-metadata SQL, store raw metadata, or add metadata facts. A separate local
-metadata summary import can read one operator-prepared compact aggregate JSON
-after that source contract and emit only relation/column coverage and
+path-free, identifier-free summaries. A separate metadata CLI summary builder
+can use that contract, one operator-installed Trino CLI, one HTTPS coordinator
+URL, and one Hive or Iceberg connector-family gate to run only Python-owned
+read-only metadata statements and emit a sanitized aggregate summary. A separate
+local metadata summary import can read one operator-prepared compact aggregate
+JSON after that source contract and emit only relation/column coverage and
 stats-completeness counts as raw-free facts.
 
 Before adding a metadata reader or statement allowlist, prove all of the following:
@@ -233,7 +239,7 @@ Any broader Trino coordinator source can move past probe-only status only after
 its parser emits a raw-free `EngineFactBundle` and every browser/report-facing
 consumer uses `engine_fact_boundary_payload()` or a stricter successor.
 The local compact diagnosis command, isolated local compact-diagnosis page, and
-local Trino Beta retained-list Recent/One Query ID lanes consume only an already raw-free
+local production Trino retained-list Recent/One Query ID lanes consume only an already raw-free
 `engine_fact_boundary_v1` payload or one selected package sample boundary,
 excluding local metadata summary boundaries because aggregate `trino_metadata_*`
 facts are metadata-coverage evidence, not compact diagnosis inputs;
@@ -248,8 +254,8 @@ fact-state counts, and a raw-free `diagnostic_lane` summary with source
 granularity, evidence readiness, verification scope, supported-attention count,
 and required audit gates. It must not read raw Trino payloads, copy input
 summaries or string metric values, claim root causes, submit SQL, add
-Details/trusted report output, add optimizer behavior, run Recent workflows,
-collect metadata, crawl query history, or become production Query ID support.
+materialized Details, Python Report, or optimizer guidance by itself, add Query Optimizer jobs, run Recent workflows,
+collect metadata, crawl query history, or become standalone production Query ID support.
 The web page must not echo submitted boundary JSON or render source schema,
 fact-group, URL, path, raw SQL, or source-contract fields.
 Planning-heavy compact diagnosis may be emitted only from supported
@@ -324,9 +330,11 @@ Required boundary shape:
   lanes. It records each accepted `source_type` surface class, raw-storage
   policy, required bounds, network-access class, and promotion gate. The
   support-gap audit must fail if a new source type appears without registry
-  coverage or if any registered type enables product surfaces, Details/trusted
-  reports, Recent scans, optimizer behavior, SQL execution, raw storage,
-  browser/report output, or metadata identifier output.
+  coverage or if any registered type enables product surfaces beyond the
+  explicit local production Trino Recent, One Query ID, raw-free materialized Details,
+  deterministic Python Report, and optimizer guidance lanes, or if it enables
+  LLM reports, Running scans, Query Optimizer jobs, user SQL execution, raw storage,
+  browser/report output outside those lanes, or metadata identifier output.
 - event-source contract checking may read only one explicit compact local JSON
   contract. It must require redaction-review confirmation, accept only an
   allowlisted source type, safe auth-reference label, accepted event schema,
@@ -358,6 +366,24 @@ Required boundary shape:
   echoing. It must not contact Trino, read metadata, execute metadata SQL,
   crawl objects, collect metadata facts, become metadata collection support, or
   expose browser/report output.
+- metadata CLI summary building may read one accepted `metadata_allowlist`
+  source contract and use one explicit operator-installed Trino CLI plus one
+  HTTPS coordinator URL. It must support only Hive or Iceberg connector-family
+  gates, build only Python-owned read-only metadata statements from validated
+  relation/column identifiers, pass statement text on stdin rather than argv,
+  and emit only a sanitized aggregate `trino_metadata_summary_v1` payload or
+  path-free summary. It must enforce byte/time bounds and must not print
+  statement text, object identifiers, endpoint URLs, local paths, raw metadata
+  values, or CLI stdout/stderr. It must not add browser/report output, crawl
+  objects, become a Recent/Details/report/optimizer surface, or become product
+  metadata collection support.
+- the dev-only metadata CLI summary smoke gate may run the same safe dry-run
+  plan, aggregate metadata summary collection, and local metadata summary
+  import round-trip. It must write or print only raw-free machine summaries
+  with statement text, object identifiers, endpoint URLs, local paths, raw
+  metadata values, and CLI stdout/stderr marked not output, and it must not
+  become a Recent/Details/report/optimizer surface or product metadata
+  collection support.
 - local metadata summary import may read one explicit compact sanitized local
   aggregate JSON object after an accepted `metadata_allowlist` source contract.
   It may map only relation and column coverage counts plus stats-completeness
@@ -379,8 +405,8 @@ Required boundary shape:
   raw QueryInfo outside storage, summaries, prompts, reports, and normalized
   facts, and must not expose URL, Query ID, query text, session fields,
   endpoint URLs, object names, or raw payload content. It must not crawl query
-  history, submit SQL, become production Query ID support, or expose browser/report
-  output outside the explicit Trino Beta Recent/One Query ID lanes.
+  history, submit SQL, become standalone production Query ID support, or expose browser/report
+  output outside the explicit local production Trino Recent/One Query ID lanes.
 - pruned coordinator query-info import may use the same one-query bounded
   request and source contract to emit a raw-free `EngineFactBundle`. It may map
   only top-level lifecycle state and allowlisted `queryStats` fields for
@@ -390,9 +416,10 @@ Required boundary shape:
   prompts, reports, and normalized facts; it must ignore query text, session
   fields, endpoint URLs, Query ID, object names, stage/task identifiers, worker
   identifiers, raw failure details, connector internals, and output-stage
-  trees. It must not crawl query history, submit SQL, become production Query
-  ID support, or expose browser/report output outside the explicit Trino Beta
-  Recent/One Query ID lanes.
+  trees. It must not crawl query history, submit SQL, become standalone
+  production Query ID support, or expose browser/report output outside the
+  explicit local production Trino Recent/One Query ID, raw-free materialized
+  Details, deterministic Python Report, and optimizer guidance lanes.
 - local pruned QueryInfo import may read one explicit compact sanitized local
   JSON object after the same `coordinator_query_info` source contract. It may
   map only top-level `state` and allowlisted `queryStats` fields and must reject
@@ -476,8 +503,8 @@ Minimum accepted fixture facts:
   not expose resource groups, workers, endpoints, or task records;
 - positive task retry/failure counts from a checked task summary may become
   raw-free internal consumer-probe attention signals only. They are not
-  Details/trusted report findings, root-cause labels, live collection support,
-  or public Trino support claims;
+  root-cause labels, live collection support, public Trino support claims, or
+  report findings outside materialized Python Report validation;
 - accepted failed query-detail fixtures may support only an allowlisted safe
   failure category from a checked `safeFailureSummary`; they must not expose raw
   exception classes, stack traces, failure messages, query IDs, endpoint
@@ -563,7 +590,7 @@ Minimum accepted fixture facts:
   not fully blocked. Boolean source markers must be typed booleans, not
   truthy or falsey strings, numbers, or objects.
 
-Forbidden before commit, prompt, browser output, or trusted reports:
+Forbidden before commit, prompt, browser output, or reports:
 
 - raw Trino SQL, raw query-info JSON, raw event payloads, query IDs, user
   identifiers, hostnames, URLs, endpoint names, catalog/schema/table/column
@@ -583,13 +610,15 @@ query-detail archive import, bounded local query-detail import, and bounded
 local query-list aggregate import, bounded local statement-stats import,
 bounded local pruned QueryInfo import, and event-source contract checking and
 dry-run coordinator query-info target checking, metadata source-contract
-checking, bounded local metadata summary import, plus one-query pruned
+checking, bounded local metadata CLI summary building, bounded local metadata
+summary import, dev-only metadata CLI summary smoke round-trip, plus one-query pruned
 coordinator query-info probing and one-query pruned coordinator fact import,
 plus local compact diagnosis over already raw-free direct boundary JSON
 excluding local metadata summary boundaries or selected package sample
-boundaries, the isolated local `/trino/compact-diagnosis` page, the local web
-retained-list Recent beta lane, and the local web One Query ID beta lane, until
-the following are true:
+boundaries, the isolated local `/trino/compact-diagnosis` page, the local
+production web retained-list Recent lane, the local production web One Query ID lane, raw-free
+materialized Details, deterministic Python Report, and optimizer guidance,
+until the following are true:
 
 1. Source contracts define which event/query fields are accepted, bounded, and
    version-scoped.
@@ -628,9 +657,9 @@ the following are true:
    and must reject smoke summaries that overlap boundary, diagnosis,
    readiness-summary, handoff-summary, or product-surface summary artifacts, so
    suite-width gates do not count one artifact more than once.
-8. Browser and trusted-report safety tests exist before any Trino facts render
-   outside the isolated compact-diagnosis page or Recent/One Query ID beta
-   lanes.
+8. Browser, Python Report, and optimizer guidance safety tests exist before any
+   Trino facts render outside the isolated compact-diagnosis page, local
+   production Recent/One Query ID lanes, or raw-free materialized Details.
 9. The support gap matrix records unsupported Trino sources, connector gaps,
    and current unknowns.
 

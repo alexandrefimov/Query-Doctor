@@ -17,7 +17,7 @@ def test_trino_test_cluster_evidence_checklist_stays_non_supporting():
         "not a live collector",
         "support announcement",
         "engine selector",
-        "Details/trusted-report surface",
+        "LLM report surface",
         "separate isolated compact-diagnosis page accepts only already raw-free direct boundary JSON excluding local metadata summary boundaries or one selected sample boundary from a package boundary export",
         "permission to execute Trino SQL",
         "Do not run SQL through Query Doctor.",
@@ -43,6 +43,12 @@ def test_trino_test_cluster_evidence_checklist_requires_sanitized_operator_expor
         "query-doctor-trino-metadata-source-contract-check --redaction-reviewed",
         "keep the raw relation/column allowlist local",
         "path-free, identifier-free summary",
+        "local metadata CLI summary output only after",
+        "query-doctor-trino-metadata-cli-summary --redaction-reviewed",
+        "never statement text, object identifiers, endpoint URLs, local paths, raw metadata values, or CLI stdout/stderr",
+        "dev-only metadata CLI smoke summary output only after",
+        "python3 scripts/trino_metadata_cli_summary_smoke.py --redaction-reviewed",
+        "safe dry-run plan, aggregate metadata summary collection, and local metadata summary import round-trip",
         "compact metadata summary exports only as aggregate relation/column coverage and stats-completeness counts",
         "query-doctor-trino-metadata-summary-import --redaction-reviewed",
         "--query-id-file <operator-query-id-file>",
@@ -57,6 +63,8 @@ def test_trino_test_cluster_evidence_checklist_requires_sanitized_operator_expor
         "manifest that describes source type, Trino version, source schema version",
         "redaction note describing removed field classes, not removed values",
         "optional metadata source-contract summary output",
+        "optional local metadata CLI summary output",
+        "optional dev-only metadata CLI smoke summary output",
         "never the raw allowlist contract with relation or column names",
         "optional compact metadata summary import output",
         "never raw metadata values or object identifiers",
@@ -109,7 +117,7 @@ def test_trino_test_cluster_evidence_checklist_is_indexed():
     text = DOCS_INDEX.read_text(encoding="utf-8")
 
     assert "engines/trino-test-cluster-evidence-checklist.md" in text
-    assert "engines/i18n/ru/trino-test-cluster-evidence-checklist.md" in text
+    assert "engines/i18n/ru/trino-test-cluster-evidence-checklist.md" not in text
 
 
 def _normalized_doc_text() -> str:

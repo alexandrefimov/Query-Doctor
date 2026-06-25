@@ -1,31 +1,36 @@
 # Trino Live Collection Design
 
-Last reviewed: 2026-06-16
+Last reviewed: 2026-06-24
 
 This document defines a future live-collection path for Trino research. It is
 not a live-support announcement, does not add a collector, and does not change
-the current support matrix: Query Doctor production triage remains Apache
+the current support matrix: Query Doctor full production triage remains Apache
 Impala, and Trino support is limited to sanitized offline evidence package
 import, bounded local event-store import, bounded local query-detail import, and
 bounded local query-list aggregate import, plus bounded local statement-stats
 import, bounded local pruned QueryInfo import, bounded HTTP event archive
 import, bounded HTTP query-detail archive import, event-source contract
 checking, dry-run coordinator query-info target checking, metadata
-source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info
+source-contract checking, bounded local metadata CLI summary building, bounded
+local metadata summary import, dev-only metadata CLI summary smoke round-trip,
+plus one-query pruned coordinator query-info
 probing, one-query pruned coordinator fact import, a dev-only
 package-to-boundary evidence handoff audit, a dev-only
 one-query handoff wrapper, a dev-only handoff-suite manifest builder, and
-handoff-suite readiness manifest gate over raw-free handoff artifacts, local
+handoff-suite readiness manifest gate over raw-free handoff artifacts, a
+dev-only representative-evidence audit over retained raw-free summary payloads, local
 compact diagnosis over already raw-free direct boundary JSON excluding local
 metadata summary boundaries or selected package sample boundaries, and the isolated local
 `/trino/compact-diagnosis` page over the same already raw-free inputs, plus the
-local web Trino Beta retained-list Recent lane over one bounded retained pruned
+local production web Trino retained-list Recent lane over one bounded retained pruned
 coordinator query-list read plus selected pruned QueryInfo reads, and the local
-web Trino Beta One Query ID lane over one bounded pruned coordinator QueryInfo
-read, both with the same raw-free compact diagnosis.
-Those beta lanes are not broader Trino live collection: they do not add Running,
-query-history crawling, metadata collection, Details/trusted report
-output, optimizer behavior, generated Trino SQL, or SQL execution.
+production web Trino One Query ID lane over one bounded pruned coordinator QueryInfo
+read, both with the same raw-free compact diagnosis and raw-free materialized
+Details plus deterministic Python Report and optimizer guidance only after server-owned case
+materialization.
+Those local production lanes are not broader Trino live collection: they do not add Running,
+query-history crawling, product metadata collection, LLM report output,
+optimizer jobs, generated Trino SQL, or user SQL execution.
 
 The design goal is to let Query Doctor eventually ingest Trino query evidence
 without executing user SQL, exposing raw query payloads, or turning Trino into
@@ -65,6 +70,150 @@ Rejected source families:
   UI scraping;
 - raw Web UI pages, raw event dumps, raw query-info JSON, logs, stack traces,
   or object-storage paths as browser/report inputs.
+
+## Broader Production Closure Plan
+
+The source of truth remains
+[engine-support-gap-matrix.md](../engine-support-gap-matrix.md). The support-gap
+audit exposes the bounded claim as
+`broader_production_closure_status=bounded_production_claim_ready` only for the
+local retained-list Recent, One Query ID, raw-free materialized Details,
+deterministic Python Report, and optimizer guidance surfaces. That status does
+not promote broader/shared Trino expansion:
+`python3 scripts/audit_trino_production_closure_gates.py` is the consolidated
+raw-free dev-only gate for checking the closure gate list, Trino dev-gate
+capability wiring, and retained summary inputs from the existing closure
+tracking audits without collecting from Trino, executing SQL, or adding
+unsupported surfaces.
+
+- `trino_production_collector_contracts`: production coordinator/event/archive
+  source contracts and bounded read-only readers with auth references, explicit
+  bounds, version/source-schema gates, retry/fail-closed behavior, and no SQL
+  execution. The current tracking gate is
+  `python3 scripts/audit_trino_production_collector_contracts.py`, which keeps
+  the gate `not_closed` while existing local lanes, preview readers,
+  contract-only sources, open blockers, per-source-requirement
+  accepted/missing/invalid tracking, auth-reference policy counts,
+  source-schema gate counts, retry-policy counts, fail-closed policy counts,
+  reader-status counts, reader-scope counts, CLI-role counts, capability
+  counts, forbidden-reader counts, and optional retained
+  representative-evidence summary handoff checks are audited. Promotion-review
+  handoff requires a `production_review_breadth_v1` representative summary with
+  `breadth_profile_status=ready` and does not reopen retained artifacts.
+- `trino_representative_real_cluster_evidence`: retained raw-free handoff suites
+  across representative Trino version families, source schemas,
+  connector-family categories, lifecycle states, and workload signals. The
+  current tracking gate is
+  `python3 scripts/audit_trino_representative_evidence.py`, which aggregates
+  only already raw-free retained summary payloads. Its
+  `--require-breadth-profile production_review_breadth_v1` profile checks
+  retained summary-kind mix, accepted input statuses, summary/evidence-unit,
+  source-contract, source-schema, lifecycle, connector-family,
+  source-granularity, verification-scope, and support-status counter breadth,
+  records raw-free `breadth_requirement_tracking` entries plus
+  `breadth_requirement_tracking_counts` for accepted, insufficient, and
+  not-required breadth requirements, and keeps the gate `not_closed` without
+  reopening raw packages, collecting from Trino, or executing SQL.
+- `trino_query_linked_fact_coverage`: query-linked resource-group, stage, task,
+  split, operator, connector, OpenTelemetry/OpenMetrics/JMX, or equivalent facts
+  only after source contracts prove linkage, bounds, redaction, and
+  deterministic interpretation. The current tracking gate is
+  `python3 scripts/audit_trino_query_linked_fact_coverage.py`, which keeps the
+  gate `not_closed` while bounded compact query-linked facts, required source
+  contracts, operator/split/telemetry blockers, raw-free
+  `query_linked_requirement_tracking` entries plus
+  `query_linked_requirement_tracking_counts` for accepted, missing, and invalid
+  fact/source requirements, source-granularity counts, and the
+  `production_review_query_linked_v1` coverage profile are audited. That
+  profile requires the resource-group/stage/task/split core families, their
+  query-linked scopes, one-query source granularities, and retained
+  operator/split-detail/telemetry blockers. The same audit records
+  `operator_connector_telemetry_decision_v1`, with connector metric signal as
+  the only bounded-supported decision and operator-level, split-detail, and
+  JMX/OpenMetrics/OpenTelemetry linkage as deliberate unsupported gaps until
+  raw-free source contracts exist. The gate does not collect from Trino,
+  execute SQL, or promote support.
+- `trino_product_metadata_collection`: product metadata collection from
+  explicit allowlists and Python-owned read-only statements, with
+  identifier/value redaction and browser/report safety tests. The current
+  tracking gate is
+  `python3 scripts/audit_trino_product_metadata_collection.py`, which keeps the
+  gate `not_closed` while the metadata allowlist contract, dev-only aggregate
+  CLI summary, local aggregate metadata summary import, adapter metadata flag,
+  product-surface blocks, identifier/raw metadata redaction, raw-free
+  `product_metadata_requirement_tracking` entries plus
+  `product_metadata_requirement_tracking_counts` for accepted, missing, and
+  invalid fact/source/product-surface requirements, and the
+  `production_review_metadata_v1` profile are audited. That profile requires
+  the allowlist/source lanes, aggregate-only metadata boundary, required
+  metadata fact namespace, bounded sources, redaction blocks, explicit metadata
+  SQL policy, product-surface blocks, and retained product-metadata open
+  blocker. No user SQL execution and no product metadata collection are
+  audited.
+- `trino_report_optimizer_safety`: deterministic Trino claim validation,
+  leak tests, recipe/validator coverage, and explicit blocking of unsafe
+  generated SQL or SQL execution before any broader report or optimizer
+  behavior. The current tracking gate is
+  `python3 scripts/audit_trino_report_optimizer_safety.py`, which keeps the
+  gate `not_closed` while materialized Python Report and optimizer guidance
+  capability contracts, raw-source policy, validator sentinel rejection,
+  blocked adapter validated reports, no LLM reports, no Query Optimizer jobs,
+  no generated SQL, raw-free `report_optimizer_requirement_tracking` entries
+  plus `report_optimizer_requirement_tracking_counts` for accepted, missing,
+  and invalid capability/policy/validator/product-surface requirements, and the
+  `production_review_report_optimizer_v1` profile are audited. That profile
+  requires the report/guidance families, materialized capabilities, raw-source
+  policy fields, validator sentinel matrix, and blocked product-surface
+  requirements. No Trino SQL execution is audited.
+- `trino_shared_deployment_readiness`: trusted front-door identity,
+  raw-source isolation, raw-free audit summaries, and operator-reviewed
+  shared/non-local deployment evidence. The current tracking gate is
+  `python3 scripts/audit_trino_shared_deployment_boundary.py`, which keeps the
+  gate `not_closed` while ignored local config shape, trusted front-door review
+  confirmation, `viewer_identity_header` presence for shared Trino sources,
+  blocked owner-raw source reveal, materialized Details/Python Report/optimizer
+  guidance limits, unsupported shared surfaces, capability manifest shape,
+  release-bundle wiring, and public hardening docs are audited. The summary
+  records raw-free `shared_deployment_requirement_tracking` entries plus
+  `shared_deployment_requirement_tracking_counts` for accepted, missing,
+  invalid, and not-required deployment-config, product-boundary, capability,
+  release-gate, and doc requirements, plus the
+  `production_review_shared_deployment_v1` profile over review families,
+  deployment-config requirements, product-boundary requirements, capability
+  requirements, release requirements, doc requirements, and unsupported-surface
+  blocks. The CLI prints matching path-free shared deployment requirement and
+  production-review counts without collecting from Trino, reading metadata,
+  executing SQL, exposing raw source, or promoting broader/shared Trino
+  production support.
+- `trino_browser_report_regression`: raw-free regression coverage for every
+  promoted browser, Details, report, optimizer, error, and audit surface. The
+  current tracking gate is
+  `python3 scripts/audit_trino_browser_report_regression.py`, which keeps the
+  gate `not_closed` while required Details, Python Report, optimizer guidance,
+  error, unsupported-workflow, product-surface static-boundary, and public-claim
+  regression tests plus current materialized route capabilities, raw-free
+  `browser_report_requirement_tracking` entries plus
+  `browser_report_requirement_tracking_counts` for accepted, missing, and
+  invalid test/route/product-surface requirements are audited without rendering
+  pages, loading case artifacts, collecting from Trino, generating SQL, or
+  executing SQL, and the `production_review_browser_report_v1` profile covers
+  regression families, test files, materialized route capabilities, raw-output
+  blocks, unsupported-surface blocks, download regressions, and public-claim
+  regressions under the same constraints.
+- `trino_support_claim_update`: update the support matrix, README support
+  wording, docs index entries, changelog, capability manifest expectations, and
+  support-gap/product-surface audit expectations in the same promotion slice.
+
+The broad promotion slice order is pinned in
+[engine-support-gap-matrix.md](../engine-support-gap-matrix.md). Live-collection
+work must follow that order: define the support claim first, then close
+collector contracts/readers, representative retained evidence, query-linked
+facts, product metadata, report/optimizer support-boundary decisions,
+shared/non-local deployment readiness, browser/report regressions, and finally
+the support-claim update. Running scans, query-history crawling, LLM reports,
+Query Optimizer jobs, generated Trino SQL, and SQL execution stay unsupported
+unless a later slice deliberately promotes one of those surfaces through its own
+implementation, raw-free evidence, documentation, and regression gate.
 
 ## Collection Phases
 
@@ -112,14 +261,14 @@ The coordinator query-info target check validates only a compact
 shape, one explicit Query ID shape, and a safe `trino_version_family` source
 scope such as a broad version family or `unknown`. It does not issue the
 `/v1/query` request, fetch query-info JSON, store raw query IDs, echo URLs or
-Query IDs, submit SQL, crawl query history, or add production Query ID support. The
+Query IDs, submit SQL, crawl query history, or add standalone production Query ID support. The
 pruned coordinator query-info probe may then issue exactly one bounded
 `GET /v1/query/{queryId}?pruned=true` request with an operator-managed auth
 reference, validate that the response is a bounded JSON object, and emit only a
 safe probe summary. It does not follow HTTP redirects, store or print raw
 QueryInfo, map QueryInfo to facts, crawl query history, submit SQL, add
-browser/report output outside the explicit Recent and One Query ID beta lanes,
-or become production Query ID support.
+browser/report output outside the explicit local production Recent and One Query ID lanes,
+or become standalone production Query ID support.
 The pruned coordinator query-info import command may issue the same one bounded
 request after the same contract gate and emit only a safe summary or raw-free
 boundary JSON. It maps only allowlisted lifecycle and `queryStats` fields for
@@ -128,8 +277,8 @@ QueryInfo, URL, Query ID, query text, session fields, endpoint URLs, object
 names, stage/task identifiers, worker identifiers, raw failure details,
 connector internals, and output-stage trees outside summaries and normalized
 facts, and it does not follow HTTP redirects. It does not crawl query history,
-submit SQL, add browser/report output outside the explicit Recent and One Query
-ID beta lanes, or become production Query ID support.
+submit SQL, add browser/report output outside the explicit local production Recent and One Query
+ID lanes, or become standalone production Query ID support.
 `query-doctor-trino-metadata-source-contract-check` validates only a compact
 `metadata_allowlist` source contract with safe auth-reference labels, explicit
 relation/column allowlist shape, bounds, and redaction rules. It does not read
@@ -180,7 +329,7 @@ records aggregate counts, issue categories, and requirement flags plus safe
 version-family counters without source-version values, paths, filenames, URLs,
 Query IDs, auth headers, raw QueryInfo, or raw version strings. It does not
 crawl query history, fetch additional queries,
-submit SQL, add browser/report output, or become production Query ID support.
+submit SQL, add browser/report output, or become standalone production Query ID support.
 The local pruned QueryInfo import command may read one explicit already
 sanitized compact local JSON object after the same `coordinator_query_info`
 source contract and emit only a safe summary or raw-free boundary JSON. It maps
@@ -188,7 +337,7 @@ only top-level `state` and allowlisted `queryStats` fields, rejects raw
 QueryInfo fields such as Query IDs, query text, session fields, endpoint URLs,
 object names, and stage/task detail before mapping, performs no network read,
 and does not crawl query history, submit SQL, add browser/report output, or
-become production Query ID support.
+become standalone production Query ID support.
 The compact diagnosis command and isolated local compact-diagnosis page consume
 only one already raw-free `engine_fact_boundary_v1` payload or selected package
 sample boundary from an accepted Trino import path, excluding local metadata
@@ -197,9 +346,9 @@ metadata-coverage evidence, not compact diagnosis inputs. It writes deterministi
 raw-free attention areas, change directions, verification prompts, limitations,
 parser coverage, lifecycle, and state counts. It does not read raw Trino
 payloads, copy input summaries or string metric values, claim root causes,
-submit SQL, add Details/trusted report output, add optimizer behavior, run
-Recent workflows, collect metadata, crawl query history, or become production
-Query ID support. The web page must not echo submitted boundary JSON or render
+submit SQL, add materialized Details or Python Report by itself, add optimizer
+behavior, run Recent workflows, collect metadata, crawl query history, or become
+standalone production Query ID support. The web page must not echo submitted boundary JSON or render
 source schema, fact-group, query ID, URL, path, raw SQL, or source-contract
 fields.
 The bounded local query-list import command may validate one explicit compact
@@ -317,9 +466,10 @@ claim. A full evidence package does not require supported attention or known
 parser coverage for every sample by default because unknown and unsupported
 coverage samples remain part of the package contract. Retained package-level
 handoff-suite audits can require selected safe source-contract labels from
-retained package source summaries, plus selected diagnostic-lane source
-granularities and verification scopes from already retained summaries, such as
-`synthetic_trino_event_listener_v1`, `one_query_boundary`,
+retained package source summaries, connector-family labels from retained
+package source summaries, plus selected diagnostic-lane source granularities
+and verification scopes from already retained summaries, such as
+`synthetic_trino_event_listener_v1`, `lakehouse`, `one_query_boundary`,
 `aggregate_query_list`, `comparable_one_query_rerun`,
 `representative_query_selection`, or `source_contract_review`, without
 reopening packages or raw exports; strict one-query gates remain on
@@ -336,6 +486,7 @@ than artifact paths or references.
 `query-doctor-trino-query-list-import`, and
 `query-doctor-trino-statement-stats-import`, and
 `query-doctor-trino-query-info-pruned-import`, and
+`query-doctor-trino-metadata-cli-summary`, and
 `query-doctor-trino-metadata-summary-import` are the current local dry-run
 commands; `query-doctor-trino-event-source-contract-check` is the source
 contract gate, and `query-doctor-trino-http-event-archive-import` is the bounded
@@ -377,9 +528,10 @@ readiness evidence. When `--product-surface-summary-out` is
 provided, it also runs the product-surface boundary audit over those retained
 artifacts and writes a `trino_product_surface_boundary_audit_v1` raw-free
 summary without printing the summary path. It is not installed as a product CLI
-and does not create a production Query ID workflow, Details/trusted-report
-surface, optimizer workflow, or support claim beyond the explicit local web
-Recent and One Query ID beta lanes.
+and does not create a standalone production Query ID workflow, LLM report surface,
+optimizer workflow, or support claim beyond the explicit local production web Recent, One
+Query ID, raw-free materialized Details, deterministic Python Report, and
+optimizer guidance lanes.
 For real-cluster handoff work, prefer
 `--query-id-file <operator-query-id-file>` over `--query-id` so the explicit
 Query ID stays out of shell history and process arguments. The file must be a
@@ -401,13 +553,13 @@ same audit so dry-run smoke plans cannot satisfy executed test-cluster evidence.
 `scripts/audit_trino_product_surface_boundary.py` is the dev-only gate for
 retained compact boundary/diagnosis artifacts before any broader
 product-surface promotion decision. It checks deterministic diagnosis
-artifacts, pins `live_known_query_diagnosis=one_query_pruned_query_info_beta`
-and `live_recent_scan=retained_query_list_beta`, verifies the allowed Trino web
-registry remains limited to the compact preview page plus local Recent and One
-Query ID beta surfaces and that Trino CLI stays preview/dev-only,
+artifacts, pins `live_known_query_diagnosis=one_query_pruned_query_info_local_production`
+and `live_recent_scan=retained_query_list_local_production`, verifies the allowed Trino web
+registry remains limited to the compact preview page plus local production
+Recent and One Query ID surfaces and that Trino CLI stays preview/dev-only,
 and can write a
 `trino_product_surface_boundary_audit_v1` raw-free machine summary without
-printing paths, raw payloads, SQL, URLs, Query IDs, or production support
+printing paths, raw payloads, SQL, URLs, Query IDs, or broad production support
 claims. It can
 also consume the `trino_one_query_handoff_suite_v1` manifest, requiring every
 entry to include a compact diagnosis artifact and, when configured, a matching
@@ -421,11 +573,12 @@ boundary/diagnosis/readiness-summary/handoff-summary/product-surface-summary
 refs must be unique.
 The compact readiness manifest audit can also require those retained
 product-surface summaries with `--require-product-surface-summary-json` and
-checks that they keep the beta-only product-surface boundary before counting
+checks that they keep the local production product-surface boundary before counting
 them in a path-free suite summary.
-A passing audit keeps Trino below Details/trusted reports, optimizer behavior,
-Recent, metadata, query-history crawling, SQL execution, and production Query
-ID support.
+A passing audit keeps Trino below LLM reports, Query Optimizer jobs, Running,
+metadata, query-history crawling, SQL execution, and broader/shared Query ID support
+while allowing only explicit local Recent, One Query ID, materialized Details,
+deterministic Python Report, and optimizer guidance local production surfaces.
 `scripts/audit_trino_support_gap_matrix.py` is the dev-only static gate before
 broader support-surface decisions. It checks registered Trino fact-family
 coverage, neutral `no_*` gaps, and blocked product adapter flags against the
@@ -438,7 +591,8 @@ boundary, and `/trino/compact-diagnosis` is the isolated local paste page for
 the same accepted input shapes. They print, write, or render only safe
 summaries, raw-free boundary JSON, deterministic
 raw-free diagnosis JSON, or sanitized compact diagnosis HTML and do not add
-Details/trusted reports or broader Trino browser workflows.
+materialized Details, Python Report, optimizer guidance, or broader Trino
+browser workflows by themselves.
 For the single-boundary local query-detail, local query-list aggregate, local
 statement-stats, local pruned QueryInfo, HTTP query-detail archive, and pruned
 coordinator query-info import commands, `--diagnosis-out` may write the same
@@ -550,6 +704,25 @@ blocked browser/report plus identifier output. It performs no metadata read,
 executes no metadata SQL, and rejects raw SQL fields, raw metadata storage,
 identifier output, credentials, endpoint URLs, and arbitrary source-specific
 configuration.
+The implemented metadata CLI summary builder may use one accepted
+`metadata_allowlist` source contract, one explicit operator-installed Trino CLI,
+one HTTPS coordinator URL, and one Hive or Iceberg connector-family gate. It
+builds only Python-owned read-only metadata statements from the contract, passes
+statement text on stdin rather than argv, enforces byte/time bounds, and writes
+only a sanitized aggregate `trino_metadata_summary_v1` payload or path-free safe
+summary. It does not print statement text, object identifiers, endpoint URLs,
+local paths, raw metadata values, or CLI stdout/stderr, and it is not a Recent,
+Details, report, optimizer, Running, query-history, or product metadata
+collection surface.
+The dev-only `scripts/trino_metadata_cli_summary_smoke.py` wrapper may run the
+same safe dry-run plan, metadata CLI aggregate collection, and local metadata
+summary import round-trip for an ignored local test-cluster target. It writes or
+prints only a `trino_metadata_cli_summary_smoke_v1` summary and optional
+sanitized aggregate metadata summary, with statement text, object identifiers,
+endpoint URLs, local paths, raw metadata values, and CLI stdout/stderr marked
+not output. It is not an installed product CLI and does not add Recent,
+Details, report, optimizer, Running, query-history, or product metadata
+collection support.
 The implemented local metadata summary import accepts only one compact
 aggregate summary after that source contract. It validates relation and column
 counts against the contract, accepts only bounded coverage/count fields plus a
@@ -593,7 +766,7 @@ The parser boundary must drop or redact before facts leave the collector layer:
 
 Accepted facts must be expressed as typed states, counts, durations, byte
 values, confidence/limitation labels, and safe categorical buckets. Browser and
-trusted-report consumers must use `engine_fact_boundary_payload()` or a stricter
+report consumers must use `engine_fact_boundary_payload()` or a stricter
 successor, never raw source payloads.
 
 ## Required Fixtures Before Code
@@ -633,7 +806,15 @@ A first live Trino collection PR is not ready until it includes:
 - a passing event-source contract check for the source family before the reader
   can contact that source;
 - a passing metadata source-contract check before any metadata reader can use a
-  Trino relation or column allowlist;
+  Trino relation or column allowlist, plus a strict metadata CLI statement
+  planner when a local metadata summary is built through Trino CLI, and a
+  passing dev-only metadata CLI summary smoke round-trip before using retained
+  metadata CLI output as test-cluster evidence;
+- the Trino Beta release-readiness bundle may include that dev-only metadata
+  CLI summary smoke only with redaction-reviewed operator inputs; its summary
+  must stay path-free, URL-free, identifier-free, value-free, and CLI
+  stdout/stderr-free, and it must not turn metadata CLI output into product
+  metadata collection;
 - parser tests for accepted, missing, oversized, partial, and unsupported
   payloads;
 - redaction tests covering every forbidden surface in this document;
@@ -648,11 +829,123 @@ A first live Trino collection PR is not ready until it includes:
   <raw-free-trino-support-gap-summary-json>` run, so registered Trino
   fact-family coverage, source-type registry coverage, engine fact
   promotion-policy coverage, and blocked product adapter flags remain explicit;
-- no Details/trusted report output, optimizer behavior, Running workflow,
-  metadata collection, query-history crawling, generated SQL, or production
-  support claim unless those product surfaces are implemented and tested
-  separately. The current public README beta claim is limited to local web
-  retained-list Recent and One Query ID lanes.
+- a passing `python3 scripts/audit_trino_production_collector_contracts.py
+  --summary-json <raw-free-trino-production-collector-contracts-summary-json>`
+  run, so the production collector contract closure gate records existing local
+  lanes, preview readers, contract-only sources, and open blockers without
+  claiming broader production support; the summary also records raw-free
+  `source_requirement_tracking` entries and
+  `source_requirement_tracking_counts` for accepted, missing, and invalid
+  collector source requirements, plus auth-reference policy, source-schema
+  gate, retry-policy, fail-closed policy, reader-status, reader-scope,
+  CLI-role, capability, and forbidden-reader counters, and the CLI prints the
+  same path-free source-requirement, policy, and reader counts;
+- when retained representative evidence is part of the collector promotion
+  review, a passing `python3 scripts/audit_trino_production_collector_contracts.py
+  --representative-evidence-summary-json
+  <raw-free-trino-representative-evidence-summary-json>
+  --require-representative-evidence-summary --summary-json
+  <raw-free-trino-production-collector-contracts-summary-json>` run, so the
+  collector gate checks only the already raw-free representative-evidence
+  summary contract, requires `production_review_breadth_v1` with
+  `breadth_profile_status=ready`, and does not reopen retained artifacts,
+  collect from Trino, execute SQL, or close the production collector gate;
+- a passing `python3 scripts/audit_trino_representative_evidence.py
+  --summary-input-json <raw-free-retained-summary-json>
+  --require-min-summary-inputs <minimum-retained-summary-count>
+  --require-breadth-profile production_review_breadth_v1 --summary-json
+  <raw-free-trino-representative-evidence-summary-json>` run, so retained
+  real-cluster breadth is checked through already raw-free summary-counter
+  payloads for required summary-kind mix, accepted input statuses, retained
+  summary/evidence-unit, source-contract, source-schema, lifecycle,
+  connector-family, source-granularity, verification-scope, and support-status
+  coverage, the summary records raw-free
+  `breadth_requirement_tracking` and `breadth_requirement_tracking_counts`, CLI
+  output prints matching path-free summary-kind and breadth-requirement counts,
+  and the run avoids reopening packages, collecting from Trino, or executing
+  SQL;
+- a passing `python3 scripts/audit_trino_query_linked_fact_coverage.py
+  --summary-json <raw-free-trino-query-linked-fact-coverage-summary-json>` run,
+  so bounded compact resource-group/stage/task/split/connector facts stay
+  separated from unimplemented operator, split-detail, JMX/OpenMetrics, and
+  OpenTelemetry query-linked production coverage, the summary records raw-free
+  `query_linked_requirement_tracking` and
+  `query_linked_requirement_tracking_counts`, source-granularity counts, and
+  `production_review_query_linked_v1` coverage-profile status plus
+  `coverage_profile_tracking_counts`, plus
+  `operator_connector_telemetry_decision_v1` status and
+  `operator_connector_telemetry_decision_counts`, CLI output prints matching
+  path-free query-linked requirement, coverage-profile, and
+  operator/connector/telemetry decision counts, and no Trino collection or SQL
+  execution is performed;
+- a passing `python3 scripts/audit_trino_product_metadata_collection.py
+  --summary-json <raw-free-trino-product-metadata-collection-summary-json>`
+  run, so the metadata allowlist contract, dev-only aggregate CLI summary,
+  local aggregate metadata summary import, adapter metadata flag, product
+  surface blocks, and identifier/raw metadata redaction remain explicit, the
+  summary records raw-free `product_metadata_requirement_tracking` and
+  `product_metadata_requirement_tracking_counts`, plus
+  `production_review_metadata_v1` status and
+  `production_review_tracking_counts`, CLI output prints matching path-free
+  product-metadata requirement and production-review counts, and product
+  metadata collection stays unsupported;
+- a passing `python3 scripts/audit_trino_report_optimizer_safety.py
+  --summary-json <raw-free-trino-report-optimizer-safety-summary-json>` run,
+  so materialized Python Report and optimizer guidance capability contracts,
+  raw-source policy, validator sentinel rejection, blocked adapter validated
+  reports, no LLM reports, no Query Optimizer jobs, no generated SQL, and no
+  Trino SQL execution remain explicit, the summary records raw-free
+  `report_optimizer_requirement_tracking` and
+  `report_optimizer_requirement_tracking_counts`, plus
+  `production_review_report_optimizer_v1` status and
+  `production_review_tracking_counts`, CLI output prints matching path-free
+  report-optimizer requirement and production-review counts, and the report
+  optimizer safety gate stays open;
+- a passing `python3 scripts/audit_trino_browser_report_regression.py
+  --summary-json <raw-free-trino-browser-report-regression-summary-json>` run,
+  so Details, Python Report, optimizer guidance, error, unsupported-workflow,
+  product-surface static-boundary, and public-claim regression tests plus
+  current materialized route capabilities remain explicit, the summary records
+  raw-free `browser_report_requirement_tracking` and
+  `browser_report_requirement_tracking_counts`,
+  `production_review_browser_report_v1` status, and
+  `production_review_tracking_counts`; CLI output prints matching path-free
+  browser/report requirement and production-review counts, and no pages are
+  rendered, no case artifacts are loaded, Trino is not collected, SQL is not
+  generated, and SQL is not executed;
+- a passing `python3 scripts/audit_trino_production_closure_gates.py
+  --summary-input-json <raw-free-trino-production-collector-contracts-summary-json>
+  --summary-input-json <raw-free-trino-representative-evidence-summary-json>
+  --summary-input-json <raw-free-trino-query-linked-fact-coverage-summary-json>
+  --summary-input-json <raw-free-trino-product-metadata-collection-summary-json>
+  --summary-input-json <raw-free-trino-report-optimizer-safety-summary-json>
+  --summary-input-json <raw-free-trino-browser-report-regression-summary-json>
+  --summary-input-json <raw-free-trino-shared-deployment-summary-json>
+  --summary-input-json <raw-free-trino-support-gap-summary-json>
+  --require-current-tracking-summaries --summary-json
+  <raw-free-trino-production-closure-summary-json>` run, so the current
+  collector, representative-evidence, query-linked, product-metadata,
+  report-optimizer, browser-report, shared-deployment, and support-gap
+  tracking summaries are checked together, collector and representative-evidence
+  summaries must link the same retained representative handoff, the closure
+  summary records raw-free `current_tracking_summary_status` and
+  `invalid_current_tracking_summary_count`, treats present-but-invalid retained
+  tracking summaries as a failed tracking status, records raw-free
+  `representative_evidence_linkage_status` and
+  `representative_evidence_linkage_invalid_summary_count` plus
+  `representative_evidence_linkage_missing_summary_count`, treats invalid or
+  missing linkage participant summaries as a failed linkage status, records
+  raw-free per-gate `gate_tracking` entries plus `gate_tracking_counts` for
+  accepted, missing, invalid, and not-required tracking inputs, CLI output
+  prints the matching path-free `current_tracking_summary`,
+  `representative_evidence_linkage`, and `gate_tracking` labels, and the
+  bounded production claim is `bounded_production_claim_ready`;
+- no LLM report output, Query Optimizer jobs, Running workflow, product
+  metadata collection, query-history crawling, generated SQL, SQL execution, or
+  broader/shared production expansion unless those product surfaces are
+  implemented and tested separately. The current public README claim is limited
+  to local web retained-list Recent, One Query ID, raw-free materialized
+  Details, deterministic Python Report, and optimizer guidance lanes.
 
 ## Official References
 
