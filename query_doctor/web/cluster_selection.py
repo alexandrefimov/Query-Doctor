@@ -424,7 +424,11 @@ def cluster_select_label(cluster: WebClusterConfig) -> str:
 
 
 def trino_support_mode_label(cluster: WebClusterConfig | WebSettings) -> str:
-    return "Trino" if cluster.trino_support_mode == "production" else "Trino Beta"
+    if cluster.trino_support_mode == "production":
+        return "Trino"
+    if cluster.trino_support_mode == TRINO_SUPPORT_MODE_BETA or cluster.trino_beta_enabled:
+        return "Trino Beta"
+    return "Trino"
 
 
 def cluster_trino_beta_query_ready(cluster: WebClusterConfig) -> bool:

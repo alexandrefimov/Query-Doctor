@@ -505,7 +505,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var label = trinoChoice && trinoChoice.closest ? trinoChoice.closest('label') : null;
     var strong = label && label.querySelector ? label.querySelector('strong') : null;
     var text = strong && strong.textContent ? strong.textContent.trim() : '';
-    return text || 'Trino Beta';
+    return text || 'Trino';
   }
   function selectedTrinoDisplayLabel(root) {
     var selector = root && root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');

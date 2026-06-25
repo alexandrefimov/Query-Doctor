@@ -1932,7 +1932,8 @@ def test_recent_run_panel_exposes_engine_selector_without_secret_config(tmp_path
     html = render_batch_run_panel(settings, {"engine": "trino"}, diagnosis_target="query")
 
     assert "Trino Beta" in html
-    assert "Configured locally" in html
+    assert "<small>Configured locally</small>" not in html
+    assert "<small>Production</small>" not in html
     assert (
         "Running scans, query-history crawling, metadata collection, "
         "LLM reports, Query Optimizer jobs, generated SQL, and SQL execution "
@@ -1954,6 +1955,28 @@ def test_recent_run_panel_exposes_engine_selector_without_secret_config(tmp_path
     assert "adds metadata when configured" not in html
     assert 'name="engine"' in html
     assert 'value="trino"' in html
+    assert COORDINATOR_URL not in html
+    assert str(tmp_path) not in html
+
+
+def test_recent_run_panel_uses_plain_trino_label_in_production_mode(
+    tmp_path: Path,
+) -> None:
+    settings = _trino_settings(
+        tmp_path,
+        trino_support_mode="production",
+        trino_beta_enabled=False,
+    )
+
+    html = render_batch_run_panel(settings, {"engine": "trino"}, diagnosis_target="query")
+
+    assert "Trino Beta" not in html
+    assert "<strong>Trino</strong>" in html
+    assert "<small>Configured locally</small>" not in html
+    assert "<small>Production</small>" not in html
+    assert "Run Trino" in html
+    assert "Run Trino Beta" not in html
+    assert "Trino supports bounded retained-list Recent diagnosis" in html
     assert COORDINATOR_URL not in html
     assert str(tmp_path) not in html
 
@@ -2056,7 +2079,8 @@ def test_recent_run_panel_does_not_mark_partial_trino_beta_source_ready(
         "Partial Trino source</option>" in html
     )
     assert "Partial Trino source - Trino Beta One Query ID" not in html
-    assert "Configure local Trino first" in html
+    assert "Trino requires trino_support_mode, coordinator URL, and source contracts" in html
+    assert "Configure local Trino first" not in html
     assert (
         'name="engine_choice" value="trino" data-engine-choice disabled aria-disabled="true"'
         in html
@@ -2129,7 +2153,9 @@ def test_recent_run_panel_disables_trino_beta_until_local_config_exists(
 
     html = render_batch_run_panel(settings, {"engine": "trino"}, diagnosis_target="query")
 
-    assert "Configure local Trino first" in html
+    assert "Trino Beta" not in html
+    assert "Trino requires trino_support_mode, coordinator URL, and source contracts" in html
+    assert "Configure local Trino first" not in html
     assert (
         'name="engine_choice" value="trino" data-engine-choice disabled aria-disabled="true"'
         in html
