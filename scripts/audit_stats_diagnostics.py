@@ -35,6 +35,15 @@ DETAIL_KINDS = (
     "unknown_detail",
 )
 GENERIC_COLUMN_STATS_COUNTER_SIGNAL = "column stats gap is not tied to specific join/filter columns"
+RAW_FREE_STATS_TEXT_FIELDS = (
+    "reasons",
+    "counter_signals",
+    "suggested_review_areas",
+    "required_confirmation",
+    "evidence_detail",
+    "evidence_source",
+    "evidence_fallback_reason",
+)
 SUMMARY_SCHEMA_VERSION = "stats_diagnostics_audit_v1"
 URL_RE = re.compile(r"\bhttps?://", re.IGNORECASE)
 LOCAL_PATH_RE = re.compile(r"(?<![\w/])(?:/private)?/tmp/|(?<![\w/])/Users/")
@@ -129,6 +138,9 @@ def audit_case(result: StatsDiagnosticsAuditResult, case: dict[str, Any]) -> Non
         return
     result.actionable_candidate_count += 1
 
+    if candidate_has_raw_like_text(candidate):
+        result.issue_counts["stats_actionable_raw_like_text"] += 1
+
     score = numeric_value(candidate.get("score"))
     score_floor = ACTIONABLE_TIER_SCORE_FLOORS[tier]
     if score is None:
@@ -201,8 +213,31 @@ def confirmation_readiness(confirmations: tuple[str, ...]) -> str:
     return "comparable_rerun" if has_compare and has_rerun else "incomplete"
 
 
+def candidate_has_raw_like_text(candidate: dict[str, Any]) -> bool:
+    return any(
+        raw_like_summary_text(text)
+        for field in RAW_FREE_STATS_TEXT_FIELDS
+        for text in candidate_text_values(candidate.get(field))
+    )
+
+
+def candidate_text_values(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        text = value.strip()
+        return (text[:240],) if text else ()
+    if not isinstance(value, (list, tuple)):
+        return ()
+    result: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            result.append(text[:240])
+    return tuple(result)
+
+
 def add_readiness_issues(result: StatsDiagnosticsAuditResult) -> None:
     for category in (
+        "stats_actionable_raw_like_text",
         "stats_actionable_missing_score",
         "stats_actionable_score_below_tier_floor",
         "stats_actionable_low_confidence",
@@ -415,7 +450,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         help=(
             "Return non-zero when medium/high stats candidates lack score/tier strength, "
             "structured metadata detail, usable metadata status, review areas, or comparable "
-            "rerun confirmation."
+            "rerun confirmation, or contain raw-like text."
         ),
     )
     parser.add_argument(

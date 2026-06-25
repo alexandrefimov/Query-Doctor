@@ -5,6 +5,8 @@ import json
 from scripts.audit_impala_synthetic_north_star_gate import (
     FIXTURE_ROOT,
     audit_fixture,
+    build_gate_aggregate,
+    gate_threshold_issues,
     main,
 )
 
@@ -27,11 +29,23 @@ def test_committed_synthetic_impala_north_star_gate_passes() -> None:
         "unknown_primary_collector_gap_cases": 0,
         "unknown_primary_evidence_gap_cases": 0,
         "unknown_primary_rate_percent": 18.1818,
+        "unsafe_unknown_primary_reason_cases": 0,
         "unknown_primary_unclassified_resolution_cases": 0,
     }
     assert result.aggregate["coverage"]["unknown_primary_resolution_counts"] == {
         "clean_short_no_action_boundary": 2,
     }
+    assert result.aggregate["coverage"]["unknown_primary_category_counts"] == {
+        "analyzer_primary_branch_gap": 2,
+    }
+    assert result.aggregate["coverage"]["top_unknown_primary_categories"] == [
+        {
+            "category": "analyzer_primary_branch_gap",
+            "closure_track": "add_deterministic_primary_branch_evidence",
+            "unknown_primary_cases": 2,
+            "unknown_share_percent": 100.0,
+        }
+    ]
     assert result.aggregate["coverage"]["unknown_primary_resolution_class_counts"] == {
         "no_action_boundary": 2,
     }
@@ -94,6 +108,56 @@ def test_synthetic_impala_north_star_gate_fails_when_outcome_threshold_is_not_me
         "committed_north_star_aggregate_out_of_date",
     )
     assert main(["--action-outcome-min-applied", "6"]) == 1
+
+
+def test_synthetic_impala_north_star_gate_fails_unsafe_unknown_primary_reason() -> None:
+    coverage = audit_fixture().aggregate["coverage"]
+    coverage["current"] = dict(coverage["current"])
+    coverage["current"]["gate_passed"] = True
+    coverage["unknown_primary_reason_counts"] = {
+        "no_primary_branch_supported": 1,
+        "unsafe_reason": 1,
+    }
+    outcome = audit_fixture().aggregate["outcome"]
+
+    aggregate = build_gate_aggregate(
+        coverage,
+        outcome,
+        coverage_ok=True,
+        outcome_ok=True,
+    )
+
+    assert aggregate["current"]["coverage_gate_passed"] is False
+    assert aggregate["current"]["outcome_gate_passed"] is True
+    assert aggregate["current"]["gate_passed"] is False
+    assert aggregate["current"]["unsafe_unknown_primary_reason_cases"] == 1
+    assert aggregate["coverage"]["unknown_primary_reason_counts"] == {
+        "no_primary_branch_supported": 1,
+        "unsafe_reason": 1,
+    }
+    assert aggregate["coverage"]["unknown_primary_category_counts"] == {
+        "analyzer_primary_branch_gap": 1,
+        "unsafe_unknown_primary_reason": 1,
+    }
+    assert aggregate["coverage"]["top_unknown_primary_categories"] == [
+        {
+            "category": "analyzer_primary_branch_gap",
+            "closure_track": "add_deterministic_primary_branch_evidence",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 50.0,
+        },
+        {
+            "category": "unsafe_unknown_primary_reason",
+            "closure_track": "remove_raw_like_unknown_primary_reason_text",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 50.0,
+        },
+    ]
+    assert gate_threshold_issues(aggregate) == (
+        "unsafe_unknown_primary_reason",
+        "north_star_coverage_gate_failed",
+        "synthetic_north_star_gate_failed",
+    )
 
 
 def test_synthetic_impala_north_star_aggregate_is_raw_free() -> None:

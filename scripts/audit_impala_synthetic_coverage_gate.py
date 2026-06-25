@@ -15,6 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from query_doctor.analyzer.unknown_primary_taxonomy import (  # noqa: E402
+    top_unknown_category_payload,
+    unknown_category_counts,
+)
 from scripts.audit_impala_coverage_gaps import (  # noqa: E402
     CoverageAuditResult,
     audit_summaries,
@@ -136,10 +140,18 @@ def build_gate_aggregate(
     unknown_primary_cases = int(result.primary_counts.get("unknown", 0))
     unknown_rate = rate_value(unknown_primary_cases, result.total_cases)
     medium_rate = rate_value(result.medium_or_better_primary_count, result.total_cases)
+    unknown_categories = unknown_category_counts(
+        result.unknown_primary_reason_counts,
+        unknown_primary_cases=unknown_primary_cases,
+    )
+    unsafe_unknown_primary_reason_cases = int_value(
+        result.unknown_primary_reason_counts.get("unsafe_reason", 0)
+    )
     gate_passed = (
         result.total_cases > 0
         and unknown_rate < max_unknown_primary_rate
         and medium_rate >= min_medium_primary_rate
+        and unsafe_unknown_primary_reason_cases == 0
     )
     current = {
         "total_cases": result.total_cases,
@@ -148,6 +160,7 @@ def build_gate_aggregate(
         "unknown_primary_rate_percent": unknown_rate,
         "medium_or_better_primary_cases": result.medium_or_better_primary_count,
         "medium_or_better_primary_rate_percent": medium_rate,
+        "unsafe_unknown_primary_reason_cases": unsafe_unknown_primary_reason_cases,
         "gate_passed": gate_passed,
     }
     return {
@@ -160,6 +173,13 @@ def build_gate_aggregate(
         "current": current,
         "unknown_primary_reason_counts": safe_unknown_reason_count_dict(
             result.unknown_primary_reason_counts
+        ),
+        "unknown_primary_category_counts": {
+            key: value for key, value in sorted(unknown_categories.items()) if value > 0
+        },
+        "top_unknown_primary_categories": top_unknown_category_payload(
+            unknown_categories,
+            unknown_primary_cases=unknown_primary_cases,
         ),
         "unknown_primary_resolution_counts": safe_unknown_resolution_count_dict(
             result.unknown_primary_resolution_counts
@@ -182,6 +202,8 @@ def gate_threshold_issues(aggregate: dict[str, Any]) -> tuple[str, ...]:
     current = aggregate.get("current")
     current = current if isinstance(current, dict) else {}
     issues: list[str] = []
+    if int_value(current.get("unsafe_unknown_primary_reason_cases")) > 0:
+        issues.append("unsafe_unknown_primary_reason")
     if not current.get("gate_passed"):
         issues.append("synthetic_primary_coverage_gate_failed")
     if int_value(current.get("total_cases")) <= 0:

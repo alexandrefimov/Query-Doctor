@@ -866,6 +866,61 @@ def test_workload_diagnostics_audit_does_not_count_legacy_unverified_outcomes(
     assert result.action_outcome_verification_counts["family_unverified_applied_2_3"] == 1
 
 
+def test_workload_diagnostics_audit_requires_action_hints_for_strict_readiness(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        summary_with_workload(
+            cases=[
+                case_row(
+                    1,
+                    duration_sec=30.0,
+                    primary_label="unknown",
+                    score_severity="high",
+                    stats_tier="low",
+                ),
+                case_row(
+                    2,
+                    duration_sec=40.0,
+                    primary_label="unknown",
+                    score_severity="high",
+                    stats_tier="low",
+                ),
+            ],
+            groups=[
+                workload_group(
+                    regression="none",
+                    sample_count=0,
+                    baseline_p95=None,
+                    primary_top="unknown",
+                    score_top="high",
+                )
+            ],
+        ),
+    )
+
+    default_result = audit_summary(summary_path)
+    assert default_result.ok
+    assert default_result.detail_action_hint_counts["0"] == 1
+    assert default_result.issue_counts["workload_action_hints_missing"] == 1
+
+    result = audit_summary(summary_path, fail_on_workload_readiness_gaps=True)
+
+    assert not result.ok
+    assert {issue.category for issue in result.issues} == {"workload_action_hints_missing"}
+    assert result.workload_group_count == 1
+    assert result.workload_detail_count == 1
+    assert result.action_queue_count == 0
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "workload_action_hints_missing" in text
+    assert FP_A not in text
+    assert str(tmp_path) not in text
+
+
 def test_workload_diagnostics_audit_can_fail_strict_readiness_gaps(
     tmp_path: Path,
 ) -> None:

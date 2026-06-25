@@ -384,6 +384,7 @@ def test_impala_coverage_gap_audit_can_fail_strict_diagnostic_coverage_gaps(
         "missing_primary_bottleneck_label",
         "unknown_primary_rate",
         "medium_primary_rate",
+        "unsafe_unknown_primary_reason",
     }
     assert result.primary_counts["unknown"] == 4
     assert result.primary_counts["missing"] == 1
@@ -410,6 +411,95 @@ def test_impala_coverage_gap_audit_can_fail_strict_diagnostic_coverage_gaps(
 
     assert main([str(summary_path)]) == 0
     assert main([str(summary_path), "--fail-on-diagnostic-coverage-gaps"]) == 1
+
+
+def test_impala_coverage_gap_audit_fails_unsafe_unknown_primary_reason(
+    tmp_path: Path,
+) -> None:
+    cases: list[dict[str, object]] = []
+    for index in range(1, 10):
+        cases.append(
+            {
+                "case_index": index,
+                "case_dir": write_case(tmp_path, index, base_analysis()),
+                "case_primary_bottleneck": {
+                    "label": "stats",
+                    "confidence": "medium",
+                    "reasons": ["stats_supported"],
+                },
+            }
+        )
+    cases.append(
+        {
+            "case_index": 10,
+            "case_dir": write_case(tmp_path, 10, base_analysis()),
+            "case_primary_bottleneck": {
+                "label": "unknown",
+                "confidence": "low",
+                "reasons": ["SELECT secret_col FROM private.customer_orders"],
+            },
+        }
+    )
+    summary_path = write_summary(tmp_path, cases)
+
+    default_result = audit_summaries([summary_path])
+    assert default_result.ok
+
+    result = audit_summaries([summary_path], fail_on_diagnostic_coverage_gaps=True)
+
+    assert not result.ok
+    assert [issue.category for issue in result.issues] == ["unsafe_unknown_primary_reason"]
+    assert result.strict_primary_coverage_case_count == 10
+    assert result.strict_unknown_primary_count == 1
+    assert result.strict_medium_or_better_primary_count == 9
+    assert result.strict_unknown_primary_reason_counts == {"unsafe_reason": 1}
+    assert primary_gate_payload(result)["strict"]["unknown_rate_passed"] is True
+    assert primary_gate_payload(result)["strict"]["medium_rate_passed"] is True
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "unsafe_unknown_primary_reason" in text
+    assert "unsafe_reason" in text
+    assert "secret_col" not in text
+    assert "private.customer_orders" not in text
+    assert str(tmp_path) not in text
+
+    summary_json = tmp_path / "coverage-unsafe-summary.json"
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--fail-on-diagnostic-coverage-gaps",
+                "--summary-json",
+                str(summary_json),
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["counters"]["unknown_primary_category_counts"] == {
+        "unsafe_unknown_primary_reason": 1
+    }
+    assert payload["counters"]["strict_unknown_primary_category_counts"] == {
+        "unsafe_unknown_primary_reason": 1
+    }
+    assert payload["counters"]["top_unknown_primary_categories"] == [
+        {
+            "category": "unsafe_unknown_primary_reason",
+            "closure_track": "remove_raw_like_unknown_primary_reason_text",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 100.0,
+        }
+    ]
+    assert payload["counters"]["top_strict_unknown_primary_categories"] == [
+        {
+            "category": "unsafe_unknown_primary_reason",
+            "closure_track": "remove_raw_like_unknown_primary_reason_text",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 100.0,
+        }
+    ]
 
 
 def test_impala_coverage_gap_audit_strict_rates_ignore_clean_and_short_unknown(
@@ -730,6 +820,18 @@ def test_impala_coverage_audit_reports_memory_estimate_context_only_unknown(
     assert payload["counters"]["strict_unknown_primary_reason_counts"] == {
         "memory_estimate_context_only": 1
     }
+    assert payload["counters"]["unknown_primary_category_counts"] == {"memory_context_only_gap": 1}
+    assert payload["counters"]["strict_unknown_primary_category_counts"] == {
+        "memory_context_only_gap": 1
+    }
+    assert payload["counters"]["top_unknown_primary_categories"] == [
+        {
+            "category": "memory_context_only_gap",
+            "closure_track": "add_selected_query_memory_pressure_evidence",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 100.0,
+        }
+    ]
 
 
 def test_impala_coverage_reason_summary_preserves_safe_composites() -> None:

@@ -6,7 +6,8 @@
     "medium_or_better_primary_rate_percent": 81.8182,
     "total_cases": 11,
     "unknown_primary_cases": 2,
-    "unknown_primary_rate_percent": 18.1818
+    "unknown_primary_rate_percent": 18.1818,
+    "unsafe_unknown_primary_reason_cases": 0
   },
   "schema_version": "impala_synthetic_coverage_gate_aggregate_v1",
   "source_fixture": "synthetic_demo_pack_0_5_0_primary_coverage_gate",
@@ -35,6 +36,17 @@
   "unknown_primary_reason_counts": {
     "no_primary_branch_supported": 2
   },
+  "unknown_primary_category_counts": {
+    "analyzer_primary_branch_gap": 2
+  },
+  "top_unknown_primary_categories": [
+    {
+      "category": "analyzer_primary_branch_gap",
+      "unknown_primary_cases": 2,
+      "unknown_share_percent": 100.0,
+      "closure_track": "add_deterministic_primary_branch_evidence"
+    }
+  ],
   "unknown_primary_resolution_counts": {
     "clean_short_no_action_boundary": 2
   }

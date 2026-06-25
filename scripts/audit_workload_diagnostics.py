@@ -382,6 +382,8 @@ def audit_workload_group(
         result.issue_counts["workload_representatives_missing"] += 1
     action_hint_count = len(detail.action_hints)
     result.detail_action_hint_counts[count_bucket(action_hint_count)] += 1
+    if action_hint_count <= 0:
+        result.issue_counts["workload_action_hints_missing"] += 1
     required_recommendation_ids = workload_detail_required_recommendation_ids(detail)
     if audit_action_outcome_feedback:
         if required_recommendation_ids:
@@ -700,6 +702,7 @@ def add_readiness_issues(result: WorkloadDiagnosticsAuditResult) -> None:
         "regression_without_baseline",
         "workload_detail_missing",
         "workload_representatives_missing",
+        "workload_action_hints_missing",
         "workload_action_hint_incomplete",
         "workload_action_hint_without_comparable_verification",
         "workload_action_queue_without_comparable_verification",

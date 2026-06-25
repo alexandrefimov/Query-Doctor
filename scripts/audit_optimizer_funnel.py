@@ -71,6 +71,7 @@ REPEATED_NO_RECIPE_GUIDANCE_GAPS = {
     "missing_review_area",
     "missing_verification",
     "missing_workload_metric",
+    "raw_like_candidate_reason",
     "weak_workload_metric",
     "weak_verification",
     "weak_no_draft_contract",
@@ -1035,6 +1036,8 @@ def repeated_no_recipe_guidance_readiness(rollup: WorkloadRollup) -> str:
         optimizer_no_recipe_review_only_contract(track)
     ):
         return "weak_no_draft_contract"
+    if rollup.candidate_reasons.get("unsafe_reason", 0) > 0:
+        return "raw_like_candidate_reason"
     return "guidance_ready"
 
 
