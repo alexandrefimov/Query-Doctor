@@ -1,6 +1,6 @@
 # Справочник конфигурации
 
-Last reviewed: 2026-06-19
+Last reviewed: 2026-06-22
 
 Язык: [English](../../configuration.md) | Русский
 
@@ -81,23 +81,26 @@ environment variables или local env files, описанных в
   source page/link. Он не должен тихо менять collection owner filters или
   optimizer policy.
 
-## Trino Beta Recent и One Query ID
+## Trino Local Recent и One Query ID
 
-Trino Beta в web UI является local lane для bounded retained-list Recent
-diagnosis и одного explicit Query ID. Recent читает один bounded pruned
-coordinator query list после принятого local query-list source contract, затем
-читает bounded pruned coordinator QueryInfo payloads через QueryInfo source
-contract для выбранных retained rows. One Query ID использует тот же bounded
-QueryInfo path для одного explicit ID. Оба пути строят raw-free boundary in
-memory и показывают deterministic compact diagnosis. Это не production Trino
-support.
+Trino local web mode является bounded local production lane для retained-list Recent diagnosis и
+одного explicit Query ID. `trino_support_mode=beta` сохраняет existing Trino
+Beta label; `trino_support_mode=production` убирает beta label для тех же
+bounded raw-free local production surfaces. Recent читает один bounded pruned coordinator
+query list после принятого local query-list source contract, затем читает
+bounded pruned coordinator QueryInfo payloads через QueryInfo source contract
+для выбранных retained rows. One Query ID использует тот же bounded QueryInfo
+path для одного explicit ID. Оба пути строят raw-free boundary in memory и
+показывают deterministic compact diagnosis. Production mode означает local
+production support только для этих surfaces и не включает broader Trino
+production triage.
 
 Минимальные non-secret JSON fields:
 
 ```json
 {
   "engine": "trino",
-  "trino_beta_enabled": true,
+  "trino_support_mode": "beta",
   "trino_coordinator_url": "https://trino-coordinator.example.com",
   "trino_query_info_source_contract": "./trino-query-info-contract.json",
   "trino_query_list_source_contract": "./trino-query-list-contract.json",
@@ -114,18 +117,31 @@ file с одним operator-managed `Authorization:` header line, либо
 local test-cluster override `trino_kerberos_insecure_tls`. Secret values и
 ticket contents не хранятся в JSON. Для auth-header mode используйте JSON key
 `"trino_auth_header_file"` вместо Kerberos keys.
-Cluster entries могут иметь отдельные Trino Beta keys для разных local targets.
-Web UI помечает configured sources как `Trino Beta Recent + One Query ID`,
-`Trino Beta Recent` или `Trino Beta One Query ID`. Diagnose Engine control
-сужает Source cluster selector до Impala-capable sources или Trino Beta-ready
-sources до выбора workflow. Web UI не показывает coordinator URLs, auth
-reference paths/values, local source-contract paths, raw QueryInfo, raw
-query-list payloads или raw SQL, и fail-closed для stale или forged Trino
-submits до analysis или async job creation.
+`trino_beta_enabled=true` остается legacy beta-only switch для existing local
+configs. Он maps to `trino_support_mode=beta`, когда explicit mode не задан, и
+не должен комбинироваться с `trino_support_mode=production`.
+Cluster entries могут иметь отдельные Trino keys для разных local targets. Web
+UI помечает configured beta sources как `Trino Beta Recent + One Query ID`,
+`Trino Beta Recent` или `Trino Beta One Query ID`; configured production-mode
+sources используют такие же labels без `Beta`. Diagnose Engine control сужает
+Source cluster selector до Impala-capable sources или Trino-ready sources до
+выбора workflow. Web UI не показывает coordinator URLs, auth reference
+paths/values, local source-contract paths, raw QueryInfo, raw query-list
+payloads или raw SQL, и fail-closed для stale или forged Trino submits до
+analysis или async job creation.
 
-Trino Beta не включает Running scans, query-history crawling, metadata
-collection, Details/trusted reports, optimizer behavior, generated Trino SQL
-или SQL execution.
+Trino не включает Running scans, query-history crawling, metadata collection,
+LLM reports, Query Optimizer jobs, generated Trino SQL или SQL execution.
+Raw-free Details view, deterministic Python Report и optimizer guidance доступны
+только после materialized server-owned case artifacts из local web Recent или
+One Query ID lane.
+
+Standalone команда `query-doctor-trino-metadata-cli-summary` не добавляет web
+config fields. Она принимает `--source-contract`, `--trino-cli`, `--server` и
+`--connector-family` явно для одного local operator run, проверяет metadata
+allowlist contract и выводит только sanitized aggregate metadata summary. Она
+не подключена к Recent, Details, reports, optimizer actions или web metadata
+collection.
 
 ## Owner Raw и D3 viewer header
 

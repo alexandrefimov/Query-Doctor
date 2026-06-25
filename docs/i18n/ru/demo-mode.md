@@ -36,8 +36,8 @@ query-doctor-web --public-demo
 подключает `batch_summary.json`, synthetic `action_outcomes.jsonl` и static
 `trino_demo.json`, включает Python-only mode, игнорирует default local config
 discovery и owner-source env, отклоняет explicitly loaded
-CM/Impala/Prometheus/metadata/Trino Beta/source-owner settings и блокирует все
-POST routes.
+CM/Impala/Prometheus/metadata/Trino local source/source-owner settings и
+блокирует все POST routes.
 
 Если нужно вручную посмотреть или переиспользовать generated pack, используйте
 dedicated temp output path:

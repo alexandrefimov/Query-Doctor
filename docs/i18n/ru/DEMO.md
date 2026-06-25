@@ -33,8 +33,8 @@ web UI к этому pack, включает Python-only mode, игнорируе
 и owner-source environment hints, отклоняет explicitly loaded external source
 settings и блокирует все POST routes. Pack также содержит static read-only
 Trino Beta demo cases из raw-free compact diagnosis facts; они не обращаются к
-Trino coordinator и не включают Details, trusted reports, optimizer behavior,
-generated SQL или SQL execution.
+Trino coordinator и не включают materialized Details, Python Report, optimizer
+behavior, generated SQL или SQL execution.
 
 Если нужно вручную посмотреть или переиспользовать generated pack:
 
@@ -59,8 +59,8 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
 
 Synthetic pack не вызывает Cloudera Manager, Impala, Prometheus, local
 generation backend или network и не является performance evidence. Trino Beta
-demo section показывает bounded compact diagnosis demo, а не production Trino
-support.
+demo section показывает bounded static compact diagnosis demo, а не live Trino
+source и не broader/shared Trino production support.
 
 ## Read-only public demo
 
