@@ -122,7 +122,9 @@ when fast PR CI is green.
 
 Confirm public docs state only implemented behavior:
 
-- Apache Impala is the only implemented production triage query engine.
+- Apache Impala is the full production triage query engine. Trino production
+  support is limited to the bounded local raw-free lanes listed below and in
+  the support matrix.
 - Current Cloudera Manager collection is validated against the maintained test
   environment.
 - Direct Impala daemon collection supports bounded Recent and Running scans
@@ -132,6 +134,15 @@ Confirm public docs state only implemented behavior:
   Impala or Cloudera distributions.
 - Prometheus runtime metrics are optional bounded context for explicitly
   configured direct Impala workflows.
+- Shared/non-local `owner_raw` source access is claimed only for deployment
+  behind a trusted SSO/auth proxy via `viewer_identity_header` after
+  `python3 scripts/audit_owner_raw_sso_proxy_support_readiness.py --deployment-bundle-summary-json <raw-free-d3-deployment-bundle-summary.json>`
+  passes over the raw-free D3 bundle summary. The trusted front door owns
+  authentication, MFA, session lifecycle, token handling, inbound-header
+  stripping, and exactly-one normalized viewer injection; Query Doctor does not
+  implement native OIDC, SAML, SPNEGO, Kerberos, LDAP, password, MFA, session,
+  group, RBAC, or token auth and must not gate raw reveal on collection
+  credentials or keytab ownership.
 - Broader live engine support and Cluster Doctor product workflows are roadmap
   seams only.
 - Trino support is described only as sanitized offline evidence package import,
@@ -140,33 +151,61 @@ Confirm public docs state only implemented behavior:
   local query-list aggregate import, bounded local statement-stats import,
   bounded local pruned QueryInfo import, event-source contract checking,
   dry-run coordinator query-info target checking, metadata source-contract
-  checking, one-query pruned coordinator query-info probing/import, local
+  checking, bounded local metadata CLI summary building, one-query pruned coordinator query-info probing/import, local
   compact diagnosis over raw-free direct boundary JSON excluding metadata
   summary boundaries or selected package sample boundaries, isolated local
   compact-diagnosis rendering for the same already raw-free inputs, and the
-  local web Trino Beta retained-list Recent lane over one bounded retained
+  local production web Trino retained-list Recent lane over one bounded retained
   pruned coordinator query-list read plus selected pruned QueryInfo reads, and
-  the local web Trino Beta One Query ID lane over one bounded pruned coordinator
-  QueryInfo read and the same raw-free compact diagnosis; it is not Running live
-  collection, broader Trino coordinator query-history collection,
-  Details/trusted report output, optimizer behavior, metadata collection, Query
-  Doctor-generated Trino SQL, SQL execution, or production Trino support beyond
-  the local retained-list Recent and One Query ID beta lanes.
-- Trino Beta web lanes have a passing local-config readiness audit before demo
+  the local production web Trino One Query ID lane over one bounded pruned coordinator
+  QueryInfo read and the same raw-free compact diagnosis, plus raw-free Trino
+  Details over server-owned materialized web cases from those lanes and
+  deterministic Python Report plus optimizer guidance over the same facts; it is not
+  Running live collection, broader Trino coordinator query-history collection,
+  LLM report output, Query Optimizer jobs, product metadata collection, Query
+  Doctor-generated Trino SQL, user SQL execution, or broader/shared Trino production support beyond
+  the local retained-list Recent, One Query ID, raw-free materialized Details,
+  Python Report, and optimizer guidance local production lanes.
+- Trino local production web lanes have a passing local-config readiness audit before demo
   or release handoff, followed by a bounded live smoke when an intentional local
   source is available:
   `python3 scripts/audit_trino_beta_release_readiness.py --config <ignored-local-web-config.json> --selected-query-limit 1`.
+  `python3 scripts/audit_trino_shared_deployment_preflight.py --config <ignored-local-web-config.json>`.
+  `python3 scripts/audit_trino_shared_deployment_boundary.py --config <ignored-local-web-config.json>`.
   `python3 scripts/audit_trino_web_beta_readiness.py --require-query-id --require-recent`.
   `python3 scripts/audit_trino_web_beta_live_smoke.py --config <ignored-local-web-config.json> --selected-query-limit 1`.
   `scripts/query-doctor-web-trino-beta-smoke --config <ignored-local-web-config.json> --limit 1`.
   The bundle is the preferred one-command handoff path and supports
-  `--static-only` when no intentional local source is available. The audit must
-  report only raw-free counts and issue IDs and must perform no coordinator
-  network read or SQL execution. The live smoke may perform only the bounded
-  Trino Beta Recent and selected QueryInfo reads, emits only raw-free counts and
-  issue IDs, and performs no SQL execution. The web UI smoke must validate
-  Recent plus One Query ID through the local form/job path without printing
-  Query IDs, coordinator URLs, auth references, local paths, or raw payloads.
+  `--static-only` when no intentional local source is available. The static
+  and local-config gates must report only raw-free counts and issue IDs and
+  must perform no coordinator network read or SQL execution. The shared
+  deployment preflight is a dev-only/static wrapper over the shared boundary
+  audit, product-surface audit, support-gap audit, and active-docs check; it
+  performs no coordinator network read, live smoke, UI smoke, metadata
+  collection, or SQL execution and does not add broader/shared Trino
+  production support. The shared deployment boundary audit is dev-only/static;
+  for shared or non-local Trino web deployment it requires trusted front-door
+  viewer identity and raw-source isolation per
+  [trino-shared-deployment-hardening.md](trino-shared-deployment-hardening.md),
+  reports no config paths, header names, users, Query IDs, coordinator URLs,
+  auth references, source-contract paths, or raw payloads, and does not add
+  broader/shared Trino production support. For shared/non-local Trino configs,
+  `--trusted-front-door-reviewed` is required only after the operator verifies
+  that the trusted front door strips inbound viewer headers and sets exactly
+  one normalized simple viewer value. When
+  `--metadata-smoke-*` flags are supplied with
+  `--metadata-smoke-redaction-reviewed`, the bundle may also run the dev-only
+  metadata CLI summary smoke. That optional gate uses operator metadata inputs,
+  may contact the coordinator only through the operator-installed Trino CLI,
+  executes only Python-owned read-only metadata statements, writes or prints
+  only raw-free smoke and aggregate summaries, and must not expose paths, URLs,
+  users, object identifiers, metadata values, CLI stdout/stderr, or raw
+  payloads. It does not add product metadata collection. The live smoke may
+  perform only the bounded Trino Recent and selected QueryInfo reads, emits only
+  raw-free counts and issue IDs, and performs no SQL execution. The web UI
+  smoke must validate Recent plus One Query ID through the local form/job path
+  without printing Query IDs, coordinator URLs, auth references, local paths, or
+  raw payloads.
 - Query Optimizer is read-only and does not execute pasted query text.
 - Known Query ID may generate the deterministic Python report in its explicit
   submit job. LLM reports and details-page optimizer drafts are explicit

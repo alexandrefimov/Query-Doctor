@@ -1,15 +1,19 @@
 # Query Doctor 0.9.0 Release Notes
 
-Release date: 2026-06-19
+Release date: TBD
 Package: `query-doctor` 0.9.0
 Supported production diagnostic engine: Apache Impala
 Release focus: web diagnostics, actionable safe errors, Trino Beta demo
-coverage, and release validation depth
+coverage, trusted SSO/auth proxy deployment for owner-raw access, and release
+validation depth
 
 0.9.0 is an Impala-first product hardening release. It keeps Apache Impala as
 the only production-supported diagnostic engine while making browser failures
 more actionable, tightening scan workflow state, and adding bounded Trino Beta
 demo and local-readiness coverage without promoting Trino to production triage.
+It also supports shared/non-local `owner_raw` deployment behind a trusted
+SSO/auth proxy through `viewer_identity_header` after the raw-free D3
+support-readiness gate passes.
 
 ## Highlights
 
@@ -31,6 +35,12 @@ demo and local-readiness coverage without promoting Trino to production triage.
 - Synthetic demo data now includes raw-free read-only Trino Beta demo cases.
   Demo startup avoids accidental default local config discovery when launched
   from an explicit synthetic batch summary.
+- Shared/non-local `owner_raw` source access can now be deployed behind a
+  trusted SSO/auth proxy through `viewer_identity_header` after the raw-free D3
+  support-readiness gate validates the front-door review, disabled-source
+  rehearsal, source-enable canary, post-enable closure, and launch-closure
+  chain. Query Doctor still does not implement native OIDC, SAML, SPNEGO,
+  Kerberos, LDAP, password, MFA, session, group, RBAC, or token auth.
 - Installed-package release smokes now include Trino Beta web flows and the
   broader installed user-path matrix.
 
@@ -80,6 +90,10 @@ demo and local-readiness coverage without promoting Trino to production triage.
 - Direct JSON profile, `/profile_docs`, and `/admission?json` probes remain
   optional compatibility surfaces. Missing old-cluster endpoints degrade to
   unknown or not-configured unless explicitly required.
+- Shared/non-local `owner_raw` raw source reveal is supported only behind a
+  trusted auth front door that strips inbound copies and injects exactly one
+  normalized simple viewer value through `viewer_identity_header`; collection
+  credentials or keytab ownership never grant raw reveal.
 - Spark remains bounded compact support only and is not promoted to production
   Spark triage, Recent scans, Details/trusted reports, optimizer behavior,
   broad live collection, raw event logs, SQL/plans, environment/log dumps, or
@@ -89,7 +103,8 @@ demo and local-readiness coverage without promoting Trino to production triage.
 
 The 0.9.0 release candidate is validated with the public release gate, full
 test suite, package artifact checks, installed user-path smokes, installed
-Trino Beta web smoke, and available bounded live smokes before publication.
+Trino Beta web smoke, the raw-free SSO/auth proxy support-readiness gate, and
+available bounded live smokes before publication.
 The repeatable validation path is:
 
 - `PUBLIC_RELEASE=1 scripts/local_gate.sh`
@@ -104,6 +119,7 @@ The repeatable validation path is:
 - `python3 scripts/installed_trino_beta_web_smoke.py --bin-dir <installed-venv>/bin --replace-work-dir`
 - `python3 scripts/installed_user_paths_smoke.py --bin-dir <installed-venv>/bin --replace-work-dir`
 - `python3 scripts/index_install_quickstart_smoke.py --version 0.9.0 --replace-work-dir`
+- `python3 scripts/audit_owner_raw_sso_proxy_support_readiness.py --deployment-bundle-summary-json <raw-free-d3-deployment-bundle-summary.json>`
 
 ## Upgrade Notes
 
