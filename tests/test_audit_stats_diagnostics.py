@@ -108,7 +108,7 @@ def test_stats_diagnostics_audit_can_fail_strict_readiness_gaps(tmp_path: Path) 
                 metadata_status="skipped",
                 candidate=stats_candidate(
                     need_type="insufficient_metadata",
-                    evidence_detail=["raw table private.customer_orders /tmp/profile"],
+                    evidence_detail=["unclassified stats evidence"],
                     review_areas=[],
                     confirmations=["check later"],
                 ),
@@ -154,6 +154,51 @@ def test_stats_diagnostics_audit_can_fail_strict_readiness_gaps(tmp_path: Path) 
 
     assert main([str(summary_path)]) == 0
     assert main([str(summary_path), "--fail-on-stats-readiness-gaps"]) == 1
+
+
+def test_stats_diagnostics_audit_fails_raw_like_candidate_text(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            stats_case(
+                1,
+                candidate=stats_candidate(
+                    evidence_detail=["join/filter column stats coverage partial: 1/3 complete"],
+                    review_areas=["check table private.customer_orders"],
+                    confirmations=["compare EXPLAIN then rerun under comparable load"],
+                )
+                | {
+                    "reasons": [
+                        "SELECT secret_col FROM private.customer_orders",
+                        "local profile /private/tmp/case-001",
+                    ],
+                },
+            ),
+        ],
+    )
+
+    default_result = audit_summary(summary_path)
+    assert default_result.ok
+
+    result = audit_summary(summary_path, fail_on_stats_readiness_gaps=True)
+
+    assert not result.ok
+    assert {issue.category for issue in result.issues} == {"stats_actionable_raw_like_text"}
+    assert result.issue_counts["stats_actionable_raw_like_text"] == 1
+    assert result.evidence_detail_counts["join_filter_column_stats"] == 1
+    assert result.confirmation_counts == {"comparable_rerun": 1}
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "stats_actionable_raw_like_text" in text
+    assert "secret_col" not in text
+    assert "private.customer_orders" not in text
+    assert "/private/tmp" not in text
+    assert "case-001" not in text
+    assert str(tmp_path) not in text
 
 
 def test_stats_diagnostics_audit_requires_actionable_candidate_strength(
@@ -321,7 +366,7 @@ def test_stats_diagnostics_audit_writes_raw_free_summary_json(tmp_path: Path) ->
     assert payload["status"] == "issues"
     assert payload["metrics"] == {
         "actionable_stats_candidates": 2,
-        "issues": 6,
+        "issues": 7,
         "stats_candidates": 2,
         "total_cases": 2,
     }
@@ -329,6 +374,7 @@ def test_stats_diagnostics_audit_writes_raw_free_summary_json(tmp_path: Path) ->
         "stats_actionable_generic_column_stats_evidence": 1,
         "stats_actionable_missing_comparable_confirmation": 1,
         "stats_actionable_missing_review_area": 1,
+        "stats_actionable_raw_like_text": 1,
         "stats_actionable_unsupported_need_type": 1,
         "stats_actionable_without_usable_metadata": 1,
         "stats_actionable_without_specific_detail": 1,

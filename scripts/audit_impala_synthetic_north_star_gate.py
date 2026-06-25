@@ -25,6 +25,10 @@ from scripts.audit_impala_synthetic_coverage_gate import (  # noqa: E402
 from scripts.audit_impala_synthetic_outcome_gate import (  # noqa: E402
     audit_fixture as audit_outcome_fixture,
 )
+from query_doctor.analyzer.unknown_primary_taxonomy import (  # noqa: E402
+    top_unknown_category_payload,
+    unknown_category_counts,
+)
 from scripts.audit_impala_north_star_gate import (  # noqa: E402
     top_unknown_resolution_class_payload,
     unknown_resolution_class_counts,
@@ -119,14 +123,23 @@ def build_gate_aggregate(
 ) -> dict[str, Any]:
     coverage_current = safe_mapping(coverage.get("current"))
     outcome_current = safe_mapping(outcome.get("current"))
-    gate_passed = bool(coverage_ok and outcome_ok)
+    coverage_unknown_primary_reasons = safe_mapping(coverage.get("unknown_primary_reason_counts"))
+    unsafe_unknown_primary_reason_cases = int_value(
+        coverage_unknown_primary_reasons.get("unsafe_reason")
+    )
+    coverage_gate_passed = bool(coverage_ok and unsafe_unknown_primary_reason_cases == 0)
+    gate_passed = bool(coverage_gate_passed and outcome_ok)
     unknown_primary_cases = int_value(coverage_current.get("unknown_primary_cases"))
     unknown_resolution_classes = synthetic_unknown_resolution_class_counts(
         coverage,
         unknown_primary_cases=unknown_primary_cases,
     )
+    unknown_categories = synthetic_unknown_category_counts(
+        coverage,
+        unknown_primary_cases=unknown_primary_cases,
+    )
     current = {
-        "coverage_gate_passed": bool(coverage_ok),
+        "coverage_gate_passed": coverage_gate_passed,
         "outcome_gate_passed": bool(outcome_ok),
         "unknown_primary_cases": unknown_primary_cases,
         "unknown_primary_rate_percent": float_value(
@@ -153,6 +166,7 @@ def build_gate_aggregate(
         "unknown_primary_collector_gap_cases": int_value(
             unknown_resolution_classes.get("collector_wall_clock_gap")
         ),
+        "unsafe_unknown_primary_reason_cases": unsafe_unknown_primary_reason_cases,
         "unknown_primary_unclassified_resolution_cases": int_value(
             unknown_resolution_classes.get("unknown_resolution_not_reported", 0)
             + unknown_resolution_classes.get("unknown_resolution_unmapped", 0)
@@ -169,6 +183,7 @@ def build_gate_aggregate(
         "current": current,
         "coverage": coverage_summary_payload(
             coverage,
+            unknown_categories=unknown_categories,
             unknown_resolution_classes=unknown_resolution_classes,
             unknown_primary_cases=unknown_primary_cases,
         ),
@@ -194,6 +209,7 @@ def build_gate_aggregate(
 def coverage_summary_payload(
     coverage: dict[str, Any],
     *,
+    unknown_categories: Counter[str],
     unknown_resolution_classes: Counter[str],
     unknown_primary_cases: int,
 ) -> dict[str, Any]:
@@ -202,6 +218,13 @@ def coverage_summary_payload(
         "current": current,
         "unknown_primary_reason_counts": safe_mapping(
             coverage.get("unknown_primary_reason_counts")
+        ),
+        "unknown_primary_category_counts": {
+            key: value for key, value in sorted(unknown_categories.items()) if value > 0
+        },
+        "top_unknown_primary_categories": top_unknown_category_payload(
+            unknown_categories,
+            unknown_primary_cases=unknown_primary_cases,
         ),
         "unknown_primary_resolution_counts": safe_mapping(
             coverage.get("unknown_primary_resolution_counts")
@@ -252,6 +275,8 @@ def prefixed_issues(prefix: str, issues: Iterable[str]) -> tuple[str, ...]:
 def gate_threshold_issues(aggregate: dict[str, Any]) -> tuple[str, ...]:
     current = safe_mapping(aggregate.get("current"))
     issues: list[str] = []
+    if int_value(current.get("unsafe_unknown_primary_reason_cases")) > 0:
+        issues.append("unsafe_unknown_primary_reason")
     if not current.get("coverage_gate_passed"):
         issues.append("north_star_coverage_gate_failed")
     if not current.get("outcome_gate_passed"):
@@ -279,6 +304,15 @@ def synthetic_unknown_resolution_class_counts(
         resolution_counts,
         unknown_primary_cases=unknown_primary_cases,
     )
+
+
+def synthetic_unknown_category_counts(
+    coverage: dict[str, Any],
+    *,
+    unknown_primary_cases: int,
+) -> Counter[str]:
+    reason_counts = Counter(safe_mapping(coverage.get("unknown_primary_reason_counts")))
+    return unknown_category_counts(reason_counts, unknown_primary_cases=unknown_primary_cases)
 
 
 def int_value(value: object) -> int:

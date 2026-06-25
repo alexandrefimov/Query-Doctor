@@ -17,16 +17,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.audit_impala_coverage_gaps import (  # noqa: E402
-    audit_summaries as audit_coverage_summaries,
-    safe_unknown_reason_count_dict,
-    safe_unknown_resolution_count_dict,
-)
 from scripts.audit_optimizer_funnel import audit_summary as audit_optimizer_summary  # noqa: E402
 from scripts.audit_profile_evidence_gates import audit_summary as audit_profile_summary  # noqa: E402
 from scripts.audit_recent_details import audit_summary as audit_details_summary  # noqa: E402
 from scripts.audit_stats_diagnostics import audit_summary as audit_stats_summary  # noqa: E402
 from scripts.audit_workload_diagnostics import audit_summary as audit_workload_summary  # noqa: E402
+from scripts.audit_impala_coverage_gaps import (  # noqa: E402
+    audit_summaries as audit_coverage_summaries,
+    safe_unknown_reason_count_dict,
+    safe_unknown_resolution_count_dict,
+)
+from query_doctor.analyzer.unknown_primary_taxonomy import unknown_category_counts  # noqa: E402
 from query_doctor.report.safety_validation import contains_raw_sql_like_text  # noqa: E402
 from query_doctor.report.language_contract import SUPPORTED_REPORT_LANGUAGES  # noqa: E402
 from query_doctor.report.trusted_text import validate_report_for_mode  # noqa: E402
@@ -596,8 +597,32 @@ def coverage_metrics(result: Any) -> tuple[tuple[str, str], ...]:
 
 
 def coverage_breakdowns(result: Any) -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
+    primary_counts = getattr(result, "primary_counts", {})
+    unknown_primary_cases = 0
+    if hasattr(primary_counts, "get"):
+        unknown_primary_cases = int_value(primary_counts.get("unknown", 0))
+    unknown_primary_reason_counts = Counter(
+        safe_unknown_reason_count_dict(getattr(result, "unknown_primary_reason_counts", {}))
+    )
+    strict_unknown_primary_reason_counts = Counter(
+        safe_unknown_reason_count_dict(
+            getattr(
+                result,
+                "strict_unknown_primary_reason_counts",
+                {},
+            )
+        )
+    )
+    unknown_primary_category_counts = unknown_category_counts(
+        unknown_primary_reason_counts,
+        unknown_primary_cases=unknown_primary_cases,
+    )
+    strict_unknown_primary_category_counts = unknown_category_counts(
+        strict_unknown_primary_reason_counts,
+        unknown_primary_cases=int_value(getattr(result, "strict_unknown_primary_count", 0)),
+    )
     return breakdown_pairs(
-        primary_counts=getattr(result, "primary_counts", {}),
+        primary_counts=primary_counts,
         primary_confidence_counts=getattr(result, "primary_confidence_counts", {}),
         primary_classifier_drift_counts=getattr(result, "primary_classifier_drift_counts", {}),
         strict_primary_out_of_scope_counts=getattr(
@@ -605,13 +630,7 @@ def coverage_breakdowns(result: Any) -> tuple[tuple[str, tuple[tuple[str, str], 
             "strict_primary_out_of_scope_counts",
             {},
         ),
-        strict_unknown_primary_reason_counts=safe_unknown_reason_count_dict(
-            getattr(
-                result,
-                "strict_unknown_primary_reason_counts",
-                {},
-            )
-        ),
+        strict_unknown_primary_reason_counts=strict_unknown_primary_reason_counts,
         source_compatibility_counts=getattr(result, "source_compatibility_counts", {}),
         optional_source_counts=getattr(result, "optional_source_counts", {}),
         source_status_counts=getattr(result, "source_status_counts", {}),
@@ -623,9 +642,9 @@ def coverage_breakdowns(result: Any) -> tuple[tuple[str, tuple[tuple[str, str], 
             {},
         ),
         evidence_quality_counts=getattr(result, "evidence_quality_counts", {}),
-        unknown_primary_reason_counts=safe_unknown_reason_count_dict(
-            getattr(result, "unknown_primary_reason_counts", {})
-        ),
+        unknown_primary_reason_counts=unknown_primary_reason_counts,
+        unknown_primary_category_counts=unknown_primary_category_counts,
+        strict_unknown_primary_category_counts=strict_unknown_primary_category_counts,
         unknown_primary_resolution_counts=safe_unknown_resolution_count_dict(
             getattr(result, "unknown_primary_resolution_counts", {})
         ),

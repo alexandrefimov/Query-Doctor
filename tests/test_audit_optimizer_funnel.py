@@ -311,8 +311,8 @@ def test_optimizer_funnel_audit_treats_repeated_unsupported_derived_shape_as_gui
                 "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
                 "query_optimization_candidate": query_candidate(
                     reasons=[
-                        "SELECT secret_col FROM example_guarded.table",
-                        "local path /Users/example/query-doctor/cases/case-001",
+                        "nested derived-table boundary needs manual review",
+                        "aggregate and ordering boundary require selected-case validation",
                     ]
                 ),
                 "optimizer_rewrite_support": {
@@ -338,8 +338,8 @@ def test_optimizer_funnel_audit_treats_repeated_unsupported_derived_shape_as_gui
                 "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
                 "query_optimization_candidate": query_candidate(
                     reasons=[
-                        "SELECT another_secret FROM example_guarded.table",
-                        "local path /tmp/query-doctor/cases/case-002",
+                        "nested derived-table boundary needs manual review",
+                        "aggregate and ordering boundary require selected-case validation",
                     ]
                 ),
                 "optimizer_rewrite_support": {
@@ -678,6 +678,17 @@ def test_repeated_no_recipe_guidance_readiness_requires_safe_guidance_contract()
     assert not optimizer_funnel.optimizer_review_only_text_has_no_draft_manual_contract(
         "Review filters, compare EXPLAIN, then rerun the repeated group."
     )
+    assert (
+        repeated_no_recipe_guidance_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={"single_relation_filter_review": 2},
+                candidate_reasons={"unsafe_reason": 1},
+            )
+        )
+        == "raw_like_candidate_reason"
+    )
 
 
 def test_optimizer_funnel_audit_fails_weak_no_recipe_workload_metric(
@@ -936,6 +947,71 @@ def test_optimizer_funnel_audit_output_is_aggregate_and_raw_free(tmp_path: Path)
     assert "wf_...aaaaaaaa" in text
 
 
+def test_optimizer_funnel_audit_fails_raw_like_repeated_no_recipe_candidate_reason(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT secret_col FROM example_guarded.table",
+                        "local path /Users/example/query-doctor/cases/case-001",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "high",
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(
+                    reasons=["large exchange volume before downstream processing"]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+        ],
+    )
+
+    default_result = audit_summary(summary_path, recompute_support=False)
+    assert default_result.ok
+
+    result = audit_summary(
+        summary_path,
+        recompute_support=False,
+        fail_on_repeated_no_recipe_readiness_gaps=True,
+    )
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert not result.ok
+    assert result.repeated_no_recipe_review_readiness_counts == {"specific_track": 1}
+    assert result.repeated_no_recipe_guidance_readiness_counts == {"raw_like_candidate_reason": 1}
+    assert [issue.category for issue in result.issues] == ["raw_like_candidate_reason"]
+    assert "raw_like_candidate_reason" in text
+    assert "secret_col" not in text
+    assert "example_guarded.table" not in text
+    assert "/Users/example" not in text
+    assert str(tmp_path) not in text
+
+
 def test_optimizer_funnel_audit_writes_raw_free_summary_json(tmp_path: Path):
     summary_path = write_summary(
         tmp_path,
@@ -949,8 +1025,8 @@ def test_optimizer_funnel_audit_writes_raw_free_summary_json(tmp_path: Path):
                     score=50,
                     tier="medium",
                     reasons=[
-                        "SELECT secret_col FROM example_guarded.table",
-                        "local path /Users/example/query-doctor/cases/case-001",
+                        "nested derived-table boundary needs manual review",
+                        "aggregate and ordering boundary require selected-case validation",
                     ],
                 ),
                 "optimizer_rewrite_support": {

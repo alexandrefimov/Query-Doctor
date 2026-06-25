@@ -193,6 +193,10 @@ def test_impala_loop_coverage_breakdowns_include_unknown_reasons_and_resolutions
             (("memory_estimate_context_only_data_movement_context_only", "3"),),
         ),
         (
+            "strict_unknown_primary_category_counts",
+            (("mixed_unknown_evidence_gap", "3"),),
+        ),
+        (
             "unknown_primary_resolution_counts",
             (("diagnostic_evidence_gap", "2"),),
         ),

@@ -36,6 +36,13 @@ from query_doctor.analyzer.runtime_admission import (  # noqa: E402
     runtime_admission_facts_from_analysis,
 )
 from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis  # noqa: E402
+from query_doctor.analyzer.unknown_primary_taxonomy import (  # noqa: E402
+    UNKNOWN_CATEGORY_CLOSURE_TRACK as UNKNOWN_CATEGORY_CLOSURE_TRACK,
+    UNKNOWN_REASON_CATEGORY_BY_REASON as UNKNOWN_REASON_CATEGORY_BY_REASON,
+    top_unknown_category_payload as top_unknown_category_payload,
+    unknown_category_counts as unknown_category_counts,
+    unknown_reason_category as unknown_reason_category,
+)
 from query_doctor.report.safety_validation import contains_raw_sql_like_text  # noqa: E402
 from query_doctor.safety import redaction  # noqa: E402
 from scripts.audit_profile_evidence_gates import (  # noqa: E402
@@ -715,6 +722,17 @@ def add_diagnostic_coverage_issues(
             "missing_primary_bottleneck_label",
             f"strict diagnostic coverage requires explicit primary labels "
             f"({missing_label_count} missing)",
+        )
+
+    unsafe_unknown_reason_count = result.strict_unknown_primary_reason_counts.get(
+        "unsafe_reason", 0
+    )
+    if unsafe_unknown_reason_count:
+        add_issue(
+            result,
+            "unsafe_unknown_primary_reason",
+            "strict diagnostic coverage requires raw-free unknown-primary reasons "
+            f"({unsafe_unknown_reason_count} unsafe)",
         )
 
     strict_count = result.strict_primary_coverage_case_count
@@ -1872,6 +1890,21 @@ def rate_value(count: int, total: int) -> float:
 
 
 def summary_counter_payload(result: CoverageAuditResult) -> dict[str, object]:
+    unknown_primary_cases = int_value(result.primary_counts.get("unknown", 0))
+    unknown_primary_reason_counts = Counter(
+        safe_unknown_reason_count_dict(result.unknown_primary_reason_counts)
+    )
+    strict_unknown_primary_reason_counts = Counter(
+        safe_unknown_reason_count_dict(result.strict_unknown_primary_reason_counts)
+    )
+    unknown_primary_category_counts = unknown_category_counts(
+        unknown_primary_reason_counts,
+        unknown_primary_cases=unknown_primary_cases,
+    )
+    strict_unknown_primary_category_counts = unknown_category_counts(
+        strict_unknown_primary_reason_counts,
+        unknown_primary_cases=result.strict_unknown_primary_count,
+    )
     counters = {
         "primary_counts": result.primary_counts,
         "primary_confidence_counts": result.primary_confidence_counts,
@@ -1916,6 +1949,23 @@ def summary_counter_payload(result: CoverageAuditResult) -> dict[str, object]:
             values = safe_count_dict(counter.items())
         if safe_name and values:
             payload[safe_name] = values
+    category_payloads = {
+        "unknown_primary_category_counts": safe_count_dict(unknown_primary_category_counts.items()),
+        "strict_unknown_primary_category_counts": safe_count_dict(
+            strict_unknown_primary_category_counts.items()
+        ),
+        "top_unknown_primary_categories": top_unknown_category_payload(
+            unknown_primary_category_counts,
+            unknown_primary_cases=unknown_primary_cases,
+        ),
+        "top_strict_unknown_primary_categories": top_unknown_category_payload(
+            strict_unknown_primary_category_counts,
+            unknown_primary_cases=result.strict_unknown_primary_count,
+        ),
+    }
+    for name, values in category_payloads.items():
+        if values:
+            payload[name] = values
     return payload
 
 

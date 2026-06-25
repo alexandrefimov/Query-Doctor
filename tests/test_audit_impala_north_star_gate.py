@@ -45,6 +45,7 @@ def test_impala_north_star_gate_passes_retained_loop_summary(tmp_path: Path) -> 
         "unknown_primary_collector_gap_cases": 0,
         "unknown_primary_evidence_gap_cases": 2,
         "unknown_primary_rate_percent": 20.0,
+        "unsafe_unknown_primary_reason_cases": 0,
         "unknown_primary_unclassified_resolution_cases": 0,
     }
     assert result.aggregate["coverage"]["unknown_primary_reason_counts"] == {
@@ -389,6 +390,56 @@ def test_impala_north_star_gate_fails_coverage_thresholds(tmp_path: Path) -> Non
     )
     assert result.aggregate["current"]["unknown_primary_rate_percent"] == 40.0
     assert result.aggregate["current"]["medium_or_better_primary_rate_percent"] == 40.0
+    assert main([str(summary_path)]) == 1
+
+
+def test_impala_north_star_gate_fails_unsafe_unknown_primary_reason(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_loop_summary(
+        tmp_path,
+        unknown_primary_reason_counts={
+            "no_primary_branch_supported": 1,
+            "unsafe_reason": 1,
+        },
+    )
+
+    result = audit_retained_summaries([summary_path])
+
+    assert not result.ok
+    assert result.issues == (
+        "unsafe_unknown_primary_reason",
+        "north_star_coverage_gate_failed",
+        "impala_north_star_gate_failed",
+    )
+    assert result.aggregate["current"]["input_gate_passed"] is True
+    assert result.aggregate["current"]["outcome_gate_passed"] is True
+    assert result.aggregate["current"]["coverage_gate_passed"] is False
+    assert result.aggregate["current"]["unknown_primary_rate_percent"] == 20.0
+    assert result.aggregate["current"]["medium_or_better_primary_rate_percent"] == 80.0
+    assert result.aggregate["current"]["unsafe_unknown_primary_reason_cases"] == 1
+    assert result.aggregate["coverage"]["unknown_primary_reason_counts"] == {
+        "no_primary_branch_supported": 1,
+        "unsafe_reason": 1,
+    }
+    assert result.aggregate["coverage"]["unknown_primary_category_counts"] == {
+        "analyzer_primary_branch_gap": 1,
+        "unsafe_unknown_primary_reason": 1,
+    }
+    assert result.aggregate["coverage"]["top_unknown_primary_categories"] == [
+        {
+            "category": "analyzer_primary_branch_gap",
+            "closure_track": "add_deterministic_primary_branch_evidence",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 50.0,
+        },
+        {
+            "category": "unsafe_unknown_primary_reason",
+            "closure_track": "remove_raw_like_unknown_primary_reason_text",
+            "unknown_primary_cases": 1,
+            "unknown_share_percent": 50.0,
+        },
+    ]
     assert main([str(summary_path)]) == 1
 
 
