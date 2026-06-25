@@ -38,6 +38,9 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
   browser-side engine switching updates the One Query ID submit button. Legacy
   beta sources keep `Run Trino Beta`, while production-mode sources use
   `Run Trino`.
+- The Diagnose Engine control no longer shows secondary support subtitles under
+  the Impala and Trino choices. Unconfigured or production-mode Trino now uses
+  the plain `Trino` label, while legacy beta sources still show `Trino Beta`.
 - Trino bounded local production support claim is now release-aligned. The
   support-gap audit reports `bounded_production_claim_pinned` and
   `broader_production_closure_status=bounded_production_claim_ready`, the

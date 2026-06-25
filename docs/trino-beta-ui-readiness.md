@@ -38,20 +38,21 @@ Trino product output for the selected workflow.
 
 ## Required UI Behavior
 
-- The source selector marks configured sources as `Trino Beta Recent + One
-  Query ID`, `Trino Beta Recent`, or `Trino Beta One Query ID` without exposing
-  coordinator URLs, source-contract paths, auth-reference paths, local paths,
-  raw artifact names, or secrets.
+- The source selector marks configured beta sources as `Trino Beta Recent + One
+  Query ID`, `Trino Beta Recent`, or `Trino Beta One Query ID`, and configured
+  production-mode sources with the same suffixes without `Beta`, without
+  exposing coordinator URLs, source-contract paths, auth-reference paths, local
+  paths, raw artifact names, or secrets.
 - The Engine control narrows the Source cluster selector before workflow
-  selection: Impala shows only Impala-capable sources, and Trino Beta shows
-  only Trino Beta-ready sources.
+  selection: Impala shows only Impala-capable sources, and Trino shows only
+  Trino-ready sources.
 - The workflow disables unsupported Trino choices before submit. Running must
-  not be shown as a Trino Beta scan path, and Recent must be disabled unless the
+  not be shown as a Trino scan path, and Recent must be disabled unless the
   selected source has the query-list source contract.
 - The Query ID form uses Trino-specific label, placeholder, help text, and
   `Run Trino Beta` submit copy when Trino Beta is active; production mode uses
   the same copy without `Beta`.
-- The Recent form uses Trino-safe defaults when Trino Beta is active: no
+- The Recent form uses Trino-safe defaults when Trino is active: no
   metadata collection, no user/resource-pool/query-type filters, and no
   Running mode fallback.
 - Async jobs use Trino-specific stage and terminal wording, and never reuse

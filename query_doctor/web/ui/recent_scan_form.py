@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from query_doctor.source_visibility import collectable_owner_users
 from query_doctor.trino.support_mode import (
     TRINO_SUPPORT_MODE_OFF,
+    trino_support_mode_is_beta,
     trino_support_mode_enabled,
     trino_support_mode_is_production,
 )
@@ -260,7 +261,11 @@ def render_batch_run_panel(
         impala_ready=impala_available,
         trino_beta_ready=trino_beta_available,
         selected_source_trino_beta_ready=trino_beta_ready,
-        trino_label=trino_display_label(selected_settings if trino_beta_ready else settings),
+        trino_label=(
+            trino_display_label(selected_settings)
+            if trino_beta_ready
+            else first_ready_trino_display_label(settings)
+        ),
     )
     return (
         f'<{panel_tag} id="new-scan" class="panel batch-run-panel{" batch-run-panel--disclosure" if collapsed else ""}" aria-label="Run query diagnosis" data-diagnosis-target-root{panel_open}>'
@@ -375,11 +380,20 @@ def trino_settings_enabled(settings: Any) -> bool:
 
 
 def trino_display_label(settings: Any) -> str:
-    return (
-        "Trino"
-        if trino_support_mode_is_production(getattr(settings, "trino_support_mode", ""))
-        else "Trino Beta"
-    )
+    mode = getattr(settings, "trino_support_mode", "")
+    if trino_support_mode_is_production(mode):
+        return "Trino"
+    if trino_support_mode_is_beta(mode) or bool(getattr(settings, "trino_beta_enabled", False)):
+        return "Trino Beta"
+    return "Trino"
+
+
+def first_ready_trino_display_label(settings: Any) -> str:
+    clusters = tuple(getattr(settings, "clusters", ()) or ())
+    for cluster in clusters:
+        if cluster_trino_beta_query_ready(cluster) or cluster_trino_beta_recent_ready(cluster):
+            return trino_display_label(cluster)
+    return trino_display_label(settings)
 
 
 def trino_beta_recent_ready(settings: Any) -> bool:
@@ -461,15 +475,15 @@ def render_engine_control(
     ) -> str:
         checked = " checked" if selected == value else ""
         disabled_attr = ' disabled aria-disabled="true"' if disabled else ""
+        help_html = f"<small>{html.escape(help_text)}</small>" if help_text else ""
         return (
             "<label>"
             f'<input type="radio" name="engine_choice" value="{html.escape(value, quote=True)}" '
             f"data-engine-choice{checked}{disabled_attr}>"
-            f"<span><strong>{html.escape(label)}</strong><small>{html.escape(help_text)}</small></span>"
+            f"<span><strong>{html.escape(label)}</strong>{help_html}</span>"
             "</label>"
         )
 
-    trino_help = "Configured locally" if trino_beta_ready else "Configure local Trino first"
     selected_source_ready = (
         trino_beta_ready
         if selected_source_trino_beta_ready is None
@@ -491,8 +505,8 @@ def render_engine_control(
         f"{html.escape(readiness_note)}</div>"
         "</details></div>"
         '<div class="segmented engine-segmented" role="radiogroup" aria-labelledby="engine_label">'
-        f"{option('impala', 'Impala', 'Production', disabled=not impala_ready)}"
-        f"{option('trino', trino_label, trino_help, disabled=not trino_beta_ready)}"
+        f"{option('impala', 'Impala', '', disabled=not impala_ready)}"
+        f"{option('trino', trino_label, '', disabled=not trino_beta_ready)}"
         "</div>"
         "</div>"
     )
