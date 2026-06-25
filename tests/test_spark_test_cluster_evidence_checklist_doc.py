@@ -236,12 +236,13 @@ def test_spark_test_cluster_evidence_checklist_pins_readiness_audit() -> None:
 
 def test_spark_test_cluster_evidence_checklist_is_indexed_and_cross_linked() -> None:
     docs_index = DOCS_INDEX.read_text(encoding="utf-8")
-    ru_docs_index = RU_DOCS_INDEX.read_text(encoding="utf-8")
+    ru_docs_index = " ".join(RU_DOCS_INDEX.read_text(encoding="utf-8").split())
     architecture = SPARK_ARCHITECTURE_DOC.read_text(encoding="utf-8")
 
     assert "engines/spark-test-cluster-evidence-checklist.md" in docs_index
-    assert "engines/i18n/ru/spark-test-cluster-evidence-checklist.md" in docs_index
-    assert "spark-test-cluster-evidence-checklist.md" in ru_docs_index
+    assert "engines/i18n/ru/spark-test-cluster-evidence-checklist.md" not in docs_index
+    assert "spark-test-cluster-evidence-checklist.md" not in ru_docs_index
+    assert "engine deep-dive документы остаются English-only" in ru_docs_index
     assert "spark-test-cluster-evidence-checklist.md" in architecture
 
 

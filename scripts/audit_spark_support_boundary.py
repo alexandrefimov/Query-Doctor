@@ -71,7 +71,6 @@ REQUIRED_CHECKLIST_SNIPPETS = (
 REQUIRED_DOC_INDEX_SNIPPETS = (
     "Bounded compact Spark History Server/event-log fact-model, compact-only adapter",
     "without public engine support",
-    "bounded compact research контракт для Spark History Server/event-log fact model, compact-only adapter",
 )
 FORBIDDEN_STALE_REGISTRATION_SNIPPETS = (
     "must not add Spark engine registration",
@@ -201,11 +200,8 @@ def _audit_docs(result: SparkSupportBoundaryAuditResult, root: Path) -> None:
         _read_doc(root, relative_path)
         for relative_path in (
             "docs/README.md",
-            "docs/i18n/ru/README.md",
             "docs/engine-expansion-plan.md",
             "docs/engines/spark-architecture-spike.md",
-            "docs/engines/i18n/ru/spark-architecture-spike.md",
-            "docs/engines/i18n/ru/spark-test-cluster-evidence-checklist.md",
             "docs/changelog.md",
             "query_doctor/spark/__init__.py",
         )

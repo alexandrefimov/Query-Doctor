@@ -3,10 +3,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE_SUPPORT_MATRIX = ROOT / "docs" / "engine-support-gap-matrix.md"
-RU_ENGINE_SUPPORT_MATRIX = ROOT / "docs" / "i18n" / "ru" / "engine-support-gap-matrix.md"
 CODE_MAP = ROOT / "docs" / "code-map.md"
 CODEX_HANDOFF = ROOT / "docs" / "codex-handoff.md"
 README_RU = ROOT / "README.ru.md"
+RU_DOCS_INDEX = ROOT / "docs" / "i18n" / "ru" / "README.md"
 
 
 def test_spark_support_matrix_records_package_handoff_without_support_claim() -> None:
@@ -43,7 +43,7 @@ def test_spark_public_docs_index_package_code_under_experimental_boundary() -> N
     code_map = _normalized(CODE_MAP)
     handoff = _normalized(CODEX_HANDOFF)
     ru_readme = _normalized(README_RU)
-    ru_matrix = _normalized(RU_ENGINE_SUPPORT_MATRIX)
+    ru_docs_index = _normalized(RU_DOCS_INDEX)
 
     assert "Spark compact History Server intake and evidence packages" in code_map
     assert "spark_evidence_package.py" in code_map
@@ -75,31 +75,28 @@ def test_spark_public_docs_index_package_code_under_experimental_boundary() -> N
     assert "keeps the Spark adapter compact-only" in code_map
     assert "raw event-log download" in code_map
 
-    assert "build/validation are registered bounded compact support surfaces" in handoff
-    assert "accept only already compact samples for readiness handoff" in handoff
-    assert "scripts/spark_one_application_handoff.py" in handoff
-    assert "scripts/build_spark_one_application_handoff_suite_manifest.py" in handoff
-    assert "scripts/build_spark_evidence_package_from_one_application_suite.py" in handoff
-    assert "scripts/audit_spark_product_surface_boundary.py" in handoff
-    assert "--one-application-handoff-suite-manifest" in handoff
-    assert "write optional raw-free compact readiness summary JSON" in handoff
-    assert "spark_product_surface_boundary_audit_v1 summaries" in handoff
-    assert "optional retained product-surface summaries" in handoff
-    assert "against the no-product-surface boundary" in handoff
-    assert "sanitized package wrapper from explicit safe sample-case labels" in handoff
-    assert "without becoming a product CLI" in handoff
-    assert "dev-only handoff-suite manifest/audit" in handoff
-    assert "retained raw-free handoff summary JSON" in handoff
-    assert "diagnostic-lane checked/readiness/source-granularity/verification-scope" in handoff
-    assert "spark_support_boundary_audit_v1" in handoff
-    assert "not a Recent workflow" in handoff or "is not a Recent workflow" in handoff
+    assert "current support status" in handoff
+    assert "exact command, script, registry, and route ownership" in handoff
+    assert "Do not copy those inventories into this handoff" in handoff
+    assert "Spark is bounded to compact History Server intake" in handoff
+    assert "compact evidence-package build/validation/fixture export" in handoff
+    assert (
+        "retained raw-free readiness/product-surface/support audits listed in the support matrix"
+        in handoff
+    )
+    assert "The Spark adapter remains compact-only" in handoff
+    assert "no Recent workflow" in handoff
     assert "production Spark support claim" in handoff
+    assert "same_application" in handoff
+    assert (
+        "application-level jobs, stages, scheduler delay, spill, and task-duration context"
+        in handoff
+    )
 
     assert "compact evidence-package build/validation" in ru_readme
     assert "no public Spark engine support" in ru_readme
-    assert "registered bounded compact Spark History Server intake" in ru_matrix
-    assert "не принимает raw event logs" in ru_matrix
-    assert "diagnostic-lane drift" in ru_matrix
+    assert "engine deep-dive документы остаются English-only" in ru_docs_index
+    assert "engine-support-gap-matrix.md" in ru_docs_index
 
 
 def _normalized(path: Path) -> str:
