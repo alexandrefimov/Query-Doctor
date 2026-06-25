@@ -693,8 +693,7 @@ def render_results_table_legend(active_group: str, *, language: str = "en") -> s
         items = (
             ("Finding", "Main signal"),
             ("Priority", "Label + score"),
-            ("Table stats", "Available?"),
-            ("Metadata", "Context status"),
+            ("Next", "Open selected-case Details"),
         )
     rendered_items = "".join(
         f"<li><strong>{html.escape(label)}</strong><span>{html.escape(description)}</span></li>"
@@ -801,8 +800,7 @@ def render_batch_case_row(
             user_cell(view.user),
             score_cell(view),
             duration_cell(view.duration_sec),
-            stats_cell(view.table_stats_status),
-            metadata_cell(view.metadata_status),
+            details_action_cell(view, details_base_path=details_base_path),
         ]
     return f"<tr {row_attrs}>{''.join(cells)}</tr>"
 
@@ -914,6 +912,23 @@ def workload_group_impact_cell(view: RecentScanCaseRowView) -> str:
 
 def duration_cell(value: Any) -> str:
     return f'<td class="batch-cell--compact batch-cell--duration">{escape_value(display_seconds_label(value))}</td>'
+
+
+def details_action_cell(
+    view: RecentScanCaseRowView,
+    *,
+    details_base_path: str = "/batch/case",
+) -> str:
+    if not view.case_id:
+        return '<td class="batch-cell--compact batch-cell--action"></td>'
+    base_path = html.escape(details_base_path.rstrip("/"), quote=True)
+    case_id = html.escape(view.case_id, quote=True)
+    href = f"{base_path}/{case_id}"
+    return (
+        '<td class="batch-cell--compact batch-cell--action">'
+        f'<a class="batch-row-action" href="{href}">Open Details</a>'
+        "</td>"
+    )
 
 
 def display_seconds_label(value: Any) -> str:

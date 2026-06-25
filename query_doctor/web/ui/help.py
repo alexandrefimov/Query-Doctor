@@ -73,7 +73,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <section class="panel docs-panel help-panel" aria-label="Query Doctor help">
 <h1>Help</h1>
 <div class="report-body help-body">
-<p class="help-lede">Query Doctor is a local-first Big Data query diagnostics tool focused today on Apache Impala production triage for operators. It ranks suspicious Recent queries, collects bounded profile context, derives deterministic evidence, optionally enriches it with safe metadata and runtime context, and generates validated raw-free reports. The implemented production engine is Apache Impala. A local Trino Beta lane is available for configured retained-list Recent diagnosis and one configured Query ID, and is not production engine support.</p>
+<p class="help-lede">Query Doctor is a local-first Big Data query diagnostics tool focused on Apache Impala production triage, with bounded local Trino production lanes for operators. It ranks suspicious Recent queries, collects bounded profile context, derives deterministic evidence, optionally enriches it with safe metadata and runtime context, and generates validated raw-free reports. The full production triage engine is Apache Impala. Local Trino production support covers configured retained-list Recent diagnosis, one configured Query ID, raw-free materialized Details, deterministic Python Report, and optimizer guidance; <code>trino_support_mode=beta</code> keeps the beta label and production mode uses the same bounded local surface without expanding broader Trino production triage support.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
 <a class="help-card" href="/"><span>Diagnose</span><strong>Triage Recent queries or inspect one Known Query ID.</strong></a>
@@ -100,7 +100,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <h2>Quick start</h2>
 <ol class="help-step-list">
 <li><a href="/">Open Diagnose</a> and choose <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong> in the first control.</li>
-<li>Use <strong>Engine</strong> to keep production triage on <strong>Impala</strong>. <strong>Trino Beta</strong> becomes selectable only after local beta config is present, for retained-list <strong>Finished queries</strong> or <strong>One Query ID</strong>.</li>
+<li>Use <strong>Engine</strong> to keep production triage on <strong>Impala</strong>. <strong>Trino</strong> becomes selectable only after local Trino config is present, for retained-list <strong>Finished queries</strong> or <strong>One Query ID</strong>.</li>
 <li>Use <strong>Finished queries</strong> for normal batch triage. Use <strong>Running now</strong> only when you need a lower-confidence live snapshot.</li>
 <li>Switch to <strong>Known Query ID</strong> when you already have one query ID. Recent-query filters are intentionally hidden in that mode.</li>
 <li>Open a result row in the same tab and start with <strong>Recommended change</strong>: why it matters, where to inspect, what to try, and how to verify. Expand <strong>Diagnostics and evidence</strong> when you need pipeline state or analyzer basis.</li>
@@ -111,7 +111,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 
 <div class="help-topic-stack">
 <details id="workflows" class="help-topic">
-<summary><span>Workflows</span><small>Recent queries, Running now, Known Query ID, Trino Beta</small></summary>
+<summary><span>Workflows</span><small>Recent queries, Running now, Known Query ID, Trino</small></summary>
 <div class="help-topic-body">
 <p>Most demos and investigations start from <strong>Recent queries</strong>, the flagship production triage workflow. Use <strong>Known Query ID</strong> only when you already have one query ID and want to skip batch discovery.</p>
 
@@ -136,8 +136,8 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <h3>Known Query ID</h3>
 <p>Known Query ID is for one explicit query ID. Use the shared Cluster selector above What to analyze, then enter the Query ID and run analysis. {known_query_boundary}</p>
 <p>If you have one exported Impala text profile instead of live access, configure <code>manual_profile_dir</code> as a local profile inbox. Name the file with the Query ID slug by replacing <code>:</code> with <code>_</code>, for example <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>, then enter the original Query ID. The browser does not upload the profile; the server stages it through the bounded redacted analyzer path.</p>
-<h3>Trino Beta Recent and One Query ID</h3>
-<p>When <strong>Trino Beta</strong> is configured, <strong>Finished queries</strong> reads one bounded retained pruned coordinator query list, then bounded pruned coordinator QueryInfo payloads for selected rows; <strong>One Query ID</strong> performs the same bounded QueryInfo read for one explicit ID. Both render deterministic compact diagnosis from raw-free boundaries. Configured Trino Beta sources are marked in the Source cluster selector, and the Engine control narrows that selector to Impala-capable sources or Trino Beta-ready sources before workflow selection. Forged or stale Trino submits still fail closed before analysis or async job creation. It does not support Trino Running scans, query-history crawling, metadata collection, Details pages, trusted reports, optimizer behavior, generated Trino SQL, or SQL execution.</p>
+<h3>Trino Recent and One Query ID</h3>
+<p>When <strong>Trino</strong> is configured, <strong>Finished queries</strong> reads one bounded retained pruned coordinator query list, then bounded pruned coordinator QueryInfo payloads for selected rows; <strong>One Query ID</strong> performs the same bounded QueryInfo read for one explicit ID. Both render deterministic compact diagnosis from raw-free boundaries and can open a raw-free Details view plus deterministic Python Report and optimizer guidance after server-owned case materialization. Configured beta sources keep the Trino Beta labels in the Source cluster selector; configured production-mode sources use the same labels without Beta. The Engine control narrows that selector to Impala-capable sources or Trino-ready sources before workflow selection. Forged or stale Trino submits still fail closed before analysis or async job creation. It does not support Trino Running scans, query-history crawling, metadata collection, LLM reports, Query Optimizer jobs, generated Trino SQL, or SQL execution.</p>
 </div>
 </details>
 
@@ -155,8 +155,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <li><strong>User</strong> shows the sanitized query user when available.</li>
 <li><strong>Priority</strong> combines a word label with the deterministic analyzer score.</li>
 <li><strong>Duration</strong> comes from query summary data when available.</li>
-<li><strong>Table stats</strong> summarizes table or partition statistics availability.</li>
-<li><strong>Metadata</strong> summarizes read-only metadata collection status.</li>
+<li><strong>Next</strong> opens selected-case Details for the supported inspection, change, and verification path.</li>
 <li><strong>Rewrite opportunities</strong> use Finding, Candidate, Impact, Confidence, and Rewrite support columns.</li>
 <li><strong>Stats to check</strong> uses Finding, Candidate, Need, Speed benefit, and Confidence columns.</li>
 <li>Cases without triage severity and without Medium/High optimization or statistics update candidacy are intentionally hidden from separate result filters.</li>
@@ -254,7 +253,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <h3>Does runtime metrics context prove root cause?</h3>
 <p>Usually no. Runtime metrics are bounded context. They become stronger only when correlated with deterministic profile evidence.</p>
 <h3>Where is future engine scope documented?</h3>
-<p>Help covers current product workflows. Future engine and storage scope lives in the public roadmap and support matrix, while Apache Impala remains the production triage engine. Trino Beta is intentionally limited to configured retained-list Recent diagnosis and One Query ID.</p>
+<p>Help covers current product workflows. Future engine and storage scope lives in the public roadmap and support matrix, while Apache Impala remains the full production triage engine. Trino is intentionally limited to configured retained-list Recent diagnosis, One Query ID, raw-free materialized Details, deterministic Python Report, and optimizer guidance.</p>
 </div>
 </details>
 </div>
@@ -304,7 +303,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <section class="panel docs-panel help-panel" aria-label="Query Doctor help">
 <h1>Справка</h1>
 <div class="report-body help-body">
-<p class="help-lede">Query Doctor - local-first Big Data query diagnostics tool, сфокусированный сегодня на Apache Impala production triage для operators. Он ранжирует подозрительные Recent queries, собирает bounded profile context, выводит deterministic evidence, опционально обогащает его safe metadata и runtime context и генерирует validated raw-free reports. Реализованный production engine сейчас Apache Impala. Local Trino Beta lane доступен для configured retained-list Recent diagnosis и одного configured Query ID и не является production engine support.</p>
+<p class="help-lede">Query Doctor - local-first Big Data query diagnostics tool, сфокусированный на Apache Impala production triage и bounded local Trino production lanes для operators. Он ранжирует подозрительные Recent queries, собирает bounded profile context, выводит deterministic evidence, опционально обогащает его safe metadata и runtime context и генерирует validated raw-free reports. Полный production triage engine сейчас Apache Impala. Local Trino production support покрывает configured retained-list Recent diagnosis, один configured Query ID, raw-free materialized Details, deterministic Python Report и optimizer guidance; <code>trino_support_mode=beta</code> сохраняет beta label, а production mode использует тот же bounded local surface без расширения broader Trino production triage support.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
 <a class="help-card" href="/"><span>Диагностика</span><strong>Разобрать Recent queries или один Known Query ID.</strong></a>
@@ -331,7 +330,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <h2>Быстрый старт</h2>
 <ol class="help-step-list">
 <li><a href="/">Откройте Diagnose</a> и выберите <strong>Finished queries</strong>, <strong>Running now</strong> или <strong>One Query ID</strong> в первом переключателе.</li>
-<li><strong>Engine</strong> оставляет production triage на <strong>Impala</strong>. <strong>Trino Beta</strong> становится selectable только после local beta config, для retained-list <strong>Finished queries</strong> или <strong>One Query ID</strong>.</li>
+<li><strong>Engine</strong> оставляет production triage на <strong>Impala</strong>. <strong>Trino</strong> становится selectable только после local Trino config, для retained-list <strong>Finished queries</strong> или <strong>One Query ID</strong>.</li>
 <li>Для обычного batch triage используйте <strong>Finished queries</strong>. <strong>Running now</strong> оставляйте для live snapshot с меньшей уверенностью.</li>
 <li>Переключитесь на <strong>Known Query ID</strong>, если у вас уже есть один query ID. Фильтры Recent-query в этом режиме скрыты.</li>
 <li>Откройте строку результата в той же вкладке и начните с <strong>Рекомендуемое изменение</strong>: почему запрос важен, где проверить, что попробовать и как проверить rerun. <strong>Diagnostics and evidence</strong> раскрывайте, когда нужна техническая база.</li>
@@ -342,7 +341,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 
 <div class="help-topic-stack">
 <details id="workflows" class="help-topic">
-<summary><span>Рабочие режимы</span><small>Recent queries, Running now, Known Query ID, Trino Beta</small></summary>
+<summary><span>Рабочие режимы</span><small>Recent queries, Running now, Known Query ID, Trino</small></summary>
 <div class="help-topic-body">
 <p>Flagship workflow для operator triage - <strong>Recent queries</strong>. <strong>Known Query ID</strong> нужен, когда уже известен один query ID и batch discovery не требуется.</p>
 <h3>Recent queries</h3>
@@ -361,8 +360,8 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <h3>Known Query ID</h3>
 <p>Known Query ID анализирует один явный query ID. Используйте общий Cluster selector, введите Query ID и запустите analysis. {known_query_boundary}</p>
 <p>Если вместо live access есть один exported Impala text profile, настройте <code>manual_profile_dir</code> как local profile inbox. Назовите файл slug-версией Query ID: замените <code>:</code> на <code>_</code>, например <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>, затем введите исходный Query ID. Browser не загружает profile; server staged его через bounded redacted analyzer path.</p>
-<h3>Trino Beta Recent и One Query ID</h3>
-<p>Когда <strong>Trino Beta</strong> настроен, <strong>Finished queries</strong> читает один bounded retained pruned coordinator query list, затем bounded pruned coordinator QueryInfo payloads для выбранных rows; <strong>One Query ID</strong> выполняет тот же bounded QueryInfo read для одного explicit ID. Оба пути показывают deterministic compact diagnosis из raw-free boundaries. Configured Trino Beta sources помечаются в Source cluster selector, а Engine control сужает selector до Impala-capable sources или Trino Beta-ready sources до выбора workflow. Forged или stale Trino submits все равно fail closed до analysis или async job creation. Trino Beta не поддерживает Running scans, query-history crawling, metadata collection, Details pages, trusted reports, optimizer behavior, generated Trino SQL или SQL execution.</p>
+<h3>Trino Recent и One Query ID</h3>
+<p>Когда <strong>Trino</strong> настроен, <strong>Finished queries</strong> читает один bounded retained pruned coordinator query list, затем bounded pruned coordinator QueryInfo payloads для выбранных rows; <strong>One Query ID</strong> выполняет тот же bounded QueryInfo read для одного explicit ID. Оба пути показывают deterministic compact diagnosis из raw-free boundaries и могут открыть raw-free Details view плюс deterministic Python Report и optimizer guidance после server-owned case materialization. Configured beta sources сохраняют Trino Beta labels в Source cluster selector; configured production-mode sources используют такие же labels без Beta. Engine control сужает selector до Impala-capable sources или Trino-ready sources до выбора workflow. Forged или stale Trino submits все равно fail closed до analysis или async job creation. Trino не поддерживает Running scans, query-history crawling, metadata collection, LLM reports, Query Optimizer jobs, generated Trino SQL или SQL execution.</p>
 </div>
 </details>
 
@@ -377,6 +376,8 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <li><strong>Rank</strong> - порядок внутри текущей группы, не root-cause verdict.</li>
 <li><strong>Query ID</strong> открывает details page выбранного кейса.</li>
 <li><strong>Priority</strong> объединяет word label и deterministic analyzer score.</li>
+<li><strong>Duration</strong> показывает duration из query summary, когда оно доступно.</li>
+<li><strong>Next</strong> открывает Details выбранного кейса для supported inspection, change и verification path.</li>
 <li><strong>Rewrite opportunities</strong> и <strong>Stats to check</strong> показывают только поддержанные кандидаты для проверки.</li>
 </ul>
 </div>
@@ -457,7 +458,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <h3>Означает ли stats gap, что stats вызвали slowdown?</h3><p>Нет. Это statistics update candidate только когда metadata gaps, estimate mismatch и planning-sensitive runtime symptoms сходятся. Подтверждение требует EXPLAIN comparison и comparable rerun.</p>
 <h3>Доказывает ли runtime metrics context root cause?</h3><p>Обычно нет. Runtime metrics - bounded context. Они становятся сильнее только при correlation с deterministic profile evidence.</p>
 <h3>Где описан future engine scope?</h3>
-<p>Help описывает текущие product workflows. Future engine и storage scope живут в roadmap и support matrix; production triage engine сейчас Apache Impala. Trino Beta намеренно ограничен configured retained-list Recent diagnosis и One Query ID.</p>
+<p>Help описывает текущие product workflows. Future engine и storage scope живут в roadmap и support matrix; full production triage engine сейчас Apache Impala. Trino намеренно ограничен configured retained-list Recent diagnosis, One Query ID, raw-free materialized Details, deterministic Python Report и optimizer guidance.</p>
 </div>
 </details>
 </div>

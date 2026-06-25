@@ -300,8 +300,8 @@ document.addEventListener('DOMContentLoaded', function () {
     trino: {
       label: 'Trino Query ID',
       placeholder: '20260603_120102_00001_abcde',
-      button: 'Run Trino Beta',
-      help: 'One explicit Trino Query ID. Query Doctor reads one bounded, pruned coordinator QueryInfo payload through local beta config and renders compact raw-free diagnosis. Running scans, query-history crawling, metadata collection, Details/trusted reports, optimizer behavior, generated SQL, and SQL execution remain unavailable.'
+      button: 'Run Trino',
+      help: 'One explicit Trino Query ID. Query Doctor reads one bounded, pruned coordinator QueryInfo payload through local Trino config and renders compact raw-free diagnosis. Raw-free Details, Python Report, and optimizer guidance are available only after case materialization; Running scans, query-history crawling, metadata collection, LLM reports, Query Optimizer jobs, generated SQL, and SQL execution remain unavailable.'
     }
   };
   function syncDiagnosisCluster(root) {
@@ -495,8 +495,26 @@ document.addEventListener('DOMContentLoaded', function () {
       input.setAttribute('placeholder', copy.placeholder);
     }
     if (button && !button.disabled) {
-      button.textContent = copy.button;
+      var readyLabel = engine === 'trino' ? trinoRunButtonLabel(root) : copy.button;
+      button.textContent = readyLabel;
+      button.setAttribute('data-ready-label', readyLabel);
     }
+  }
+  function trinoDisplayLabelFromEngineChoice(root) {
+    var trinoChoice = root && root.querySelector('input[name="engine_choice"][data-engine-choice][value="trino"]');
+    var label = trinoChoice && trinoChoice.closest ? trinoChoice.closest('label') : null;
+    var strong = label && label.querySelector ? label.querySelector('strong') : null;
+    var text = strong && strong.textContent ? strong.textContent.trim() : '';
+    return text || 'Trino Beta';
+  }
+  function selectedTrinoDisplayLabel(root) {
+    var selector = root && root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    var option = selector && selector.selectedIndex >= 0 ? selector.options[selector.selectedIndex] : null;
+    var label = option ? option.getAttribute('data-trino-display-label') : '';
+    return label || trinoDisplayLabelFromEngineChoice(root);
+  }
+  function trinoRunButtonLabel(root) {
+    return 'Run ' + selectedTrinoDisplayLabel(root);
   }
   Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
     syncEngine(root);
@@ -744,18 +762,20 @@ document.addEventListener('DOMContentLoaded', function () {
     return selector ? Array.prototype.slice.call(document.querySelectorAll(selector)) : [];
   }
   function restoreRunButtons(kind) {
-    var label = kind === 'trino_query' ? 'Run Trino Beta' : kind === 'query' ? 'Run' : 'Run scan';
     runButtonsForJobKind(kind).forEach(function (button) {
+      var root = button.closest ? button.closest('[data-diagnosis-target-root]') : null;
+      var label = button.getAttribute('data-ready-label')
+        || (kind === 'trino_query' || kind === 'trino_recent' ? trinoRunButtonLabel(root) : kind === 'query' ? 'Run' : 'Run scan');
       button.disabled = false;
       button.textContent = label;
     });
   }
   function jobPanelTitle(kind, status) {
     if (kind === 'trino_query' || kind === 'trino_recent') {
-      if (status === 'ok') { return 'Trino Beta complete'; }
-      if (status === 'cancelled') { return 'Trino Beta stopped'; }
-      if (status === 'failed') { return 'Trino Beta failed'; }
-      return 'Trino Beta running';
+      if (status === 'ok') { return 'Trino complete'; }
+      if (status === 'cancelled') { return 'Trino stopped'; }
+      if (status === 'failed') { return 'Trino failed'; }
+      return 'Trino running';
     }
     if (status === 'ok') { return 'Analysis complete'; }
     if (status === 'cancelled') { return 'Analysis stopped'; }

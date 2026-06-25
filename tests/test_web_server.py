@@ -902,8 +902,8 @@ def test_batch_case_detail_uses_summary_profile_source_for_limitations(tmp_path)
     )
 
     assert action_context.case["_detail_query_profile_source"] == "impala"
-    assert "Source limitations" in body
-    assert "Direct Impala scans do not include Cloudera Manager event context." in body
+    assert "Source coverage and limitations" in body
+    assert "Cluster event context is unavailable for Direct Impala scans" in body
     assert "Bounded Impala metadata is unavailable for this case" in body
     assert str(case_dir) not in body
 
@@ -1666,6 +1666,20 @@ def test_public_demo_validation_rejects_external_source_settings(tmp_path):
         )
 
     assert "must not load" in str(exc.value)
+    assert exc.value.reason_code == "web.public_demo_external_source_rejected"
+
+    with pytest.raises(module.WebError) as exc:
+        module.validate_public_demo_settings(
+            module.WebSettings(
+                config=config,
+                batch_summary=summary,
+                public_demo=True,
+                no_llm=True,
+                trino_support_mode="production",
+            )
+        )
+
+    assert "Trino settings" in str(exc.value)
     assert exc.value.reason_code == "web.public_demo_external_source_rejected"
 
 
@@ -4340,6 +4354,12 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
         styles,
         '.batch-results-table--optimization td:nth-child(9)::before{content:"Rewrite support"}',
     )
+    assert_css_contains(
+        styles,
+        ".batch-results-table--bad td:nth-child(7)::before,"
+        ".batch-results-table--suspicious td:nth-child(7)::before,"
+        '.batch-results-table--all td:nth-child(7)::before{content:"Next"}',
+    )
     assert_css_contains(styles, ".batch-cell--query-id{width:1%;min-width:160px;max-width:190px;")
     assert_css_contains(styles, ".batch-cell--user{width:1%;min-width:76px;max-width:120px;")
     assert_css_contains(styles, ".batch-cell--summary{width:100%;min-width:320px;")
@@ -4375,7 +4395,7 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert '<td class="batch-cell--query-id">aaaaaaaaaaaaaaaa:0000000000000001</td>' in body
     assert (
         "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Priority</th>"
-        "<th>Duration</th><th>Table stats</th><th>Metadata</th>" in body
+        "<th>Duration</th><th>Next</th>" in body
     )
     assert '<td class="batch-cell--compact batch-cell--duration">90.5s</td>' in body
     assert 'class="batch-cell--compact batch-cell--badge batch-cell--priority"' in body
@@ -4383,8 +4403,9 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
         'class="batch-mini-badge batch-mini-badge--status batch-severity--suspicious '
         'batch-priority-badge"' in body
     )
-    assert 'title="table stats not checked">Not checked</span>' in body
+    assert 'title="table stats not checked">Not checked</span>' not in body
     assert "<strong>Priority</strong><span>Label + score</span>" in body
+    assert "<strong>Next</strong><span>Open selected-case Details</span>" in body
     assert "<th>Finding</th>" in body
     assert "<th>Summary</th>" not in body
     assert "<th>At a glance</th>" not in body
@@ -4428,10 +4449,10 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "validated report" not in body
     assert "partial untrusted" not in body
     assert 'data-href="/batch/case/case-001"' in body
+    assert '<a class="batch-row-action" href="/batch/case/case-001">Open Details</a>' in body
     assert "onclick=" not in body
     assert "onkeydown=" not in body
     assert "window.location.href=this.dataset.href" not in body
-    assert "Details</a>" not in body
     assert 'data-href="/batch/case/case-002"' not in body
     assert 'data-href="/batch/case/case-003"' not in body
     assert "/tmp/query-doctor-secret-case" not in body
@@ -8754,18 +8775,21 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert "syncKnownQueryEngineCopy(root, engine);" in script
     assert "Trino Query ID" in script
     assert "20260603_120102_00001_abcde" in script
-    assert "Run Trino Beta" in script
+    assert "Run Trino" in script
+    assert "function selectedTrinoDisplayLabel(root)" in script
+    assert "data-trino-display-label" in script
+    assert "button.setAttribute('data-ready-label', readyLabel);" in script
     assert "function jobPanelTitle(kind, status)" in script
-    assert "Trino Beta complete" in script
-    assert "Trino Beta stopped" in script
-    assert "Trino Beta failed" in script
+    assert "Trino complete" in script
+    assert "Trino stopped" in script
+    assert "Trino failed" in script
     assert "kind === 'query' || kind === 'trino_query'" in script
     assert "kind === 'batch' || kind === 'trino_recent'" in script
-    assert "kind === 'trino_query' ? 'Run Trino Beta'" in script
+    assert "kind === 'trino_query' || kind === 'trino_recent' ? trinoRunButtonLabel(root)" in script
     assert (
         "Running scans, query-history crawling, metadata collection, "
-        "Details/trusted reports, optimizer behavior, generated SQL, and SQL execution "
-        "remain unavailable" in script
+        "LLM reports, Query Optimizer jobs, generated SQL, and SQL execution remain "
+        "unavailable" in script
     )
     assert "One explicit Query ID. Query Doctor collects or reuses the profile" in script
     assert "function workflowSelection(root)" in script
@@ -10554,7 +10578,7 @@ def test_web_cluster_select_marks_engine_specific_sources(tmp_path):
     assert (
         '<option value="trino" data-engine-impala-ready="false" '
         'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
-        'data-trino-beta-recent-ready="true">'
+        'data-trino-beta-recent-ready="true" data-trino-display-label="Trino Beta">'
         "Trino source - Trino Beta Recent + One Query ID</option>" in body
     )
 
@@ -10565,7 +10589,7 @@ def test_web_cluster_select_marks_engine_specific_sources(tmp_path):
     assert (
         '<option value="trino" selected data-engine-impala-ready="false" '
         'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
-        'data-trino-beta-recent-ready="true">'
+        'data-trino-beta-recent-ready="true" data-trino-display-label="Trino Beta">'
         "Trino source - Trino Beta Recent + One Query ID</option>" in trino_body
     )
     assert '<input type="hidden" name="cluster_key" value="trino">' in trino_body

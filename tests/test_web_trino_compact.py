@@ -31,7 +31,7 @@ def test_trino_compact_get_route_renders_safe_form_without_product_support_claim
     assert "Trino compact diagnosis" in response.body
     assert "already raw-free Trino engine fact boundary" in response.body
     assert "selected sample boundary" in response.body
-    assert "not Recent, Details, trusted report, or optimizer support" in response.body
+    assert "not Recent, materialized Details, Python Report, or optimizer support" in response.body
     assert "source_schema_version" not in response.body
     assert "trino_query_detail_fixture" not in response.body
 

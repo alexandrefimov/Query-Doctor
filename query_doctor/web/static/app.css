@@ -4732,16 +4732,12 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
   content:"Duration"
 }
 
-.batch-results-table--bad td:nth-child(5)::before,.batch-results-table--suspicious td:nth-child(5)::before {
+.batch-results-table--bad td:nth-child(5)::before,.batch-results-table--suspicious td:nth-child(5)::before,.batch-results-table--all td:nth-child(5)::before {
   content:"Priority"
 }
 
-.batch-results-table--bad td:nth-child(7)::before,.batch-results-table--suspicious td:nth-child(7)::before {
-  content:"Table stats"
-}
-
-.batch-results-table--bad td:nth-child(8)::before,.batch-results-table--suspicious td:nth-child(8)::before {
-  content:"Metadata"
+.batch-results-table--bad td:nth-child(7)::before,.batch-results-table--suspicious td:nth-child(7)::before,.batch-results-table--all td:nth-child(7)::before {
+  content:"Next"
 }
 
 .batch-results-table--optimization td:nth-child(5)::before,.batch-results-table--stats td:nth-child(5)::before {
@@ -4799,6 +4795,16 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
   white-space:normal;
   overflow:visible;
   text-overflow:clip
+}
+
+.batch-row-action {
+  color:var(--link);
+  font-weight:700;
+  text-decoration:none
+}
+
+.batch-row-action:hover,.batch-row-action:focus {
+  text-decoration:underline
 }
 
 .batch-table-legend {

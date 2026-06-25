@@ -410,7 +410,7 @@ def fake_trino_e2e_diagnosis() -> dict[str, object]:
             "details_trusted_report_surface": "not_wired",
             "optimizer_behavior": "not_wired",
             "trino_sql_execution": "not_performed",
-            "live_recent_scan": "retained_query_list_beta",
+            "live_recent_scan": "retained_query_list_local_production",
         },
     }
 

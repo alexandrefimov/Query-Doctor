@@ -396,10 +396,10 @@ def render_source_limitations_section(
     )
     return (
         '<section id="source-limitations" class="diagnostics-subsection" '
-        'aria-label="Source limitations">'
-        '<h2 class="section-title">Source limitations</h2>'
+        'aria-label="Source coverage and limitations">'
+        '<h2 class="section-title">Source coverage and limitations</h2>'
         '<ul class="reason-list">'
-        '<li class="reason-card"><strong>Direct Impala context</strong>'
+        '<li class="reason-card"><strong>Direct Impala source coverage</strong>'
         f"<ul>{items}</ul></li>"
         "</ul>"
         "</section>"

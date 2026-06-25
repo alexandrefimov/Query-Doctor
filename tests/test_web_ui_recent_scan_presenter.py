@@ -2098,23 +2098,26 @@ def test_recent_scan_direct_impala_details_show_source_limitations_safely():
     html = render_recent_scan_case_detail_view(direct_view)
 
     assert direct_view.source_limitations == (
-        "Direct Impala scans do not include Cloudera Manager event context.",
+        (
+            "Cluster event context is unavailable for Direct Impala scans because "
+            "Cloudera Manager events are not collected on this source."
+        ),
         (
             "Optional Prometheus runtime metrics were not collected for this case; runtime "
-            "interpretation relies on profile and query-context facts."
+            "review should rely on profile and query context."
         ),
         (
             "Bounded Impala metadata is unavailable for this case; stats and table-layout "
-            "checks remain limited."
+            "review remain limited."
         ),
     )
     assert cm_view.source_limitations == ()
-    assert "Source limitations" in html
+    assert "Source coverage and limitations" in html
     assert html.index('<section id="source-limitations"') < html.index(
         '<section id="pipeline-status"'
     )
-    assert "Direct Impala context" in html
-    assert "Direct Impala scans do not include Cloudera Manager event context." in html
+    assert "Direct Impala source coverage" in html
+    assert "Cluster event context is unavailable for Direct Impala scans" in html
     assert "Optional Prometheus runtime metrics were not collected for this case" in html
     assert "Bounded Impala metadata is unavailable for this case" in html
     assert_no_forbidden_fragments(direct_view)
@@ -2193,15 +2196,18 @@ def test_recent_scan_direct_impala_source_limitations_use_safe_source_provenance
     html = render_recent_scan_case_detail_view(view)
 
     assert view.source_limitations == (
-        "Direct Impala scans do not include Cloudera Manager event context.",
+        (
+            "Cluster event context is unavailable for Direct Impala scans because "
+            "Cloudera Manager events are not collected on this source."
+        ),
         "Engine identity is unavailable from deterministic profile facts.",
         "Profile source coverage is partial; unsupported profile sections remain limitations.",
         (
             "Optional Prometheus runtime metrics are incomplete or unavailable for this case; "
-            "runtime interpretation relies on profile and query-context facts."
+            "runtime review should rely on profile and query context."
         ),
         (
-            "Bounded Impala metadata is partial for this case; stats and table-layout checks "
+            "Bounded Impala metadata is partial for this case; stats and table-layout review "
             "remain limited."
         ),
     )
@@ -3119,10 +3125,11 @@ def test_recent_scan_summary_renderer_uses_presenter_safe_values():
     assert "metadata statement hidden" in html
     assert (
         "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Priority</th>"
-        "<th>Duration</th><th>Table stats</th><th>Metadata</th>"
+        "<th>Duration</th><th>Next</th>"
     ) in html
     assert "<th>At a glance</th>" not in html
-    assert 'title="table stats missing">Missing</span>' in html
+    assert '<a class="batch-row-action" href="/batch/case/case-001">Open Details</a>' in html
+    assert 'title="table stats missing">Missing</span>' not in html
     assert "positive score from detailed analyzer reasons" in html
     assert "collection ok; analysis ok; metadata skipped; report not_run" not in html
 
@@ -3441,7 +3448,11 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         "feedback sample below threshold (0/5 comparable reruns); "
         "next check admission/runtime signal count and workload p95" in html
     )
-    assert "<th>Next</th>" not in html
+    assert (
+        "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Priority</th>"
+        "<th>Duration</th><th>Next</th>" in html
+    )
+    assert '<a class="batch-row-action" href="/batch/case/case-001">Open Details</a>' in html
     assert "strong regression; current p95 20s; baseline p95 12.5s; history samples 3." not in html
     assert "Stats gaps: group primary aggregate; 2 member rows." not in html
     assert "Spill-heavy: 1 of 2 member rows." not in html

@@ -106,10 +106,10 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
 def job_panel_title(kind: str, status: str) -> str:
     labels = (
         {
-            "ok": "Trino Beta complete",
-            "cancelled": "Trino Beta stopped",
-            "failed": "Trino Beta failed",
-            "running": "Trino Beta running",
+            "ok": "Trino complete",
+            "cancelled": "Trino stopped",
+            "failed": "Trino failed",
+            "running": "Trino running",
         }
         if kind in {"trino_query", "trino_recent"}
         else {
