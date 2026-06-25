@@ -216,7 +216,9 @@ Representative no-recipe calibration should run
 In strict mode, repeated no-recipe workload groups must resolve to one safe
 review track, an allowlisted review area, a bounded change direction, a workload
 metric, and compare/rerun verification wording before they count as ready for
-guidance or recipe-backlog decisions. Add
+guidance or recipe-backlog decisions. Retained candidate reasons must also stay
+raw-free; raw-like candidate text is a readiness blocker even when audit output
+collapses it to a safe aggregate counter. Add
 `--summary-json <raw-free-optimizer-funnel-summary.json>` when retained machine
 evidence is needed; the JSON summary must contain only aggregate counters,
 safe issue categories, and masked workload labels.

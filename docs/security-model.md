@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-06-06
 
+Language: English | [Russian](i18n/ru/security-model.md)
+
 This document is the public security and privacy overview for Query Doctor. The
 mandatory implementation contract lives in [safety-contract.md](safety-contract.md).
 

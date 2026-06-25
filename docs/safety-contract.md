@@ -40,14 +40,17 @@ implementation boundaries.
   facts must degrade to `unknown`, `not_observed`, or an explicit safe
   limitation. Do not backfill fake metrics, counters, lifecycle evidence, or
   events across engines.
-- Trino fixture facts and Spark compact facts remain below production support.
-  The Trino product beta exceptions are local web retained-list Recent over one
+- Trino compact/dev facts outside the local production web cases and Spark
+  compact facts remain below production support.
+  The Trino local production exceptions are local web retained-list Recent over one
   bounded retained pruned coordinator query-list read plus selected pruned
   coordinator QueryInfo reads, and one explicit local web Query ID over bounded
   pruned coordinator QueryInfo. Both render raw-free compact diagnosis. They do
-  not enable Running, query-history crawling, metadata collection,
-  Details/trusted reports, optimizer behavior, Query Doctor-generated Trino
-  SQL, SQL execution, or production support. See
+  not enable Running, query-history crawling, product metadata collection, LLM reports,
+  Query Optimizer jobs, Query Doctor-generated Trino SQL, user SQL execution, or
+  broader/shared Trino production triage support. They may open the raw-free Trino Details view,
+  deterministic Python Report, and optimizer guidance only from server-owned materialized case
+  artifacts. See
   [engine-support-gap-matrix.md](engine-support-gap-matrix.md) for current
   status.
 
@@ -206,13 +209,16 @@ contents, or real production profile text.
   Known Query ID may generate the deterministic Python report as part of its
   explicit analysis submit job. LLM report and Query LLM optimizer generation
   remain explicit for one selected case.
-- Trino Beta Recent uses one bounded retained pruned coordinator query-list
+- Trino Recent uses one bounded retained pruned coordinator query-list
   read plus bounded selected pruned coordinator QueryInfo reads from local
-  config; Trino Beta One Query ID uses one bounded pruned coordinator
+  config; Trino One Query ID uses one bounded pruned coordinator
   QueryInfo read from local config. Both render only raw-free compact diagnosis.
   They must not render coordinator URLs, auth header paths or values, raw
-  QueryInfo, raw query-list payloads, raw SQL, local source-contract paths,
-  Details/trusted reports, optimizer output, or generated Trino SQL.
+  QueryInfo, raw query-list payloads, raw SQL, local source-contract paths, LLM
+  reports, Query Optimizer jobs, or generated Trino SQL. Trino Details, Trino
+  Python Report, and Trino optimizer guidance may render only the server-owned
+  raw-free materialized case facts and must not reveal query IDs, local paths,
+  raw artifact names, or raw source payloads.
 - Details-page Query LLM optimizer may render a validated read-only SQL draft
   only for an explicit selected-case optimizer action when the current web
   source policy is `source_visibility=owner_raw`. The default
