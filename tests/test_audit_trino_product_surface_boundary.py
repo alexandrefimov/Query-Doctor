@@ -27,12 +27,9 @@ def test_trino_product_surface_audit_includes_release_and_config_claim_surfaces(
     engines_index = REPO_ROOT / "docs" / "engines" / "README.md"
     ru_config = REPO_ROOT / "docs" / "i18n" / "ru" / "configuration.md"
     release_checklist = REPO_ROOT / "docs" / "release-checklist.md"
-    ru_release_checklist = REPO_ROOT / "docs" / "i18n" / "ru" / "release-checklist.md"
     safety_contract = REPO_ROOT / "docs" / "safety-contract.md"
     ru_safety_contract = REPO_ROOT / "docs" / "i18n" / "ru" / "safety-contract.md"
-    ru_support_matrix = REPO_ROOT / "docs" / "i18n" / "ru" / "engine-support-gap-matrix.md"
     public_readiness = REPO_ROOT / "docs" / "public-release-readiness.md"
-    ru_public_readiness = REPO_ROOT / "docs" / "i18n" / "ru" / "public-release-readiness.md"
 
     assert changelog in claim_paths
     assert docs_index in claim_paths
@@ -40,76 +37,67 @@ def test_trino_product_surface_audit_includes_release_and_config_claim_surfaces(
     assert engines_index in claim_paths
     assert REPO_ROOT / "docs" / "configuration.md" in claim_paths
     assert ru_config in claim_paths
-    assert ru_support_matrix in claim_paths
+    assert REPO_ROOT / "docs" / "i18n" / "ru" / "engine-support-gap-matrix.md" not in claim_paths
     assert safety_contract in claim_paths
     assert ru_safety_contract in claim_paths
     assert release_checklist in claim_paths
-    assert ru_release_checklist in claim_paths
+    assert REPO_ROOT / "docs" / "i18n" / "ru" / "release-checklist.md" not in claim_paths
     assert public_readiness in claim_paths
-    assert ru_public_readiness in claim_paths
+    assert REPO_ROOT / "docs" / "i18n" / "ru" / "public-release-readiness.md" not in claim_paths
     assert REPO_ROOT / "query_doctor" / "web" / "ui" / "trino_demo.py" in claim_paths
     ru_text = ru_config.read_text(encoding="utf-8")
     ru_config_text = _normalized_text(ru_config)
-    ru_support_matrix_text = _normalized_text(ru_support_matrix)
-    assert "Trino Beta Recent и One Query ID" in ru_text
-    assert "Это не production Trino support" in ru_config_text
+    ru_docs_index_text = _normalized_text(ru_docs_index)
+    assert "Trino Local Recent и One Query ID" in ru_text
+    assert "Production mode означает local production support только для этих surfaces" in (
+        ru_config_text
+    )
     assert "SQL execution" in ru_text
-    assert "Текущий production triage engine Query Doctor - Apache Impala" in (
-        ru_support_matrix_text
-    )
-    assert "не является live Query ID diagnosis" in ru_support_matrix_text
-    assert "не добавляет browser/report output, optimizer behavior" in ru_support_matrix_text
-    assert "Trino SQL execution" in ru_support_matrix_text
+    assert "engine deep-dive документы остаются English-only" in ru_docs_index_text
+    assert "engine-support-gap-matrix.md" in ru_docs_index_text
     readiness_text = _normalized_text(public_readiness)
-    ru_readiness_text = _normalized_text(ru_public_readiness)
-    assert "local web Trino Beta retained-list Recent" in readiness_text
+    assert "local production web Trino retained-list Recent" in readiness_text
     assert (
-        "production Trino support beyond the local retained-list Recent and One Query ID beta lanes"
-        in readiness_text
-    )
-    assert "local Trino Beta Recent/One Query ID boundary без public Trino support claim" in (
-        ru_readiness_text
+        "broader/shared Trino production support beyond the local retained-list Recent, "
+        "One Query ID, raw-free materialized Details, Python Report, and optimizer "
+        "guidance local production lanes" in readiness_text
     )
     checklist_text = _normalized_text(release_checklist)
-    ru_checklist_text = _normalized_text(ru_release_checklist)
     safety_text = _normalized_text(safety_contract)
     ru_safety_text = _normalized_text(ru_safety_contract)
-    assert "local web Trino Beta retained-list Recent lane" in checklist_text
+    assert "local production web Trino retained-list Recent lane" in checklist_text
     assert (
-        "production Trino support beyond the local retained-list Recent and One Query ID beta lanes"
-        in checklist_text
+        "broader/shared Trino production support beyond the local retained-list Recent, "
+        "One Query ID, raw-free materialized Details, Python Report, and optimizer "
+        "guidance local production lanes" in checklist_text
     )
-    assert "Running scans, query-history crawling, metadata collection" in (ru_checklist_text)
     assert (
         "local web retained-list Recent over one bounded retained pruned coordinator query-list read"
         in (safety_text)
     )
-    assert "Trino Beta One Query ID uses one bounded pruned coordinator QueryInfo read" in (
-        safety_text
-    )
+    assert "Trino One Query ID uses one bounded pruned coordinator QueryInfo read" in (safety_text)
     assert "does not enable Recent/Running" not in safety_text
     assert (
         "local web retained-list Recent через один bounded retained pruned coordinator query-list read"
         in (ru_safety_text)
     )
-    assert "Trino Beta One Query ID использует один bounded pruned coordinator QueryInfo read" in (
+    assert "Trino One Query ID использует один bounded pruned coordinator QueryInfo read" in (
         ru_safety_text
     )
-    assert "local Trino Beta retained-list Recent and One Query ID UI surfaces" in _normalized_text(
-        docs_index
-    )
-    assert "local Trino Beta Recent + One Query ID boundary без public support claim" in (
-        _normalized_text(ru_docs_index)
+    assert (
+        "local production Trino retained-list Recent, One Query ID, raw-free materialized "
+        "Details, Python Report, and optimizer guidance UI surfaces" in _normalized_text(docs_index)
     )
     engines_text = _normalized_text(engines_index)
-    assert "production triage support remains Apache Impala" in engines_text
-    assert "local Trino Beta retained-list Recent and One Query ID surfaces" in engines_text
-    assert "Do not add Details, trusted report, optimizer, metadata, SQL execution" in (
-        engines_text
+    assert "full production triage support remains Apache Impala" in engines_text
+    assert (
+        "local production Trino retained-list Recent, One Query ID, raw-free materialized "
+        "Details, Python Report, and optimizer guidance surfaces" in engines_text
     )
+    assert "Do not add LLM reports, Query Optimizer jobs, metadata, SQL execution" in engines_text
     changelog_text = _normalized_text(changelog)
     assert "Trino Beta One Query ID" in changelog_text
-    assert "query-history crawling, and production support claims" in (changelog_text)
+    assert "broader/shared Trino expansion remain blocked" in (changelog_text)
     assert "SQL execution" in changelog_text
 
 
@@ -132,16 +120,26 @@ def test_trino_product_surface_audit_accepts_boundary_and_diagnosis_without_path
     captured = capsys.readouterr()
     assert rc == 0
     assert "Trino product-surface boundary audit: ok" in captured.out
-    assert "product_surface=recent_and_query_id_beta" in captured.out
-    assert "support_claim=beta_only" in captured.out
-    assert "details_trusted_report_surface=not_wired" in captured.out
-    assert "live_known_query_diagnosis=one_query_pruned_query_info_beta" in captured.out
+    assert (
+        "product_surface=recent_query_id_raw_free_details_python_report_optimizer_guidance"
+        in captured.out
+    )
+    assert "support_claim=local_production" in captured.out
+    assert "details_case_view=raw_free_materialized" in captured.out
+    assert "python_report=raw_free_materialized" in captured.out
+    assert "optimizer_guidance=raw_free_materialized" in captured.out
+    assert "optimizer_behavior=guidance_only" in captured.out
+    assert "llm_reports=not_wired" in captured.out
+    assert "live_known_query_diagnosis=one_query_pruned_query_info_local_production" in captured.out
     assert "trino_sql_execution=not_performed" in captured.out
     assert "boundary_json_count=1" in captured.out
     assert "diagnosis_json_checked=1" in captured.out
-    assert "trino_product_routes=recent_and_query_id_beta" in captured.out
+    assert (
+        "trino_product_routes=recent_query_id_raw_free_details_python_report_optimizer_guidance"
+        in captured.out
+    )
     assert "trino_product_cli=blocked" in captured.out
-    assert "details_report_source_imports=blocked" in captured.out
+    assert "details_python_report_guidance_source_imports=raw_free_materialized" in captured.out
     assert "product_source_modules_checked=" in captured.out
     assert "allowed_trino_preview_imports=" in captured.out
     assert "Issues: none" in captured.out
@@ -170,14 +168,17 @@ def test_trino_product_surface_audit_writes_raw_free_summary(
     assert summary["summary_kind"] == "trino_product_surface_boundary_audit_v1"
     assert summary["status"] == "ok"
     assert summary["boundary"] == {
-        "details_trusted_report_surface": "not_wired",
-        "live_known_query_diagnosis": "one_query_pruned_query_info_beta",
-        "live_recent_scan": "retained_query_list_beta",
-        "optimizer_behavior": "not_wired",
-        "product_surface": "recent_and_query_id_beta",
-        "support_claim": "beta_only",
+        "details_case_view": "raw_free_materialized",
+        "llm_reports": "not_wired",
+        "live_known_query_diagnosis": "one_query_pruned_query_info_local_production",
+        "live_recent_scan": "retained_query_list_local_production",
+        "optimizer_behavior": "guidance_only",
+        "optimizer_guidance": "raw_free_materialized",
+        "product_surface": "recent_query_id_raw_free_details_python_report_optimizer_guidance",
+        "python_report": "raw_free_materialized",
+        "support_claim": "local_production",
         "trino_sql_execution": "not_performed",
-        "trusted_reports": "not_wired",
+        "trusted_reports": "python_report_only",
     }
     assert summary["counts"]["boundary_json_count"] == 1
     assert summary["counts"]["diagnosis_json_checked_count"] == 0
@@ -191,9 +192,13 @@ def test_trino_product_surface_audit_writes_raw_free_summary(
         "source_granularity": {"one_query_boundary": 1},
         "verification_scope": {"comparable_one_query_rerun": 1},
     }
-    assert summary["registry"]["trino_product_routes"] == "recent_and_query_id_beta"
+    assert summary["registry"]["trino_product_routes"] == (
+        "recent_query_id_raw_free_details_python_report_optimizer_guidance"
+    )
     assert summary["registry"]["trino_product_cli"] == "blocked"
-    assert summary["registry"]["details_report_source_imports"] == "blocked"
+    assert summary["registry"]["details_python_report_guidance_source_imports"] == (
+        "raw_free_materialized"
+    )
     assert summary["issues"] == {"counts": {}, "items": []}
     assert "Trino product-surface boundary audit: ok" in captured.out
     for text in (captured.out, captured.err, json.dumps(summary, sort_keys=True)):
@@ -260,7 +265,10 @@ def test_trino_product_surface_audit_accepts_handoff_manifest_suite_without_path
     assert summary["counts"]["boundary_json_count"] == 2
     assert summary["counts"]["diagnosis_json_checked_count"] == 2
     assert summary["counts"]["diagnostic_lane_checked_count"] == 2
-    assert summary["boundary"]["live_known_query_diagnosis"] == "one_query_pruned_query_info_beta"
+    assert (
+        summary["boundary"]["live_known_query_diagnosis"]
+        == "one_query_pruned_query_info_local_production"
+    )
     assert summary["diagnostic_lane"]["fact_states"]["supported"] > 0
     assert summary["diagnostic_lane"]["source_granularity"] == {"one_query_boundary": 2}
     assert summary["diagnostic_lane"]["verification_scope"] == {"comparable_one_query_rerun": 2}
@@ -587,9 +595,12 @@ def test_trino_product_surface_audit_supports_registry_only_mode(capsys) -> None
     captured = capsys.readouterr()
     assert rc == 0
     assert "boundary_json_count=0" in captured.out
-    assert "trino_product_routes=recent_and_query_id_beta" in captured.out
+    assert (
+        "trino_product_routes=recent_query_id_raw_free_details_python_report_optimizer_guidance"
+        in captured.out
+    )
     assert "trino_product_cli=blocked" in captured.out
-    assert "details_report_source_imports=blocked" in captured.out
+    assert "details_python_report_guidance_source_imports=raw_free_materialized" in captured.out
     assert "product_source_modules_checked=" in captured.out
     assert "Issues: none" in captured.out
 
@@ -1254,6 +1265,181 @@ def test_trino_beta_query_module_boundary_allows_bounded_query_info_imports(
     assert result.issue_counts == {}
 
 
+def test_trino_report_module_boundary_rejects_optimizer_or_action_imports(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trino_report.py"
+    source.write_text(
+        "\n".join(
+            (
+                "from query_doctor.optimizer.analysis import analyze_query_optimizer",
+                "from query_doctor.web.batch_case_actions import start_batch_case_report_job",
+                "from query_doctor.web.trusted_artifacts import load_specific_query_trusted_report_artifact",
+                "import subprocess",
+            )
+        ),
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_trino_report_module_boundary(
+        result,
+        target=audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_report",
+            path=source,
+        ),
+    )
+
+    assert result.issue_counts == {"trino_report_forbidden_import": 1}
+
+
+def test_trino_report_module_boundary_rejects_legacy_report_or_optimizer_markers(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trino_report.py"
+    source.write_text(
+        "\n".join(
+            (
+                "def render():",
+                "    return (",
+                "        '<a href=\"/python-report/secret\">Python Report</a>'",
+                "        '<a href=\"/optimizer\">Run optimizer</a>'",
+                "        '<button data-case-action=\"llm-report\">LLM narrative</button>'",
+                "    )",
+            )
+        ),
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_trino_report_module_boundary(
+        result,
+        target=audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_report",
+            path=source,
+        ),
+    )
+
+    assert result.issue_counts == {"trino_report_forbidden_surface_marker": 1}
+
+
+def test_trino_report_module_boundary_allows_raw_free_report_validation_imports(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trino_report.py"
+    source.write_text(
+        "\n".join(
+            (
+                "import html",
+                "from query_doctor.report.safety_validation import contains_raw_sql_like_text",
+                "from query_doctor.safety.browser_display import redact_browser_display_text",
+                "from query_doctor.web.trino_details import load_trino_details_view",
+                "from query_doctor.web.ui.markdown import render_report_markdown_html",
+                "REPORT_LINK = '?report=python'",
+            )
+        ),
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_trino_report_module_boundary(
+        result,
+        target=audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_report",
+            path=source,
+        ),
+    )
+
+    assert result.issue_counts == {}
+
+
+def test_trino_guidance_module_boundary_rejects_optimizer_job_or_action_imports(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trino_guidance.py"
+    source.write_text(
+        "\n".join(
+            (
+                "from query_doctor.optimizer.analysis import analyze_query_optimizer",
+                "from query_doctor.web.batch_case_actions import start_batch_case_optimized_query_job",
+                "from query_doctor.web.trusted_artifacts import load_specific_query_trusted_report_artifact",
+                "import subprocess",
+            )
+        ),
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_trino_guidance_module_boundary(
+        result,
+        target=audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_guidance",
+            path=source,
+        ),
+    )
+
+    assert result.issue_counts == {"trino_guidance_forbidden_import": 1}
+
+
+def test_trino_guidance_module_boundary_rejects_optimizer_job_markers(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trino_guidance.py"
+    source.write_text(
+        "\n".join(
+            (
+                "def render():",
+                "    return (",
+                "        '<a href=\"/optimizer\">Run optimizer</a>'",
+                "        '<button data-case-action=\"optimized-query\">Query LLM optimizer</button>'",
+                "    )",
+            )
+        ),
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_trino_guidance_module_boundary(
+        result,
+        target=audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_guidance",
+            path=source,
+        ),
+    )
+
+    assert result.issue_counts == {"trino_guidance_forbidden_surface_marker": 1}
+
+
+def test_trino_guidance_module_boundary_allows_raw_free_guidance_validation_imports(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "trino_guidance.py"
+    source.write_text(
+        "\n".join(
+            (
+                "import html",
+                "from query_doctor.report.safety_validation import contains_raw_sql_like_text",
+                "from query_doctor.safety.browser_display import redact_browser_display_text",
+                "from query_doctor.web.trino_details import load_trino_details_view",
+                "from query_doctor.web.ui.markdown import render_report_markdown_html",
+                "GUIDANCE_LINK = '?guidance=optimizer'",
+            )
+        ),
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_trino_guidance_module_boundary(
+        result,
+        target=audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+            module_name="query_doctor.web.trino_guidance",
+            path=source,
+        ),
+    )
+
+    assert result.issue_counts == {}
+
+
 def test_trino_beta_ui_module_boundary_rejects_details_report_or_optimizer_imports(
     tmp_path: Path,
 ) -> None:
@@ -1399,9 +1585,9 @@ def test_trino_product_surface_audit_detects_public_forbidden_support_claim(
     claim_surface = tmp_path / "secret-public-claim.md"
     claim_surface.write_text(
         (
-            "Trino Beta Recent and One Query ID. Running query-history crawling "
-            "metadata collection Details trusted reports optimizer SQL execution. "
-            "Trino production support is enabled."
+            "Trino Beta Recent and One Query ID local production. Running query-history crawling "
+            "metadata collection Details Python Report optimizer guidance LLM reports optimizer SQL execution. "
+            "Trino broad production support is enabled."
         ),
         encoding="utf-8",
     )
@@ -1422,8 +1608,8 @@ def test_trino_product_surface_audit_detects_stale_recent_denial(
     claim_surface = tmp_path / "secret-public-claim.md"
     claim_surface.write_text(
         (
-            "Trino Beta Recent and One Query ID. Running query-history crawling "
-            "metadata collection Details trusted reports optimizer SQL execution. "
+            "Trino Beta Recent and One Query ID local production. Running query-history crawling "
+            "metadata collection Details Python Report optimizer guidance LLM reports optimizer SQL execution. "
             "The old Query ID exception does not enable Recent/Running."
         ),
         encoding="utf-8",
@@ -1445,8 +1631,8 @@ def test_trino_product_surface_audit_detects_russian_forbidden_support_claim(
     claim_surface = tmp_path / "secret-public-claim-ru.md"
     claim_surface.write_text(
         (
-            "Trino Beta Recent and One Query ID. Running query-history crawling "
-            "metadata collection Details trusted reports optimizer SQL execution. "
+            "Trino Beta Recent and One Query ID local production. Running query-history crawling "
+            "metadata collection Details Python Report optimizer guidance LLM reports optimizer SQL execution. "
             "production Trino support доступен."
         ),
         encoding="utf-8",
