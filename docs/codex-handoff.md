@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last updated: 2026-06-16
+Last updated: 2026-06-22
 
 This is the public-safe agent baseline for Query Doctor. It records durable
 product, safety, and engineering context only. Transient continuation notes,
@@ -10,23 +10,30 @@ local exclude-only note files, not in committed documentation.
 
 ## Baseline
 
-- Query Doctor is a local-first Big Data query diagnostic tool focused today on
-  Apache Impala production triage.
+- Query Doctor is a local-first Big Data query diagnostic tool focused on
+  Apache Impala production triage, with bounded local Trino production lanes.
 - Treat it as an engineering diagnostic product, not a chat wrapper.
-- The production-supported engine is Impala. Keep the minimal future
-  engine/provider seams that already exist, but do not add fake support for
-  other engines or managers.
+- The full production triage engine is Impala. Trino production support is
+  bounded to the local raw-free lanes listed in the support matrix. Keep the
+  minimal future engine/provider seams that already exist, but do not add fake
+  support for other engines or managers.
 - Current engine support, fixture-only, and research statuses are tracked in
   [engine-support-gap-matrix.md](engine-support-gap-matrix.md). Use that matrix
   before changing support wording or second-engine wiring.
 - Trino is implemented only for the bounded raw-free surfaces listed in the
-  matrix. The product web beta surfaces are retained-list Trino Recent over one
+  matrix. The local production product web surfaces are retained-list Trino Recent over one
   bounded retained pruned coordinator query-list read plus selected pruned
   QueryInfo reads, and one explicit Trino Query ID over bounded pruned
-  coordinator QueryInfo; both render raw-free compact diagnosis. Do not expand
-  it into Running, query-history crawling, metadata collection, Details/trusted
-  reports, optimizer behavior, generated SQL, SQL execution, or production
-  support without explicit implementation and validation.
+  coordinator QueryInfo; both render raw-free compact diagnosis and may open
+  the raw-free Details view plus deterministic Python Report and optimizer
+  guidance only after server-owned case materialization. Trino Beta remains the
+  legacy local label. A bounded local metadata CLI summary builder exists only
+  for aggregate metadata-coverage summaries after an accepted allowlist; it is
+  not a Recent, Details, report, optimizer, Running, or product metadata
+  surface. Do not expand Trino into Running, query-history crawling, product
+  metadata collection, LLM reports, Query Optimizer jobs, generated SQL, user
+  SQL execution, or broader/shared production support without explicit
+  implementation and validation.
 - Recent scan is the primary workflow.
 - Query ID diagnosis is secondary for one known query.
 - Query Optimizer is separate for pasted SQL analysis and deterministic
@@ -95,150 +102,43 @@ continuation plans belong in local exclude-only notes.
 
 ## Engine Expansion Boundary
 
-- Apache Impala remains the only production-supported engine.
+- Apache Impala remains the only full production triage engine. Trino has the
+  bounded local production lanes listed in the support matrix.
 - The normalized engine-fact projection is a raw-free contract seam, not the
   product engine registry and not a support claim.
-- Trino materials in this repository support sanitized offline evidence package
-  import through `query-doctor-trino-import`, bounded local event-store import
-  through `query-doctor-trino-event-store-import`, bounded HTTP event archive
-  import through `query-doctor-trino-http-event-archive-import`, bounded HTTP
-  query-detail archive import through
-  `query-doctor-trino-http-query-detail-archive-import`, and bounded
-  local query-detail import through `query-doctor-trino-query-detail-import`,
-  plus bounded local query-list aggregate import through
-  `query-doctor-trino-query-list-import`, and bounded local statement-stats
-  import through `query-doctor-trino-statement-stats-import`, plus event-source
-  contract checking through `query-doctor-trino-event-source-contract-check`,
-  bounded local pruned QueryInfo import through
-  `query-doctor-trino-query-info-pruned-import`,
-  target checking through
-  `query-doctor-trino-coordinator-query-info-target-check`, and pruned
-  coordinator probing through
-  `query-doctor-trino-coordinator-query-info-pruned-probe`, plus one-query
-  pruned coordinator fact import through
-  `query-doctor-trino-coordinator-query-info-pruned-import` with optional
-  direct `--boundary-out` raw-free boundary JSON for strict local readiness
-  audits, plus metadata source-contract checking through
-  `query-doctor-trino-metadata-source-contract-check`, plus bounded local
-  metadata summary import through
-  `query-doctor-trino-metadata-summary-import` after an accepted
-  `metadata_allowlist` source contract, plus the dev-only
-  `scripts/trino_evidence_package_requirements.py` requirements printer for
-  the sanitized evidence-package Python contract, plus the dev-only
-  `scripts/audit_trino_evidence_handoff.py`
-  package-to-boundary readiness audit over sanitized evidence packages with
-  optional raw-free handoff summary JSON, plus dev-only retained
-  evidence-handoff summary suite metadata through
-  `scripts/build_trino_evidence_handoff_suite_manifest.py` and
-  `scripts/audit_trino_evidence_handoff.py --handoff-suite-manifest`, with
-  optional selected source-contract, diagnostic-lane source-granularity, and
-  verification-scope requirements over retained summaries, plus
-  the dev-only `scripts/trino_one_query_live_handoff.py` wrapper
-  for the same one-query import plus strict readiness audit, optional explicit
-  Kerberos/SPNEGO curl fetch mode from an already prepared local ticket cache,
-  optional local `--query-id-file` input for keeping the explicit Query ID out
-  of shell history and process arguments, optional raw-free compact-readiness
-  summary output, optional raw-free one-query handoff summary output, and optional
-  product-surface audit summary output, plus the
-  dev-only `scripts/build_trino_handoff_suite_manifest.py` local manifest
-  builder with safe relative JSON references, optional per-entry readiness
-  summary, handoff summary, and product-surface summary references, and
-  duplicate boundary/diagnosis/readiness-summary/handoff-summary/product-surface-summary rejection, plus the
-  `scripts/audit_trino_compact_readiness.py --handoff-suite-manifest` gate over
-  retained raw-free one-query handoff boundary/diagnosis/smoke artifacts, with
-  optional matching per-entry readiness summary checks, optional matching
-  per-entry one-query handoff summary checks, optional raw-free machine summary
-  JSON, and safe Trino version-family breadth requirements,
-  plus the dev-only
-  `scripts/audit_trino_product_surface_boundary.py` product-surface boundary
-  audit over retained raw-free compact boundary/diagnosis artifacts or a
-  retained handoff-suite manifest with optional retained product-surface
-  summary checks and static Details/trusted report/optimizer source-import
-  guarding, plus the dev-only
-  `scripts/audit_trino_support_gap_matrix.py` static support-gap audit over the
-  registered Trino fact-family coverage, source-type registry coverage,
-  engine fact promotion-policy coverage, and engine adapter flags, plus the
-  dev-only `scripts/audit_trino_beta_release_readiness.py` bundle that
-  orchestrates static audits, focused tests, local-config readiness, and
-  optional bounded live/UI smokes without printing local config values, Query
-  IDs, coordinator URLs, auth references, local paths, raw payloads, or adding
-  SQL execution, plus the
-  dev-only `scripts/audit_trino_web_beta_readiness.py` local-config readiness
-  gate over Trino Beta web source contracts without coordinator network reads
-  or SQL execution, plus the dev-only
-  `scripts/audit_trino_web_beta_live_smoke.py` gate over the same local web
-  backend path with one bounded retained query-list read, bounded selected
-  QueryInfo diagnosis, raw-free counts only, and no SQL execution, plus the
-  dev-only `scripts/query-doctor-web-trino-beta-smoke` local UI gate over
-  Trino Beta Recent and One Query ID form/job flows with no Query ID,
-  coordinator URL, auth reference, local path, raw payload, or unsupported
-  Details/report/optimizer action-link output, plus
-  local compact diagnosis over raw-free direct boundary JSON excluding metadata
-  summary boundaries or selected package sample boundaries through
-  `query-doctor-diagnose-trino-compact`, plus isolated local compact-diagnosis
-  rendering through `/trino/compact-diagnosis` for the same already raw-free
-  inputs, plus local web Trino Beta Recent diagnosis that consumes one bounded
-  retained pruned coordinator query-list read and selected pruned coordinator
-  QueryInfo imports through local config, plus local web Trino Beta One Query ID
-  diagnosis that consumes one bounded pruned coordinator QueryInfo import
-  through local config; both render the same raw-free compact diagnosis.
-  These paths validate already-sanitized compact inputs or compact
-  source-contract JSON, or one compact sanitized aggregate metadata summary and
-  emit only safe summaries or raw-free normalized fact boundaries,
-  deterministic raw-free diagnosis JSON, or sanitized compact diagnosis HTML.
-- Spark compact History Server intake and compact evidence-package
-  build/validation are registered bounded compact support surfaces. History
-  Server intake is for one explicit application through CLI or the isolated
-  direct compact page; the dev-only `scripts/spark_one_application_handoff.py`
-  wrapper composes the same bounded one-application compact collection,
-  raw-free diagnosis, optional boundary export, readiness audit, and optional
-  product-surface summary audit over the written compact/diagnosis artifacts
-  without becoming a product CLI; the dev-only
-  `scripts/build_spark_one_application_handoff_suite_manifest.py` builder plus
-  `scripts/audit_spark_compact_readiness.py
-  --one-application-handoff-suite-manifest` gate retained raw-free
-  compact/diagnosis/boundary triples for real one-application handoffs, can
-  also cross-check retained `spark_one_application_handoff_summary_v1`
-  artifacts against the same strict requirements and source-coverage counters,
-  can retain optional per-entry `spark_product_surface_boundary_audit_v1`
-  summaries for product-surface drift checks,
-  and can write optional raw-free compact readiness summary JSON without
-  reopening Spark; the dev-only
-  `scripts/audit_spark_product_surface_boundary.py` gate audits retained
-  compact/diagnosis artifacts or retained one-application handoff manifests,
-  including optional retained product-surface summaries, against the
-  no-product-surface boundary, static support boundary, and isolated preview
-  route registry without printing paths, raw compact payloads, SQL, History
-  Server selectors, or support claims; the dev-only
-  `scripts/build_spark_evidence_package_from_one_application_suite.py` bridge
-  rechecks those retained triples before building a sanitized package wrapper
-  from explicit safe sample-case labels. The package commands accept only
-  already compact samples for readiness handoff, and the dev-only package
-  handoff summary remains retained raw-free handoff summary JSON with
-  diagnostic-lane checked/readiness/source-granularity/verification-scope and
-  fact-state counters
-  so the dev-only handoff-suite manifest/audit can reject retained summary
-  drift without reopening Spark or printing artifact paths; the static Spark
-  support-boundary audit can also write a raw-free
-  `spark_support_boundary_audit_v1` summary for retained no-support evidence.
-  The Spark adapter is compact-only and is not a Recent
-  workflow, Details/trusted report surface, optimizer behavior, broad live
-  collector, raw event-log path, Spark job-execution path, or production Spark
-  support claim.
-  [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md)
+- Use [engine-support-gap-matrix.md](engine-support-gap-matrix.md) for the
+  current support status and [code-map.md](code-map.md) for exact command,
+  script, registry, and route ownership. Do not copy those inventories into
+  this handoff.
+- Trino is bounded to the raw-free import, compact diagnosis, source-contract,
+  retained-handoff, and local production web surfaces listed in the support
+  matrix. It is not broad production Trino triage, live query-history collection,
+  LLM report output, Query Optimizer jobs, SQL execution, or Query
+  Doctor-generated Trino SQL. Trino Details, Trino Python Report, and Trino
+  optimizer guidance are limited to the raw-free materialized local case facts.
+- Spark is bounded to compact History Server intake for one explicit
+  application, compact evidence-package build/validation/fixture export,
+  compact diagnosis, and retained raw-free readiness/product-surface/support
+  audits listed in the support matrix. The Spark adapter remains compact-only:
+  no Recent workflow, Details/trusted report surface, optimizer behavior, broad
+  live collector, raw event-log path, Spark job-execution path, or production
+  Spark support claim.
+- [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md)
   records the durable Spark readiness boundary: bounded one-application intake
   can stay raw-free for compact summaries, and application-only
   `same_application` evidence can summarize readable application-level jobs,
-  stages, scheduler delay, spill, and task-duration context without selected
-  SQL execution linkage. SQL-execution-specific timing/failure facts still
-  require accepted SQL execution evidence. Live validation notes and one-run
-  checkpoints stay out of committed docs.
-- Do not add public production support claims, broad live collection, engine
+  stages, scheduler delay, spill, and task-duration context without selected SQL
+  execution linkage. SQL-execution-specific timing/failure facts still require
+  accepted SQL execution evidence. Live validation notes and one-run checkpoints
+  stay out of committed docs.
+- Do not add broad public production support claims, broad live collection, engine
   registration beyond adapters explicitly listed in the support matrix, browser
   workflows beyond isolated compact pages and the Trino Recent/One Query ID
-  beta lanes, Details/trusted report output, optimizer behavior, metadata
-  collection, query-history crawling, SQL execution, or Query Doctor-generated
-  SQL for a second engine without explicit implementation and validation.
+  local production lanes plus the raw-free materialized Trino Details view and
+  Python Report plus optimizer guidance, LLM report output, Query Optimizer
+  jobs, product metadata collection, query-history crawling, user SQL
+  execution, or Query Doctor-generated SQL for a second engine without explicit
+  implementation and validation.
 
 ## Trino/Spark Parallel Restart Gate
 

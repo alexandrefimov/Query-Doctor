@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-06-05
+Last updated: 2026-06-22
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -96,13 +96,14 @@ Read:
 
 Rules:
 
-- Apache Impala remains the only production-supported engine;
+- Apache Impala remains the full production triage engine; Trino production
+  support is limited to the bounded local raw-free lanes in the support matrix;
 - normalized engine facts are a contract seam, not an engine selector or support
   claim;
 - keep fact IDs registered with explicit scope and allowed engines;
 - do not promote Spark or Trino facts into shared scopes, product ranking,
-  Details, trusted reports, optimizer behavior, or Recent workflows without a
-  separate support-gate slice.
+  Details, trusted reports, optimizer behavior, or Recent workflows beyond the
+  explicit Trino local production lanes without a separate support-gate slice.
 
 Validate:
 
@@ -204,14 +205,8 @@ Rules:
 - treat medium/high optimization candidates as a calibration funnel, not as a
   promise that a trusted SQL draft exists;
 - before threshold, ranking, or recipe work, run the raw-free optimizer funnel
-  audit and inspect repeated no-recipe shape families; add
-  `--fail-on-repeated-no-recipe-readiness-gaps` when representative calibration
-  should fail repeated no-recipe workload groups that do not have one specific
-  safe review track plus allowlisted review area, change direction, workload
-  metric, and compare/rerun verification wording; add
-  `--summary-json <raw-free-optimizer-funnel-summary.json>` for retained
-  machine-readable evidence without paths, SQL, raw identifiers, or free-form
-  raw reason text;
+  audit from [test-matrix.md](test-matrix.md) and inspect repeated no-recipe
+  shape families;
 - improve no-draft guidance or analyzer facts before loosening prompt freedom
   or validation;
 - add Python-owned recipes only with specific fixtures and validation tests.
@@ -365,77 +360,8 @@ Validate:
 - batch/recent candidate tests;
 - mocked subprocess timeout/failure tests;
 - web progress tests if stage rendering changes;
-- after large smoke scans, run
-  `python3 scripts/audit_impala_diagnostic_loop.py <batch_summary.json>` for
-  an aggregate strict loop gate over Details, profile evidence, diagnostic
-  coverage, workload, stats, and optimizer readiness. Add
-  `--require-workload-groups` when representative workload coverage is part of
-  the claim, `--action-outcomes <action_outcomes.jsonl>
-  --require-action-outcomes` for workload outcome calibration, and
-  `--require-direct-source-readiness` for direct Impala representative
-  summaries. Add `--use-current-classifier-primary` only when retained
-  summaries are being checked against the current deterministic
-  `analysis.json` primary classifier; the audit still reports safe drift
-  counters from persisted summary labels. The aggregate audit prints only
-  component status and issue categories;
-- for component drilldown, run
-  `python3 scripts/audit_recent_details.py <batch_summary.json>` and pass prior
-  smoke summaries with `--baseline-summary` when checking sample overlap; add
-  `--fail-on-stats-detail-gaps --fail-on-comparable-rerun-gaps` for strict
-  action-card evidence-detail and rerun-verification gating;
-- for workload diagnostics calibration, run
-  `python3 scripts/audit_workload_diagnostics.py <batch_summary.json> --fail-on-workload-readiness-gaps`
-  so derived or materialized repeated workload groups without usable details,
-  representatives, regression baselines, workload-history status, or comparable
-  verification guidance block representative-readiness claims. The presenter can
-  derive bounded groups from eligible safe row fingerprints when a materialized
-  group payload is absent; incomplete fingerprints do not become groups and are
-  reported as an aggregate blocker when no derived or materialized groups exist.
-  New summaries include safe aggregate incomplete-field buckets; older retained
-  summaries without those fields use summary-only recomputation, and only
-  summaries without usable structured case fields appear as `unspecified`. New
-  summaries also retain per-case raw-free `workload_shape`, so retained audits
-  can recompute grouping inputs, including incomplete-field status, without
-  reading case directories or raw artifacts. Add
-  `--require-workload-groups` when the calibration run itself is meant to prove
-  repeated-workload coverage, so a summary with no derived or materialized
-  repeated workload groups cannot pass that representative gate;
-- for action outcome calibration, add
-  `--action-outcomes <action_outcomes.jsonl> --fail-on-action-outcome-readiness-gaps`
-  to the workload audit so representative workload queue/detail rows must carry
-  safe aggregate feedback summaries from local outcome records. The audit prints
-  only aggregate counters, requires repeated workload groups in strict mode, and
-  does not require outcome files inside batch summaries. Strict action-outcome
-  sample thresholds count only records with explicit comparable-rerun
-  verification, and the measured-result gate requires `improved`, `no_change`,
-  or `worsened` for each required tracked recommendation family. Legacy or
-  otherwise unverified applied records and all-`unsure` comparable reruns remain
-  visible as aggregate counters but do not prove the feedback loop. Add
-  `--summary-json <raw-free-workload-diagnostics-summary.json>` when retained
-  machine-readable workload/action-outcome evidence is needed without storing
-  paths, workload fingerprints, case IDs, SQL, or raw outcome records;
-- for stats diagnostics calibration, run
-  `python3 scripts/audit_stats_diagnostics.py <batch_summary.json> --fail-on-stats-readiness-gaps`
-  so Medium/High stats candidates without structured metadata detail, usable
-  metadata status, safe review areas, or comparable rerun confirmation block
-  representative-readiness claims. Add
-  `--summary-json <raw-free-stats-diagnostics-summary.json>` when retained
-  machine-readable stats diagnosis evidence is needed without paths, case IDs,
-  query IDs, raw metadata, SQL, or free-form evidence text;
-- for representative diagnostic coverage, run
-  `python3 scripts/audit_impala_coverage_gaps.py <batch_summary.json> --fail-on-diagnostic-coverage-gaps`
-  so missing analysis, missing primary labels, high unknown-primary rate, and
-  low medium/high primary coverage block calibration claims. Add
-  `--use-current-classifier-primary` only for retained-summary calibration that
-  must prove current deterministic classifier coverage without rewriting old
-  batch artifacts; safe drift counters remain visible. Add
-  `--summary-json <raw-free-impala-coverage-summary.json>` when retained
-  machine-readable diagnostic coverage evidence is needed without paths, case
-  IDs, query IDs, raw source text, SQL, or follow-up prose;
-- for direct Impala representative summaries, add
-  `--fail-on-direct-source-readiness-gaps` to the coverage audit so unknown
-  source provenance, profile capability, optional endpoint, metadata, event, or
-  Prometheus limitation states block direct-source readiness claims. The gate
-  accepts explicit `not_configured`, `not_collected`, and `unavailable` states as
-  safe limitations. Use the same `--summary-json` output when retaining
-  direct-source readiness counters for a fresh run.
+- for representative smoke or retained calibration claims, use the aggregate
+  Impala loop audit and component drilldown gates listed in
+  [test-matrix.md](test-matrix.md). Keep retained summaries raw-free and
+  path-free; do not copy local batch paths, case IDs, SQL, query IDs, workload
+  fingerprints, raw warnings, or outcome records into docs.

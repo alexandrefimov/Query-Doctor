@@ -143,6 +143,8 @@ def scan_public_docs(repo_dir: Path) -> list[PublicDocFinding]:
         full_path = repo_dir / path
         try:
             text = full_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
         except UnicodeDecodeError:
             continue
         findings.extend(scan_text_for_local_doc_notes(text, path=path))

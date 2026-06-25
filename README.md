@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-19
+Last reviewed: 2026-06-25
 
 Language: English | [Russian](README.ru.md)
 
@@ -10,8 +10,9 @@ Language: English | [Russian](README.ru.md)
 [![CodeQL](https://github.com/alexandrefimov/Query-Doctor/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/alexandrefimov/Query-Doctor/actions/workflows/codeql.yml)
 [![PyPI](https://img.shields.io/pypi/v/query-doctor.svg?cacheSeconds=300)](https://pypi.org/project/query-doctor/)
 
-Query Doctor is a local-first Big Data query diagnostic tool focused today on
-Apache Impala production triage. It helps operators rank suspicious Recent
+Query Doctor is a local-first Big Data query diagnostic tool focused on Apache
+Impala production triage, with bounded local Trino production lanes. It helps
+operators rank suspicious Recent
 queries, collect bounded profile context, derive deterministic evidence, and
 generate validated reports without exposing raw SQL or raw profiles in trusted
 browser/report surfaces.
@@ -23,10 +24,10 @@ Python owns facts. LLM owns wording only.
 ```
 
 Recent scan is the flagship workflow. Query ID diagnosis is secondary for one
-known Impala query, with a local Trino Beta lane for bounded retained-list
-Recent diagnosis and one explicit Query ID when the required coordinator
-contracts are configured. Query Optimizer is separate, read-only, and does not
-execute or echo submitted SQL.
+known Impala query, with a local Trino lane for bounded retained-list Recent
+diagnosis and one explicit Query ID when the required coordinator contracts are
+configured. Query Optimizer is separate, read-only, and does not execute or echo
+submitted SQL.
 
 ## Quickstart
 
@@ -65,8 +66,9 @@ Query Doctor is:
 - a Recent-query ranking workflow for operators and administrators;
 - a safe report generator using validated facts;
 - a practical tool for deciding what to inspect, change, and verify next;
-- a Big Data SQL/lakehouse diagnostics wedge whose production triage engine is
-  Apache Impala today, with bounded raw-free future-engine preview seams.
+- a Big Data SQL/lakehouse diagnostics wedge whose full production triage
+  engine is Apache Impala, with bounded raw-free local Trino production lanes
+  and future-engine preview seams.
 
 Query Doctor is not:
 
@@ -75,7 +77,7 @@ Query Doctor is not:
 - a tool that executes user SQL or optimizer draft SQL;
 - a tool that sends raw SQL/profile data to remote services by default;
 - a root-cause oracle;
-- a live multi-engine query collector today.
+- a broad live multi-engine query-history collector.
 
 ## What It Does
 
@@ -110,34 +112,46 @@ Query Doctor is not:
 
 | Surface | Current status |
 | --- | --- |
-| Query engine | Apache Impala is the production triage engine. |
+| Query engine | Apache Impala is the full production triage engine. Trino has bounded local production support only for the raw-free lanes named below. |
 | First-value intake | One local exported Impala text profile can be staged, redacted, analyzed, and opened from Known Query ID. |
 | Recent scan | Cloudera Manager is the full Recent discovery/profile/metrics/events provider for Impala workflows. |
 | Direct Impala | Bounded Recent scans, Running scans, and one Known Query ID through impalad daemon endpoints; no Cloudera Manager events and no SQL execution. |
 | Runtime metrics | Optional bounded Prometheus summaries for configured direct Impala workflows; no arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted Impala metadata statements through `impala-shell`; no user SQL execution or unbounded metadata crawl. |
 | Reports and optimizer | Python-owned facts and validation. Known Query ID prepares the deterministic Python report in its explicit submit job; LLM narratives remain explicit selected-case actions, and optimizer actions are shown only for cases with safe-to-attempt rewrite support. |
-| Trino Beta | Local web beta can read one bounded retained pruned coordinator query list for Recent diagnosis, then bounded pruned coordinator QueryInfo payloads for selected rows or one explicit Query ID, and render deterministic compact diagnosis. No Running scans, query-history crawling, metadata collection, Details/trusted report output, optimizer behavior, generated Trino SQL, SQL execution, or production support. |
+| Trusted SSO/auth proxy deployment | Query Doctor supports deployment behind a trusted SSO/auth proxy via `viewer_identity_header` for shared/non-local `owner_raw` access only after the raw-free D3 support-readiness gate passes. The proxy or ingress owns authentication, MFA, session lifecycle, token handling, and inbound-header stripping; Query Doctor only enforces the normalized viewer owner header against `query.user`. |
+| Trino local | Local web Trino mode can read one bounded retained pruned coordinator query list for Recent diagnosis, then bounded pruned coordinator QueryInfo payloads for selected rows or one explicit Query ID, render deterministic compact diagnosis, materialize server-owned raw-free case artifacts, open a raw-free Details view, and generate deterministic Python Report plus optimizer guidance from those materialized case facts. `trino_support_mode=beta` keeps the legacy beta label; `trino_support_mode=production` marks the same bounded raw-free local lanes as local production support and removes that label. No Running scans, query-history crawling, metadata collection, LLM report output, Query Optimizer jobs, generated Trino SQL, SQL execution, or broader/shared Trino production triage support. |
 | Spark | Bounded compact support surfaces only. Spark is not production engine support, live Recent scans, Details/trusted report output, optimizer behavior, raw event-log handling, Spark job execution, or Query Doctor-generated SQL. |
 
-Trino preview surfaces include offline or compact raw-free imports and checks:
+Trino compact/dev surfaces include offline or compact raw-free imports and checks:
 sanitized evidence packages, bounded local compact imports, explicit
-source-contract checks, and bounded pruned QueryInfo paths documented in the
-engine docs. The only product-facing Trino surfaces are local web Trino Beta
-retained-list Recent diagnosis and One Query ID diagnosis. Both require
-`trino_beta_enabled=true`, `trino_coordinator_url`, and
-`trino_query_info_source_contract` in local config; Recent also requires
-`trino_query_list_source_contract`. Startup validation checks local source
-contracts, safe coordinator URL shape, and optional auth reference
-(`trino_auth_header_file` or local Kerberos/SPNEGO settings) before the lane is
-marked configured. Configured Trino Beta sources are marked as
-`Trino Beta Recent + One Query ID` or `Trino Beta One Query ID` in the source
-selector. The Diagnose Engine control narrows the Source cluster selector to
-Impala-capable sources or Trino Beta-ready sources before workflow selection,
-and stale or forged Trino submits still fail closed before analysis or async
-job creation.
+source-contract checks, a contract-gated local metadata CLI summary builder
+and dev-only round-trip smoke gate that emit aggregate metadata coverage only,
+and bounded pruned QueryInfo paths
+documented in the engine docs. The only local production Trino product surfaces are local web retained-list
+Recent diagnosis, One Query ID diagnosis, the raw-free Details view,
+deterministic Python Report, and optimizer guidance for server-owned materialized cases from those
+lanes. The diagnosis lanes require
+`trino_support_mode=beta` or `trino_support_mode=production`,
+`trino_coordinator_url`, and `trino_query_info_source_contract` in local config;
+Recent also requires `trino_query_list_source_contract`. The legacy
+`trino_beta_enabled=true` key remains beta-only for existing local setups and
+must not be combined with `trino_support_mode=production`. Startup validation
+checks local source contracts, safe coordinator URL shape, and optional auth
+reference (`trino_auth_header_file` or local Kerberos/SPNEGO settings) before
+the lane is marked configured. Configured beta sources are marked as
+`Trino Beta Recent + One Query ID` or `Trino Beta One Query ID`; configured
+production-mode sources are marked without the beta label. The Diagnose Engine
+control narrows the Source cluster selector to Impala-capable sources or
+Trino-ready sources before workflow selection, and stale or forged Trino submits
+still fail closed before analysis or async job creation.
 Coordinator URL, auth header references, raw QueryInfo, raw SQL, and local paths
-stay out of the browser. Broader Trino live collection remains unsupported.
+stay out of the browser. Trino web case artifacts contain only the normalized
+boundary, compact diagnosis, metadata-not-collected summary, typed analysis, and
+safe analyzer facts view; Details opens only after those artifacts exist.
+Python Report and optimizer guidance use the same raw-free facts and hide raw payloads, query IDs,
+paths, LLM report output, Query Optimizer jobs, and generated SQL. Broader/shared Trino
+live collection and broader Trino production triage remain unsupported.
 Spark compact support surfaces are limited to bounded compact History Server
 intake, compact evidence-package build/validation, and compact diagnosis; there
 is no public Spark engine support.
@@ -332,7 +346,7 @@ stats maintenance, storage/HDFS follow-up, frequent-short workloads, mixed
 signals, unknown but useful limited evidence, and direct-Impala compatibility.
 It also includes two read-only raw-free Trino Beta demo cases rendered from
 static compact diagnosis facts, without contacting a Trino coordinator or
-enabling Details, reports, optimizer behavior, generated SQL, or SQL execution.
+enabling Details, reports, optimizer guidance, generated SQL, or SQL execution.
 See
 [docs/demo-cases.md](docs/demo-cases.md) for the full scenario list and talk
 track.
@@ -399,11 +413,17 @@ Do not deploy ordinary local mode as a shared service without a separate design
 for authentication, authorization, tenant/job isolation, audit logging,
 TLS/reverse-proxy trust, and resource limits. Shared public demos should use
 the read-only `query-doctor-web --public-demo` mode. Shared `owner_raw` source
-access requires authenticated per-request viewer identity; today that means an
-explicit `viewer_identity_header` supplied only by a trusted auth proxy or
-ingress that strips inbound copies of the same header. The shared/non-local
-deployment checklist is
-[docs/owner-raw-d3-deployment.md](docs/owner-raw-d3-deployment.md).
+access requires authenticated per-request viewer identity through an explicit
+`viewer_identity_header` supplied only by a trusted SSO/auth proxy or ingress
+that strips inbound copies of the same header and sets exactly one normalized
+simple owner value. Query Doctor supports that deployment pattern after the
+raw-free support-readiness gate in
+[docs/owner-raw-d3-deployment.md](docs/owner-raw-d3-deployment.md). A
+dev-only Keycloak/oauth2-proxy smoke is available in
+[docs/dev-sso-keycloak.md](docs/dev-sso-keycloak.md) to test the front-door
+viewer header contract locally; `scripts/dev_sso_keycloak_smoke.py` verifies
+the running local compose path with raw-free output. The dev smoke is not
+production SSO support evidence and does not add native SSO to Query Doctor.
 
 ## Safety Model
 
@@ -461,9 +481,10 @@ High-value next reads:
 - [docs/release-checklist.md](docs/release-checklist.md): final tag,
   package-index, and visibility-change checklist.
 
-The canonical documentation language is English. The main Russian companion
-README is [README.ru.md](README.ru.md); additional Russian companion pages live
-under [docs/i18n/ru/](docs/i18n/ru/) where useful.
+The canonical documentation language is English. The Russian layer is limited
+to [README.ru.md](README.ru.md) plus practical user/operator instructions under
+[docs/i18n/ru/](docs/i18n/ru/); internal, agent, research, release, and engine
+deep-dive docs stay English-only.
 
 ## Development Checks
 

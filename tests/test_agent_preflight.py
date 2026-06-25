@@ -121,7 +121,7 @@ def test_analyzer_recent_rule_uses_existing_focused_tests():
     assert "tests/test_recent_*" not in report
 
 
-def test_trino_paths_get_bounded_preview_restart_gate():
+def test_trino_paths_get_compact_local_web_restart_gate():
     rules = agent_preflight.matching_rules(
         [
             "query_doctor/trino/local_query_detail.py",
@@ -136,11 +136,12 @@ def test_trino_paths_get_bounded_preview_restart_gate():
         rules,
     )
 
-    assert "Trino bounded preview" in {rule.name for rule in rules}
+    assert "Trino compact/local web support" in {rule.name for rule in rules}
     assert "docs/engine-redaction-note-v1.md" in report
     assert "python3 scripts/audit_trino_support_gap_matrix.py" in report
     assert "tests/test_engine_capabilities.py" in report
-    assert "do not add Recent, Details, trusted report, optimizer" in report
+    assert "Trino local production support is limited to raw-free Recent" in report
+    assert "Query Optimizer jobs, generated SQL, SQL execution" in report
 
 
 def test_spark_paths_get_bounded_compact_restart_gate():
