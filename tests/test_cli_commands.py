@@ -100,6 +100,11 @@ def test_command_specs_cover_module_and_console_backends():
             "query-doctor-trino-metadata-source-contract-check",
         ),
         (
+            "trino_metadata_cli_summary",
+            "query_doctor.cli.trino_metadata_cli_summary",
+            "query-doctor-trino-metadata-cli-summary",
+        ),
+        (
             "trino_metadata_summary_import",
             "query_doctor.cli.trino_metadata_summary_import",
             "query-doctor-trino-metadata-summary-import",
