@@ -13,7 +13,7 @@ verbose.
 | --- | --- | --- |
 | Active | Entry path, product contract, safety contract, or required agent guidance. | README, docs index, configuration, credentials, safety contract, roadmap, engine support matrix, customer-readiness priorities, test matrix. |
 | Reference | Supporting design, runbook, audit, or evidence-contract material. | architecture, code audit, UI/UX audit, demo mode, demo cases, engine expansion, Trino/Spark contracts, Cluster Doctor contract. |
-| Archive candidate | Historical detail useful for maintainers but too noisy for the default reading path. | old release notes, long changelog sections, completed release-readiness snapshots. |
+| Archived | Historical detail useful for maintainers but not a current contract. | older release notes, completed release-readiness snapshots, superseded spikes. |
 | Local-only | Private targets, generated outputs, smoke selectors, temporary paths, and one-run validation evidence. | ignored local notes, generated demo packs, retained private smoke artifacts. |
 
 ## Changelog Rule
@@ -26,10 +26,11 @@ cleanup slice rather than continuing to append every internal change.
 
 ## Russian Documentation Rule
 
-English remains canonical. Maintain Russian docs for important user paths:
-public README, demo, configuration, credentials, safety overview, and high-level
-roadmap. Deep engine contracts may remain best-effort references unless they
-are part of a current public demo or user setup path.
+English remains canonical. Maintain Russian docs only for README-level and
+practical user/operator paths: demo, configuration, credentials, local smoke,
+security, and safety overview. Internal, agent, release, research, roadmap,
+audit, and engine deep-dive docs stay English-only unless a future explicit
+user-facing requirement changes that boundary.
 
 ## Script Roles
 
@@ -60,5 +61,5 @@ are part of a current public demo or user setup path.
   first-run path.
 - De-emphasize future Cluster Doctor and second-engine references in entry
   paths while keeping their safety contracts indexed as reference material.
-- Review Russian deep engine companion docs for drift after the English entry
-  path is stable.
+- Keep the Russian layer narrow and update it only when README-level or
+  practical user/operator instructions change.

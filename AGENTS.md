@@ -1,20 +1,23 @@
 # Query Doctor Codex Instructions
 
-Last updated: 2026-06-14
+Last updated: 2026-06-22
 
 ## Project
 
-Query Doctor is a local-first Big Data query diagnostic tool focused today on
-Apache Impala production triage. Treat it as an engineering diagnostic product,
-not a chat wrapper. The production triage engine remains Impala. Keep the
-minimal future engine adapter seam, but do not add fake engine support.
+Query Doctor is a local-first Big Data query diagnostic tool focused on Apache
+Impala production triage, with bounded local Trino production lanes. Treat it as
+an engineering diagnostic product, not a chat wrapper. The full production
+triage engine remains Impala. Keep the minimal future engine adapter seam, but
+do not add fake engine support.
 For current engine support, fixture, and research statuses, use
 [docs/engine-support-gap-matrix.md](docs/engine-support-gap-matrix.md) as the
 source of truth before changing support wording or second-engine behavior.
 Trino is implemented only for the bounded raw-free surfaces listed there; do
-not expand it into live Trino coordinator diagnosis, metadata, Details/trusted
-report output, optimizer behavior, or generated SQL without explicit
-implementation and validation.
+not expand it into live Trino coordinator diagnosis beyond those lanes, metadata
+collection, LLM report output, Query Optimizer jobs, broader/shared production
+support, or generated SQL without explicit implementation and validation. The
+only Trino Details, Python Report, and optimizer guidance surfaces are the local
+production raw-free materialized web cases listed in the matrix.
 Spark compact History Server intake and compact evidence-package handoff are
 bounded compact support surfaces only. The Spark adapter may be registered only
 for compact intake, evidence-package validation/export, and compact diagnosis.
@@ -95,11 +98,16 @@ subset for coding agents.
   import, local pruned QueryInfo import, event-source contract checking,
   dry-run coordinator query-info target checking, one-query pruned coordinator
   query-info probing and fact import, compact diagnosis over raw-free boundary
-  JSON, and the isolated local `/trino/compact-diagnosis` page over already
-  raw-free boundary JSON. It does not support live Recent scans, live Query ID
-  product diagnosis, live query-list crawling, Trino coordinator query-history
-  collection, metadata collection, Details/trusted report output, optimizer
-  behavior, or Query Doctor-generated Trino SQL.
+  JSON, the isolated local `/trino/compact-diagnosis` page over already
+  raw-free boundary JSON, local production retained-list Recent over one
+  bounded retained pruned coordinator query-list read plus selected pruned
+  QueryInfo reads, local production One Query ID over one bounded pruned
+  QueryInfo read, and raw-free materialized Details, deterministic Python
+  Report, and optimizer guidance over those materialized case facts. It does
+  not support Running scans, live query-list crawling beyond the bounded
+  retained-list read, Trino coordinator query-history collection, metadata
+  collection, LLM reports, Query Optimizer jobs, generated Trino SQL, SQL
+  execution, or broader/shared Trino production triage.
 - Spark diagnosis is limited to registered bounded compact History Server
   intake for one explicit application, compact evidence-package
   build/validation/fixture export over already compact samples, compact
@@ -133,6 +141,19 @@ pipeline status, profile sections, metric sources, or raw fact categories.
 Those belong in collapsed Diagnostics unless they directly support the verdict,
 recommendation, verification step, or an explicit limitation. Remove duplicated
 visible facts when they do not add a new decision signal.
+
+## Agent Behavior
+- Before non-trivial implementation, state the working assumptions, intended
+  behavior change, and focused validation path. If ambiguity affects a safety or
+  raw-data boundary, support claim, config or git behavior, or user-visible
+  workflow, ask before editing.
+- Keep diffs traceable: every changed line should support the requested
+  behavior, required validation, or required documentation drift update. Do not
+  adjust adjacent code, comments, formatting, or dead code just because you
+  noticed it.
+- For bug fixes, prefer reproducing the issue with a focused failing test before
+  changing implementation. If test-first reproduction is impractical, state the
+  focused verification used instead.
 
 ## Engineering Style
 - Keep collector, analyzer, optimizer, validator, report, and UI
@@ -182,6 +203,11 @@ visible facts when they do not add a new decision signal.
   targets, local output paths, or workstation-specific setup.
 - Treat committed agent instructions and handoffs as curated durable
   abstractions, not a continuously updated memory store.
+- Keep agent docs role-separated: `AGENTS.md` for hard rules,
+  `agent-quickstart.md` for the operational path, `agent-playbook.md` for
+  change-type routing, `test-matrix.md` for exact validation commands, and
+  `codex-handoff.md` for durable product and safety baseline. Do not duplicate
+  detailed command inventories across those docs.
 - Do not promote one-off chat observations, failed local smokes, branch-local
   workarounds, or single-run validation results into durable instructions
   unless current code, tests, public docs, or an explicit user decision support

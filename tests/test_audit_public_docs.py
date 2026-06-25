@@ -58,3 +58,12 @@ def test_public_markdown_path_filter_includes_public_docs_only():
 
 def test_render_findings_reports_ok_for_clean_docs():
     assert audit_public_docs.render_findings([]) == "Public documentation local-note audit: OK"
+
+
+def test_scan_public_docs_ignores_deleted_tracked_docs(tmp_path):
+    original = audit_public_docs.public_markdown_paths
+    audit_public_docs.public_markdown_paths = lambda _repo_dir: ["docs/deleted.md"]
+    try:
+        assert audit_public_docs.scan_public_docs(tmp_path) == []
+    finally:
+        audit_public_docs.public_markdown_paths = original

@@ -1,14 +1,38 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-16
+Last reviewed: 2026-06-25
 
 Language: English | [Russian](i18n/ru/README.md)
 
 This directory contains the current Query Doctor documentation and supporting
 reference material. English is the canonical language for public documentation.
 Russian pages are selective user/operator companion translations, not a
-complete mirror of every internal or agent-facing document; if they conflict
-with the English source, the English document wins.
+complete mirror of internal, agent-facing, research, release, or engine
+deep-dive documents. If they conflict with the English source, the English
+document wins.
+
+## Documentation Lifecycle
+
+Use the lifecycle status in the index below before relying on a page:
+
+- `active`: current product, safety, validation, or agent contract. These pages
+  are checked by `scripts/check_active_docs.py` and should stay aligned with
+  code, tests, and support wording.
+- `reference`: supporting runbook, design note, checklist, or evidence
+  contract. Read it when the topic applies, but prefer the active source of
+  truth if wording differs.
+- `archived`: historical release note or snapshot. Keep it for traceability,
+  but do not use it as a current support, safety, or workflow contract.
+
+The primary source-of-truth chain is:
+
+- [../README.md](../README.md): public product overview and first user path.
+- [README.md](README.md): documentation map and lifecycle status.
+- [safety-contract.md](safety-contract.md): trust and redaction rules.
+- [engine-support-gap-matrix.md](engine-support-gap-matrix.md): engine support
+  status and second-engine boundaries.
+- [changelog.md](changelog.md): significant completed changes; release notes
+  are historical snapshots, not live behavior contracts.
 
 ## Hard Rules Summary
 
@@ -31,7 +55,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [../README.md](../README.md): demo-first public overview, install path,
   support boundaries, and safety summary.
 - [../README.ru.md](../README.ru.md): Russian companion for the public project
-  README.
+  README. Longer Russian pages are limited to practical user/operator
+  instructions under [i18n/ru/](i18n/ru/).
 - [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
   and public demo storyline.
 - [configuration.md](configuration.md): local JSON configuration reference for
@@ -42,8 +67,12 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
 - [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md): shared/non-local
-  `owner_raw` deployment contract, pre-proxy readiness checklist, and live
-  front-door validation gate for trusted ingress viewer identity.
+  `owner_raw` deployment contract, pre-proxy readiness checklist, live
+  front-door validation gate, and SSO/auth proxy support-readiness gate for
+  trusted ingress viewer identity.
+- [dev-sso-keycloak.md](dev-sso-keycloak.md): Dev Keycloak SSO Smoke,
+  a dev-only Keycloak and oauth2-proxy compose smoke for checking the
+  front-door viewer header contract before a real site SSO owner is available.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
   truth for current engine support status, fixture/research boundaries, and
   second-engine promotion gates.
@@ -65,8 +94,13 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   near-term Impala-first customer-readiness backlog for demo, config, docs,
   UI, and validation focus.
 - [trino-beta-ui-readiness.md](trino-beta-ui-readiness.md): acceptance gate for
-  showing the local Trino Beta retained-list Recent and One Query ID UI surfaces
-  without broadening the support claim.
+  showing the local production Trino retained-list Recent, One Query ID,
+  raw-free materialized Details, Python Report, and optimizer guidance UI
+  surfaces while keeping Trino Beta as the legacy label.
+- [trino-shared-deployment-hardening.md](trino-shared-deployment-hardening.md):
+  shared/non-local Trino deployment hardening contract for trusted front-door
+  identity, source isolation, and blocked unsupported surfaces without adding
+  broader/shared Trino production support.
 - [repository-simplification-audit.md](repository-simplification-audit.md):
   conservative docs, scripts, and tests classification before cleanup.
 
@@ -89,28 +123,21 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
-- [release-notes-0.9.0.md](release-notes-0.9.0.md): curated 0.9.0 release
-  notes for web diagnostics, actionable safe errors, Trino Beta demo coverage,
-  and release validation depth.
-- [release-notes-0.8.0.md](release-notes-0.8.0.md): curated 0.8.0 release
-  notes for Quickstart recovery, installed user-path gates, shared-owner raw
-  access hardening, and Impala adoption readiness.
-- [release-notes-0.7.0.md](release-notes-0.7.0.md): curated 0.7.0 release
-  notes for one-profile intake, installed-wheel release gates, typed scoring,
-  and Impala-first adoption readiness.
-- [release-notes-0.6.0.md](release-notes-0.6.0.md): curated 0.6.0 release
-  notes for bounded Spark compact intake, Trino raw-free handoff gates, and
-  Impala diagnostic-loop calibration.
-- [release-notes-0.5.0.md](release-notes-0.5.0.md): curated 0.5.0 release
-  notes for diagnostic-loop hardening and raw-free evidence handoff gates.
-- [release-notes-0.4.3.md](release-notes-0.4.3.md): curated 0.4.3 release
-  notes for report-mode and web UI polish.
-- [release-notes-0.4.2.md](release-notes-0.4.2.md): curated 0.4.2 release
-  notes for the public release baseline.
-- [release-notes-0.4.1.md](release-notes-0.4.1.md): curated 0.4.1 release
-  notes for the synthetic demo update.
-- [release-notes-0.4.0.md](release-notes-0.4.0.md): curated 0.4.0 release
-  notes for GitHub Release and package-index handoff.
+- [release-notes-0.10.0.md](release-notes-0.10.0.md): draft 0.10.0 release
+  notes for bounded local Trino production support, Impala production triage
+  polish, and release-readiness safety gates.
+- Historical release notes:
+  [0.9.0](release-notes-0.9.0.md),
+  [0.8.0](release-notes-0.8.0.md),
+  [0.7.0](release-notes-0.7.0.md),
+  [0.6.0](release-notes-0.6.0.md),
+  [0.5.0](release-notes-0.5.0.md),
+  [0.4.3](release-notes-0.4.3.md),
+  [0.4.2](release-notes-0.4.2.md),
+  [0.4.1](release-notes-0.4.1.md),
+  [0.4.0](release-notes-0.4.0.md), and
+  [0.3.0](release-notes-0.3.0.md). Treat them as archived snapshots; use
+  current active docs for behavior and support boundaries.
 - [release-checklist.md](release-checklist.md): final release-candidate,
   tag, package-index, and visibility-change procedure.
 - [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md):
@@ -119,7 +146,8 @@ release work. Do not read every reference doc before small tasks.
   contract.
 - [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md):
   release-facing private-preview path for closed test-cluster Trino evidence
-  plus the local Trino Beta One Query ID product surface.
+  plus the bounded local Trino production Recent and One Query ID lanes; Trino
+  Beta remains the legacy local label.
 
 ## Document Status Index
 
@@ -127,6 +155,8 @@ Status legend:
 
 - `active`: current contract or required working guidance.
 - `reference`: useful supporting material, not the first source of truth.
+- `archived`: historical snapshot; keep for traceability, not current support
+  or workflow guidance.
 
 | Document | Status | Use |
 | --- | --- | --- |
@@ -138,7 +168,8 @@ Status legend:
 | [codex-handoff.md](codex-handoff.md) | active | Public-safe agent baseline and safety-sensitive context. |
 | [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
-| [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) | active | Shared/non-local `owner_raw` deployment contract, pre-proxy readiness checklist, live front-door validation gate, kill switch, and audit checks. |
+| [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) | active | Shared/non-local `owner_raw` deployment contract, pre-proxy readiness checklist, live front-door validation gate, SSO/auth proxy support-readiness gate, kill switch, and audit checks. |
+| [dev-sso-keycloak.md](dev-sso-keycloak.md) | reference | Dev Keycloak SSO Smoke for the D3 front-door viewer header contract; not production SSO support. |
 | [engine-redaction-note-v1.md](engine-redaction-note-v1.md) | active | Shared raw-free evidence-package redaction note schema for package-style engine intake. |
 | [engines/README.md](engines/README.md) | reference | Index for detailed Trino and Spark preview/research docs and command catalogs. |
 | [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |
@@ -148,7 +179,8 @@ Status legend:
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
 | [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | active | Current engine support status, normalized fact coverage, fixture/research boundaries, and second-engine support gaps. |
 | [customer-readiness-priorities.md](customer-readiness-priorities.md) | active | Near-term Impala-first customer-readiness backlog for demo, config, docs, UI, and validation focus. |
-| [trino-beta-ui-readiness.md](trino-beta-ui-readiness.md) | active | Acceptance gate for showing the local Trino Beta retained-list Recent and One Query ID UI surfaces without broadening the support claim. |
+| [trino-beta-ui-readiness.md](trino-beta-ui-readiness.md) | active | Acceptance gate for showing the local production Trino retained-list Recent, One Query ID, raw-free materialized Details, Python Report, and optimizer guidance UI surfaces while keeping Trino Beta as the legacy label. |
+| [trino-shared-deployment-hardening.md](trino-shared-deployment-hardening.md) | active | Shared/non-local Trino deployment hardening contract for trusted front-door identity, source isolation, and blocked unsupported surfaces without adding broader/shared Trino production support. |
 | [repository-simplification-audit.md](repository-simplification-audit.md) | active | Conservative docs, scripts, and tests classification before cleanup. |
 | [research/upstream-watch.md](research/upstream-watch.md) | reference | Upstream and adjacent-market watch loop for diagnostic signals across the query stack. |
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
@@ -156,18 +188,9 @@ Status legend:
 | [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md) | reference | Future Trino live-collection source, auth, bounds, redaction, and fixture gates. |
 | [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md) | reference | Safe operator-export checklist for the first sanitized Trino test-cluster evidence handoff. |
 | [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest, redaction-note, local event-store, operator HTTP archive, local query-detail, local query-list, statement-stats, pruned query-info probe/import, and compact diagnosis templates for sanitized Trino intake. |
-| [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Closed test-cluster private-preview release path for Trino plus the local Recent and One Query ID beta boundary. |
+| [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Bounded local Trino production and retained private-preview release path; Trino Beta remains the legacy local label. |
 | [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md) | reference | Bounded compact Spark History Server/event-log fact-model, compact-only adapter, compact-intake, and isolated collect-or-paste compact-diagnosis page contract without public engine support. |
 | [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md) | reference | Safe operator-reviewed compact Spark History Server/event-log evidence checklist for promotion-gate work without live Spark support claims. |
-| [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |
-| [engines/i18n/ru/trino-live-collection-design.md](engines/i18n/ru/trino-live-collection-design.md) | reference | Russian companion for the future Trino live-collection design. |
-| [engines/i18n/ru/trino-test-cluster-evidence-checklist.md](engines/i18n/ru/trino-test-cluster-evidence-checklist.md) | reference | Russian companion for the Trino test-cluster evidence checklist. |
-| [engines/i18n/ru/trino-evidence-package-templates.md](engines/i18n/ru/trino-evidence-package-templates.md) | reference | Russian companion for the Trino evidence package templates. |
-| [engines/i18n/ru/trino-private-preview-release.md](engines/i18n/ru/trino-private-preview-release.md) | reference | Russian companion for the Trino private-preview release path. |
-| [engines/i18n/ru/spark-architecture-spike.md](engines/i18n/ru/spark-architecture-spike.md) | reference | Russian companion for the Spark architecture spike. |
-| [engines/i18n/ru/spark-test-cluster-evidence-checklist.md](engines/i18n/ru/spark-test-cluster-evidence-checklist.md) | reference | Russian companion for the Spark test-cluster evidence checklist. |
-| [research/i18n/ru/upstream-watch.md](research/i18n/ru/upstream-watch.md) | reference | Russian companion for the upstream and adjacent-market watch loop. |
-| [research/i18n/ru/diagnostic-gap-log.md](research/i18n/ru/diagnostic-gap-log.md) | reference | Russian companion for the safe diagnostic gap log. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |
 | [roadmap.md](roadmap.md) | active | Product direction, priorities, deferred work, and anti-features. |
 | [code-audit.md](code-audit.md) | active | Public engineering and safety risk summary. |
@@ -178,16 +201,17 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
-| [release-notes-0.9.0.md](release-notes-0.9.0.md) | reference | Curated 0.9.0 release notes. |
-| [release-notes-0.8.0.md](release-notes-0.8.0.md) | reference | Curated 0.8.0 release notes. |
-| [release-notes-0.7.0.md](release-notes-0.7.0.md) | reference | Curated 0.7.0 release notes. |
-| [release-notes-0.6.0.md](release-notes-0.6.0.md) | reference | Curated 0.6.0 release notes. |
-| [release-notes-0.5.0.md](release-notes-0.5.0.md) | reference | Curated 0.5.0 release notes. |
-| [release-notes-0.4.3.md](release-notes-0.4.3.md) | reference | Curated 0.4.3 release notes. |
-| [release-notes-0.4.2.md](release-notes-0.4.2.md) | reference | Curated 0.4.2 release notes. |
-| [release-notes-0.4.1.md](release-notes-0.4.1.md) | reference | Curated 0.4.1 release notes. |
-| [release-notes-0.4.0.md](release-notes-0.4.0.md) | reference | Curated 0.4.0 release notes. |
-| [release-notes-0.3.0.md](release-notes-0.3.0.md) | reference | Curated 0.3.0 release notes. |
+| [release-notes-0.10.0.md](release-notes-0.10.0.md) | reference | Draft 0.10.0 release notes. |
+| [release-notes-0.9.0.md](release-notes-0.9.0.md) | archived | Historical 0.9.0 release snapshot. |
+| [release-notes-0.8.0.md](release-notes-0.8.0.md) | archived | Historical 0.8.0 release snapshot. |
+| [release-notes-0.7.0.md](release-notes-0.7.0.md) | archived | Historical 0.7.0 release snapshot. |
+| [release-notes-0.6.0.md](release-notes-0.6.0.md) | archived | Historical 0.6.0 release snapshot. |
+| [release-notes-0.5.0.md](release-notes-0.5.0.md) | archived | Historical 0.5.0 release snapshot. |
+| [release-notes-0.4.3.md](release-notes-0.4.3.md) | archived | Historical 0.4.3 release snapshot. |
+| [release-notes-0.4.2.md](release-notes-0.4.2.md) | archived | Historical 0.4.2 release snapshot. |
+| [release-notes-0.4.1.md](release-notes-0.4.1.md) | archived | Historical 0.4.1 release snapshot. |
+| [release-notes-0.4.0.md](release-notes-0.4.0.md) | archived | Historical 0.4.0 release snapshot. |
+| [release-notes-0.3.0.md](release-notes-0.3.0.md) | archived | Historical 0.3.0 release snapshot. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
 | [local-smoke.md](local-smoke.md) | reference | Public-safe local validation workflows with private targets kept local. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |
@@ -199,7 +223,7 @@ Status legend:
 | [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
 | [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |
 | [cluster-doctor-contract.md](cluster-doctor-contract.md) | reference | Future Cluster Doctor seam. |
-| [trino-discovery-spike.md](trino-discovery-spike.md) | reference | Fixture-only Trino discovery plan for shaping the future engine fact contract. |
+| [trino-discovery-spike.md](trino-discovery-spike.md) | archived | Historical fixture-only Trino discovery snapshot; use the support matrix and engine docs for current boundaries. |
 | [model-bakeoff.md](model-bakeoff.md) | reference | Model route evaluation protocol without local bake-off results. |
 | [demo-mode.md](demo-mode.md) | reference | Synthetic demo pack generation. |
 | [DEMO.md](DEMO.md) | reference | Demo talk track. |
