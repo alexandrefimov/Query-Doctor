@@ -3,18 +3,21 @@
 Last reviewed: 2026-06-05
 
 This document defines the first Spark research contract for Query Doctor. It is
-not a support announcement and does not change the current support matrix:
-Query Doctor production engine support remains Apache Impala only. The current
-Spark slice adds a registered bounded compact-intake adapter from Spark History
-Server summary JSON into raw-free normalized facts plus an isolated direct
-compact-diagnosis page for one explicit History Server application or already
-accepted compact JSON, but it is not a Recent scan workflow, Details/trusted
-report surface, optimizer path, broad live collector, raw event-log path, Spark
-job-execution path, or public Spark support claim. Trino remains limited to
-sanitized offline/local evidence import,
-source-contract/target checks, and one-query pruned coordinator query-info
-probing/import, plus local web Trino Beta One Query ID; it is not production
-Trino product support.
+not a Spark support announcement and does not change the current support
+matrix: full production triage support remains Apache Impala, and Trino
+production support is bounded to the local raw-free lanes listed in the matrix.
+The current Spark slice adds a registered bounded compact-intake adapter from
+Spark History Server summary JSON into raw-free normalized facts plus an
+isolated direct compact-diagnosis page for one explicit History Server
+application or already accepted compact JSON, but it is not a Recent scan
+workflow, Details/trusted report surface, optimizer path, broad live collector,
+raw event-log path, Spark job-execution path, or public Spark support claim.
+Trino remains limited to sanitized offline/local evidence import,
+source-contract/target checks, pruned coordinator query-info probing/import,
+local production retained-list Recent, local production One Query ID, and
+raw-free materialized Details, deterministic Python Report, and optimizer
+guidance over those materialized cases; it is not broader/shared Trino
+production support.
 
 Use this document with
 [../engine-expansion-plan.md](../engine-expansion-plan.md),

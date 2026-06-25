@@ -2,8 +2,6 @@
 
 Last reviewed: 2026-06-05
 
-Language: English | [Russian](i18n/ru/spark-test-cluster-evidence-checklist.md)
-
 This checklist defines the first safe handoff from a Spark test cluster or
 operator-controlled Spark History Server to Query Doctor research. It is not a
 live Spark support announcement, engine selector, Recent workflow,
