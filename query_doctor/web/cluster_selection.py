@@ -15,6 +15,11 @@ from query_doctor.source_visibility import (
     normalize_source_visibility,
     source_owner_user_from_env,
 )
+from query_doctor.trino.support_mode import (
+    TRINO_SUPPORT_MODE_BETA,
+    normalize_trino_support_mode,
+    trino_support_mode_enabled,
+)
 from query_doctor.web.models import (
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
@@ -75,6 +80,7 @@ def has_top_level_cluster_config(config_values: Mapping[str, object]) -> bool:
             "manual_profile_dir",
             "query_profile_source",
             "impala_profile_hosts",
+            "trino_support_mode",
             "trino_beta_enabled",
             "trino_coordinator_url",
             "trino_query_info_source_contract",
@@ -118,6 +124,14 @@ def build_web_cluster_config(
             string_value(defaults, "source_owner_user"),
             source_owner_user_from_env(dict(os.environ)),
         )
+    )
+    legacy_trino_beta_enabled = first_bool(values, defaults, "trino_beta_enabled", default=False)
+    trino_support_mode = normalize_trino_support_mode(
+        first_string(
+            string_value(values, "trino_support_mode"),
+            string_value(defaults, "trino_support_mode"),
+        ),
+        legacy_beta_enabled=legacy_trino_beta_enabled,
     )
     return WebClusterConfig(
         key=key,
@@ -252,7 +266,10 @@ def build_web_cluster_config(
             DEFAULT_RECENT_SCAN_TIMEZONE,
         )
         or DEFAULT_RECENT_SCAN_TIMEZONE,
-        trino_beta_enabled=first_bool(values, defaults, "trino_beta_enabled", default=False),
+        trino_support_mode=trino_support_mode,
+        trino_beta_enabled=(
+            legacy_trino_beta_enabled or trino_support_mode == TRINO_SUPPORT_MODE_BETA
+        ),
         trino_coordinator_url=first_string(
             string_value(values, "trino_coordinator_url"),
             string_value(defaults, "trino_coordinator_url"),
@@ -396,18 +413,23 @@ def cluster_select_options(settings: WebSettings) -> tuple[tuple[str, str], ...]
 
 def cluster_select_label(cluster: WebClusterConfig) -> str:
     label = cluster.label
+    trino_label = trino_support_mode_label(cluster)
     if cluster_trino_beta_query_ready(cluster) and cluster_trino_beta_recent_ready(cluster):
-        return f"{label} - Trino Beta Recent + One Query ID"
+        return f"{label} - {trino_label} Recent + One Query ID"
     if cluster_trino_beta_recent_ready(cluster):
-        return f"{label} - Trino Beta Recent"
+        return f"{label} - {trino_label} Recent"
     if cluster_trino_beta_query_ready(cluster):
-        return f"{label} - Trino Beta One Query ID"
+        return f"{label} - {trino_label} One Query ID"
     return label
+
+
+def trino_support_mode_label(cluster: WebClusterConfig | WebSettings) -> str:
+    return "Trino" if cluster.trino_support_mode == "production" else "Trino Beta"
 
 
 def cluster_trino_beta_query_ready(cluster: WebClusterConfig) -> bool:
     return bool(
-        cluster.trino_beta_enabled
+        (trino_support_mode_enabled(cluster.trino_support_mode) or cluster.trino_beta_enabled)
         and cluster.trino_coordinator_url
         and cluster.trino_query_info_source_contract
     )
@@ -493,6 +515,7 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 viewer_identity=viewer_identity,
                 krb5ccname=cluster.krb5ccname,
                 recent_scan_timezone=cluster.recent_scan_timezone,
+                trino_support_mode=cluster.trino_support_mode,
                 trino_beta_enabled=cluster.trino_beta_enabled,
                 trino_coordinator_url=cluster.trino_coordinator_url,
                 trino_query_info_source_contract=cluster.trino_query_info_source_contract,

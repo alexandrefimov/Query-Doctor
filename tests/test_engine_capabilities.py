@@ -43,7 +43,7 @@ def test_capability_manifest_matches_adapter_flags():
             assert getattr(adapter, flag) is True
 
 
-def test_second_engine_capabilities_do_not_claim_production_surfaces():
+def test_second_engine_capabilities_scope_production_surfaces():
     for engine in ("spark",):
         assert unsupported_product_capabilities(engine) == ()
         assert all(
@@ -58,16 +58,16 @@ def test_second_engine_capabilities_do_not_claim_production_surfaces():
         if capability.product_surface_allowed
     ]
     assert [(capability.surface_id, capability.support_level) for capability in trino_product] == [
-        ("recent_scan", "product_beta"),
-        ("query_id_mode", "product_beta"),
+        ("recent_scan", "production"),
+        ("query_id_mode", "production"),
+        ("materialized_details", "production"),
+        ("materialized_python_report", "production"),
+        ("materialized_optimizer_guidance", "production"),
     ]
     assert unsupported_product_capabilities("trino") == ()
-    assert all(
-        capability.support_level != "production" for capability in engine_capabilities("trino")
-    )
 
 
-def test_trino_product_beta_capabilities_stay_web_only():
+def test_trino_local_product_capabilities_stay_web_only():
     trino_product = [
         capability
         for capability in engine_capabilities("trino")
@@ -78,25 +78,45 @@ def test_trino_product_beta_capabilities_stay_web_only():
         "recent_scan": (
             "bounded_trino_retained_query_list_pruned_query_info",
             "supports_recent_scan",
-            "trino_beta_recent_retained_query_list_contract",
+            None,
+            "trino_local_recent_retained_query_list_contract",
         ),
         "query_id_mode": (
             "one_known_trino_query_id_pruned_query_info",
             "supports_query_id_mode",
-            "trino_beta_one_query_pruned_query_info_contract",
+            None,
+            "trino_local_one_query_pruned_query_info_contract",
+        ),
+        "materialized_details": (
+            "trino_web_materialized_raw_free_case_artifacts",
+            None,
+            "/trino/details/{case_id}",
+            "trino_materialized_case_details_raw_free_contract",
+        ),
+        "materialized_python_report": (
+            "trino_web_materialized_raw_free_case_artifacts",
+            None,
+            "/trino/details/{case_id}?report=python",
+            "trino_materialized_case_python_report_validation_contract",
+        ),
+        "materialized_optimizer_guidance": (
+            "trino_web_materialized_raw_free_case_artifacts",
+            None,
+            "/trino/details/{case_id}?guidance=optimizer",
+            "trino_materialized_case_optimizer_guidance_validation_contract",
         ),
     }
     assert {capability.surface_id for capability in trino_product} == set(expected)
     for capability in trino_product:
-        input_kind, adapter_flag, promotion_gate = expected[capability.surface_id]
-        assert capability.support_level == "product_beta"
+        input_kind, adapter_flag, route_path, promotion_gate = expected[capability.surface_id]
+        assert capability.support_level == "production"
         assert capability.surface_class == "product_web"
         assert capability.input_kind == input_kind
         assert capability.raw_policy == "raw_free_summary_only"
         assert capability.adapter_flag == adapter_flag
         assert capability.cli_role is None
         assert capability.script_path is None
-        assert capability.route_path is None
+        assert capability.route_path == route_path
         assert capability.dev_only is False
         assert capability.promotion_gate == promotion_gate
 
@@ -140,6 +160,7 @@ def test_trino_cli_roles_stay_bounded_to_manifest():
         "trino_http_event_archive_import",
         "trino_http_query_detail_archive_import",
         "trino_import",
+        "trino_metadata_cli_summary",
         "trino_metadata_source_contract_check",
         "trino_metadata_summary_import",
         "trino_query_detail_import",
@@ -175,9 +196,38 @@ def test_manifest_marks_preview_web_routes_as_isolated_not_product():
         for capability in (*engine_capabilities("spark"), *engine_capabilities("trino"))
         if capability.route_path
     }
+    product_route_capabilities = {
+        route_path: capability
+        for route_path, capability in route_capabilities.items()
+        if capability.product_surface_allowed
+    }
+    preview_route_capabilities = {
+        route_path: capability
+        for route_path, capability in route_capabilities.items()
+        if not capability.product_surface_allowed
+    }
 
-    assert set(route_capabilities) == {"/spark/compact-diagnosis", "/trino/compact-diagnosis"}
-    for capability in route_capabilities.values():
+    assert set(product_route_capabilities) == {
+        "/trino/details/{case_id}",
+        "/trino/details/{case_id}?report=python",
+        "/trino/details/{case_id}?guidance=optimizer",
+    }
+    assert product_route_capabilities["/trino/details/{case_id}"].surface_id == (
+        "materialized_details"
+    )
+    assert (
+        product_route_capabilities["/trino/details/{case_id}?report=python"].surface_id
+        == "materialized_python_report"
+    )
+    assert (
+        product_route_capabilities["/trino/details/{case_id}?guidance=optimizer"].surface_id
+        == "materialized_optimizer_guidance"
+    )
+    assert set(preview_route_capabilities) == {
+        "/spark/compact-diagnosis",
+        "/trino/compact-diagnosis",
+    }
+    for capability in preview_route_capabilities.values():
         assert capability.surface_class == "isolated_preview_web"
         assert capability.product_surface_allowed is False
         assert capability.promotion_gate == "isolated_compact_page_only"

@@ -22,6 +22,7 @@ from query_doctor.report.language_contract import (
     SUPPORTED_REPORT_LANGUAGES,
     normalize_report_language,
 )
+from query_doctor.trino.support_mode import TRINO_SUPPORT_MODES
 
 
 DEFAULT_CONFIG_PATH = "query-doctor-config.json"
@@ -115,6 +116,7 @@ ALLOWED_CONFIG_KEYS = {
     "trino_auth_header_file",
     "trino_beta_enabled",
     "trino_coordinator_url",
+    "trino_support_mode",
     "trino_kerberos_ca_cert",
     "trino_kerberos_insecure_tls",
     "trino_kerberos_principal",
@@ -224,6 +226,7 @@ CLUSTER_CONFIG_KEYS = {
     "trino_auth_header_file",
     "trino_beta_enabled",
     "trino_coordinator_url",
+    "trino_support_mode",
     "trino_kerberos_ca_cert",
     "trino_kerberos_insecure_tls",
     "trino_kerberos_principal",
@@ -520,6 +523,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "status",
         "trino_auth_header_file",
         "trino_coordinator_url",
+        "trino_support_mode",
         "trino_kerberos_ca_cert",
         "trino_kerberos_principal",
         "trino_kerberos_service_name",
@@ -553,6 +557,10 @@ def normalize_config_value(key: str, value: object) -> object:
             )
         if key == "engine" and normalized not in {"impala", "trino"}:
             raise ConfigError("Config field engine must be one of: impala, trino.")
+        if key == "trino_support_mode" and normalized not in TRINO_SUPPORT_MODES:
+            raise ConfigError(
+                "Config field trino_support_mode must be one of: off, beta, production."
+            )
         if key in {"report_llm_provider", "optimizer_llm_provider"} and normalized not in (
             LLM_PROVIDER_CHOICES
         ):
