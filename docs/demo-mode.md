@@ -17,9 +17,9 @@ query-doctor-web --public-demo
 directory, points the web UI at its `batch_summary.json`, synthetic
 `action_outcomes.jsonl`, and static `trino_demo.json`, forces Python-only mode,
 ignores default local config discovery and owner-source environment hints,
-rejects explicitly loaded CM, direct Impala, Prometheus, metadata, Trino Beta,
-or owner-source settings, and blocks every POST route with a safe read-only
-response.
+rejects explicitly loaded CM, direct Impala, Prometheus, metadata, Trino local
+source, or owner-source settings, and blocks every POST route with a safe
+read-only response.
 
 If you need to inspect or reuse the generated pack manually, generate it under
 a dedicated `query-doctor-*` temp directory. The generator refuses repository

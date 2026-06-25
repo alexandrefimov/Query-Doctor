@@ -2,6 +2,8 @@
 
 Last reviewed: 2026-06-19
 
+Language: English | [Russian](i18n/ru/demo-cases.md)
+
 This page describes the sanitized synthetic demo story used for public,
 repeatable Query Doctor demos. It replaces older prepared-pack notes that were
 specific to one local environment.

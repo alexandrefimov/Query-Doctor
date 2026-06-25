@@ -29,8 +29,8 @@ the web UI at that pack, forces Python-only mode, ignores default local config
 and owner-source environment hints, rejects explicitly loaded external source
 settings, and blocks all POST routes. The pack includes static read-only Trino
 Beta demo cases rendered from raw-free compact diagnosis facts; those cases do
-not contact a Trino coordinator and do not enable Details, trusted reports,
-optimizer behavior, generated SQL, or SQL execution.
+not contact a Trino coordinator and do not enable materialized Details, Python
+Report, optimizer behavior, generated SQL, or SQL execution.
 
 If you need to inspect or reuse the generated pack manually, generate a local
 synthetic pack and open it in the web UI:
@@ -56,8 +56,9 @@ outside the repository. Useful demo filters:
 
 The synthetic pack does not call Cloudera Manager, Impala, Prometheus, a local
 generation backend, or the network. It contains only generated demo data and is
-not performance evidence. The Trino Beta demo section is a bounded compact
-diagnosis demo, not production Trino support.
+not performance evidence. The Trino Beta demo section is a bounded static
+compact diagnosis demo, not a live Trino source and not broader/shared Trino
+production support.
 
 ## Read-Only Public Demo
 

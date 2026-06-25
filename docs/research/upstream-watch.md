@@ -4,10 +4,12 @@ Last reviewed: 2026-05-22
 
 This document records the durable upstream and adjacent-market watch loop for
 Query Doctor. It does not change current product support: Apache Impala is the
-only implemented production triage SQL engine, while Trino is limited to
-sanitized offline/local import, event-source contract checking, dry-run
-coordinator query-info target checking, and one-query pruned coordinator
-query-info probing.
+full production triage SQL engine, while Trino production support is bounded to
+the local raw-free lanes listed in the support matrix.
+
+Lifecycle note: this is research routing. It is not a current support matrix,
+release checklist, or implementation plan. Use active contracts before changing
+support claims or product behavior.
 
 Use this as research routing, not as permission to add collectors, adapters, or
 support claims. Upstream items become Query Doctor work only when they affect a
@@ -31,9 +33,9 @@ bound, or client-bound.
 - Re-check source pages before changing a contract. Release notes, issue state,
   and observability surfaces change frequently.
 - Keep second-engine research separate from support claims. Public docs,
-  package metadata, UI copy, and support matrices must stay Impala-only until
-  the support gates in [engine-expansion-plan.md](../engine-expansion-plan.md)
-  are met.
+  package metadata, UI copy, and support matrices must keep Trino bounded to
+  the local production lanes in the support matrix until broader support gates
+  in [engine-expansion-plan.md](../engine-expansion-plan.md) are met.
 - Do not add a separate watch document per engine unless implementation work
   has outgrown this file. Keep Trino watch items here and Trino source/evidence
   rules in [trino-diagnostic-contract.md](../engines/trino-diagnostic-contract.md).
