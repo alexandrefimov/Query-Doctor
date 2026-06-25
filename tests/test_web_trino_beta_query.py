@@ -1639,6 +1639,62 @@ def test_trino_beta_recent_post_creates_beta_recent_job(
     assert 'href="/trino/details/' not in job.result_html
 
 
+def test_trino_beta_recent_post_runs_query_list_and_query_info_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _trino_settings(tmp_path)
+    store = WebJobStore()
+    query_list_calls: list[tuple[str, str]] = []
+    query_info_calls: list[tuple[str, str]] = []
+
+    def query_list_fetcher(coordinator_url: str, **_kwargs: object) -> str:
+        query_list_calls.append((coordinator_url, "query_list"))
+        return _raw_query_list_text()
+
+    def query_info_fetcher(coordinator_url: str, *, query_id: str, **_kwargs: object) -> str:
+        query_info_calls.append((coordinator_url, query_id))
+        return _raw_query_info_text()
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_list_target."
+        "fetch_trino_coordinator_pruned_query_list_text",
+        query_list_fetcher,
+    )
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        query_info_fetcher,
+    )
+
+    status, body = start_batch_job(
+        {
+            "engine": ["trino"],
+            "diagnosis_target": ["recent"],
+            "recent_window_minutes": ["60"],
+        },
+        settings,
+        store,
+    )
+
+    assert status == 303
+    job_id = body.rsplit("/", 1)[-1]
+    deadline = time.monotonic() + 5
+    job = store.get(job_id)
+    while job is not None and job.status == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+        job = store.get(job_id)
+    assert job is not None
+    assert job.status == "ok"
+    assert query_list_calls == [(COORDINATOR_URL, "query_list")]
+    assert query_info_calls == [(COORDINATOR_URL, QUERY_ID)]
+    assert "Trino Beta Recent diagnosis" in job.result_html
+    assert f"<code>{QUERY_ID}</code>" in job.result_html
+    assert 'href="/trino/details/' in job.result_html
+    assert COORDINATOR_URL not in job.result_html
+    assert str(tmp_path) not in job.result_html
+
+
 def test_trino_beta_recent_materializes_case_artifacts_for_selected_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1926,6 +1982,56 @@ def test_trino_beta_recent_forbidden_options_reject_before_job_creation(
     assert str(tmp_path) not in response.body
 
 
+def test_trino_beta_recent_ignores_impala_filter_defaults_from_local_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _trino_settings(tmp_path)
+    settings.config.write_text(
+        json.dumps(
+            {
+                "recent_user": "raw_user",
+                "recent_pool": "raw_pool",
+                "query_type": "DDL",
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = WebJobStore()
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_list_target."
+        "fetch_trino_coordinator_pruned_query_list_text",
+        lambda *_args, **_kwargs: _raw_query_list_text(),
+    )
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+
+    status, body = start_batch_job(
+        {"engine": ["trino"], "diagnosis_target": ["recent"]},
+        settings,
+        store,
+    )
+
+    assert status == 303
+    job_id = body.rsplit("/", 1)[-1]
+    deadline = time.monotonic() + 5
+    job = store.get(job_id)
+    while job is not None and job.status == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+        job = store.get(job_id)
+    assert job is not None
+    assert job.status == "ok"
+    assert "Trino Beta Recent diagnosis" in job.result_html
+    assert "raw_user" not in job.result_html
+    assert "raw_pool" not in job.result_html
+    assert "DDL" not in job.result_html
+    assert str(tmp_path) not in job.result_html
+
+
 def test_recent_run_panel_exposes_engine_selector_without_secret_config(tmp_path: Path) -> None:
     settings = _trino_settings(tmp_path)
 
@@ -2003,6 +2109,37 @@ def test_recent_run_panel_allows_trino_beta_recent_when_query_list_configured(
     )
     assert 'action="/running/run"' not in html
     assert "Run scan" in html
+
+
+def test_recent_run_panel_hides_impala_filter_defaults_for_trino_recent(
+    tmp_path: Path,
+) -> None:
+    settings = _trino_settings(tmp_path)
+    settings.config.write_text(
+        json.dumps(
+            {
+                "web_advanced_settings_enabled": True,
+                "web_advanced_filters": ["user", "pool", "query_type"],
+                "recent_user": "raw_user",
+                "recent_pool": "raw_pool",
+                "query_type": "DDL",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    html = render_batch_run_panel(
+        settings,
+        {"engine": "trino", "diagnosis_target": "recent"},
+    )
+
+    assert 'name="user"' not in html
+    assert 'name="pool"' not in html
+    assert 'name="query_type"' not in html
+    assert "Advanced settings" not in html
+    assert "raw_user" not in html
+    assert "raw_pool" not in html
+    assert "DDL" not in html
 
 
 def test_recent_run_panel_marks_trino_beta_source_without_local_config_echo(
@@ -2756,6 +2893,27 @@ def _safe_query_list_contract_payload() -> dict[str, object]:
             "browser_report_output": "blocked",
         },
     }
+
+
+def _raw_query_list_text() -> str:
+    return json.dumps(
+        [
+            {
+                "queryId": QUERY_ID,
+                "state": "FINISHED",
+                "query": "SELECT secret_col FROM sensitive_table",
+                "session": {
+                    "user": "operator_user",
+                    "source": "adhoc_console",
+                },
+                "self": COORDINATOR_URL + "/ui/query.html?" + QUERY_ID,
+                "updateTime": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "queryStats": {
+                    "elapsedTime": "2.50s",
+                },
+            }
+        ]
+    )
 
 
 def _raw_query_info_text() -> str:

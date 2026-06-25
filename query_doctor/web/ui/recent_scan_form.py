@@ -208,7 +208,9 @@ def render_batch_run_panel(
     )
     primary_owner_field = owner_field if owner_required else ""
     advanced_owner_field = "" if owner_required else owner_field
-    advanced_filter_names = configured_web_advanced_filters(local_config)
+    advanced_filter_names = (
+        () if selected_engine == "trino" else configured_web_advanced_filters(local_config)
+    )
     if "user" not in advanced_filter_names or owner_required:
         advanced_owner_field = ""
     advanced_pool_field = (
