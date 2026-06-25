@@ -44,9 +44,22 @@ and intentionally minimal.
 
 `primary_bottleneck_fixtures/` contains compact sanitized JSON fixtures with
 structured analyzer facts and expected primary bottleneck classifications. It
-includes stats-present-but-not-primary, mixed stats/runtime, and context-only
-runtime cases. Use these for routing regressions where profile parsing is not
-the behavior under test.
+includes stats, SQL-shape, runtime admission, runtime skew, data movement,
+memory, storage, client-fetch, mixed-signal, context-only, and fail-closed
+unknown taxonomy cases. Use these for routing regressions where profile parsing
+is not the behavior under test. Runtime-admission and profile-policy fixtures
+cover selected-query waits, tiny waits, context-only admission pressure,
+stats-signal coexistence, and profile-v2 non-profile admission boundaries.
+Runtime-skew and client-fetch fixtures cover top-finding precedence, elapsed
+ranking, weak-signal rejection, scan-skew competition, and stats coexistence.
+Data-movement, memory, and storage fixtures cover missing required context,
+context-only reasons, fallback routing, profile-policy blocking, and mixed
+stats/runtime precedence.
+Stats, SQL-shape, and unknown fixtures cover metadata confidence bands,
+exec-node row-count limitations, query-shape top findings, short-query
+fail-closed behavior, and wall-clock/operator-time gaps.
+The fixture harness also guards stable JSON shape, snake-case file names,
+expected-label/confidence values, and known safe reason identifiers.
 
 ## Engine Fact Contract Fixtures
 
