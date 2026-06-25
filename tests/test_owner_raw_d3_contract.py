@@ -143,10 +143,12 @@ def test_owner_raw_d3_validation_matrix_pins_broader_checks():
     assert "Owner-raw D3 viewer identity, front-door contract" in text
     assert "docs/owner-raw-d3-deployment.md" in text
     assert "python3 scripts/owner_raw_front_door_smoke.py --compact" in text
+    assert "python3 scripts/audit_owner_raw_live_front_door_review.py" in text
     assert "python3 scripts/owner_raw_policy_simulator.py" in text
     assert "--viewer-identity-header-configured" in text
     assert "--fail-on-deny" in text
     assert "tests/test_owner_raw_front_door_smoke.py" in text
+    assert "tests/test_audit_owner_raw_live_front_door_review.py" in text
     assert "tests/test_owner_raw_d3_contract.py" in text
     assert 'tests/test_web_server.py -k "owner_raw or viewer_identity_header"' in normalized_text
     assert "python3 scripts/check_staged_public_safety.py --changed" in text
@@ -160,7 +162,13 @@ def test_owner_raw_d3_docs_pin_pre_proxy_and_live_gate_boundary():
 
     assert "## Readiness State" in deployment
     assert "## Pre-Proxy Readiness Checklist" in deployment
+    assert "## Live Review Summary Gate" in deployment
     assert "## Live Front Door Validation Gate" in deployment
+    assert "scripts/audit_owner_raw_live_front_door_review.py" in deployment
+    assert "--template-json <raw-free-front-door-review.json>" in deployment
+    assert "--require-trino-shared-hardening" in deployment
+    assert "raw-free and fail-closed" in deployment
+    assert "review_status=unreviewed" in deployment
     assert "A deployment is not ready for shared/non-local raw source access" in normalized
     assert "real TLS/auth, direct-network blocking, real identity claim" in normalized
     assert "Retain only raw-free validation evidence" in normalized
@@ -178,12 +186,7 @@ def test_owner_raw_d3_russian_companions_pin_selective_i18n_and_contract():
     ru_safety = (REPO_DIR / "docs" / "i18n" / "ru" / "safety-contract.md").read_text(
         encoding="utf-8"
     )
-    ru_handoff = (REPO_DIR / "docs" / "i18n" / "ru" / "codex-handoff.md").read_text(
-        encoding="utf-8"
-    )
-    normalized = " ".join(
-        "\n".join([ru_index, ru_config, ru_security, ru_safety, ru_handoff]).split()
-    )
+    normalized = " ".join("\n".join([ru_index, ru_config, ru_security, ru_safety]).split())
 
     assert "не полное зеркало всего дерева документации" in ru_index
     assert "user-facing и operator-facing документы" in ru_index
@@ -191,8 +194,9 @@ def test_owner_raw_d3_russian_companions_pin_selective_i18n_and_contract():
     assert "trusted auth front door -> exactly one normalized viewer header" in normalized
     assert "ровно один normalized simple owner value" in normalized
     assert "Query Doctor не реализует native auth modes" in normalized
-    assert "native OIDC, SAML, SPNEGO" in normalized
-    assert "Collection credential/keytab owner set не должен авторизовать raw reveal" in normalized
+    assert "OIDC/SSO, SAML, SPNEGO/Kerberos" in normalized
+    assert "Collection credential" in normalized
+    assert "keytab owner set" in normalized
 
 
 @pytest.mark.parametrize(

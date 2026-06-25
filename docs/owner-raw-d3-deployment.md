@@ -1,6 +1,6 @@
 # Owner Raw D3 Deployment Contract
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-06-25
 
 This document defines the only supported shared/non-local deployment shape for
 `source_visibility=owner_raw`. It is a deployment contract, not an invitation to
@@ -311,6 +311,333 @@ At the end of pre-proxy readiness, the only remaining unknowns should be the
 external controls: real TLS/auth, direct-network blocking, real identity claim
 or principal mapping, real header stripping, and real audit transport.
 
+## Staging Config Preflight
+
+Before a real proxy or ingress is ready, audit the planned Query Doctor staging
+config without retaining private deployment details:
+
+```bash
+python3 scripts/audit_owner_raw_staging_preflight.py \
+  --config <ignored-local-web-config.json> \
+  --allow-nonlocal-web-bind
+```
+
+If the startup command will use the CLI kill switch instead of config
+`owner_raw_source_enabled=false`, include:
+
+```bash
+python3 scripts/audit_owner_raw_staging_preflight.py \
+  --config <ignored-local-web-config.json> \
+  --allow-nonlocal-web-bind \
+  --disable-owner-raw-source
+```
+
+The preflight is raw-free and path-free. It checks only config shape and safe
+counts: at least one `owner_raw` source, one valid `viewer_identity_header`, the
+owner-raw source page disabled by config or CLI kill switch, explicit review of
+non-local bind startup, and no explicit disabling of privacy/redaction controls.
+It prints only safe issue categories and does not print config paths, header
+names, header values, users, URLs, local paths, credentials, query ids, or raw
+source. A passing `owner_raw_staging_preflight_v1` summary does not replace the
+live front-door review gate and must not be used to enable raw source reveal.
+
+## D3 Readiness Gate
+
+After the real front door has been reviewed and the raw-free live review summary
+exists, combine the staging config and live review evidence before enabling raw
+source reveal:
+
+```bash
+python3 scripts/audit_owner_raw_d3_readiness.py \
+  --config <ignored-local-web-config.json> \
+  --allow-nonlocal-web-bind \
+  --front-door-review-json <raw-free-front-door-review.json>
+```
+
+If the staging startup uses the CLI kill switch instead of config
+`owner_raw_source_enabled=false`, also pass `--disable-owner-raw-source`. The
+readiness gate fails closed when the live front-door review summary is missing,
+when the staging config preflight fails, or when the review summary is not the
+owner-raw D3 profile. A passing `owner_raw_d3_readiness_v1` summary means the
+operator has raw-free evidence that the config shape and front-door review are
+ready for the next controlled source-enable step; it does not add native SSO,
+does not perform authentication, and does not print config paths, review paths,
+header names, header values, users, URLs, query ids, credentials, auth material,
+or raw source.
+
+## D3 Rehearsal Runner
+
+When the dev SSO compose stack is running and a raw-free live front-door review
+summary already exists, use the aggregate rehearsal runner to execute the
+application-side sequence in one command:
+
+```bash
+python3 scripts/audit_owner_raw_d3_rehearsal.py \
+  --config <ignored-local-web-config.json> \
+  --allow-nonlocal-web-bind \
+  --front-door-review-json <raw-free-front-door-review.json>
+```
+
+If the staging startup uses the CLI kill switch instead of config
+`owner_raw_source_enabled=false`, also pass `--disable-owner-raw-source`. The
+runner checks the dev Keycloak SSO smoke, the live front-door review summary,
+the staging config preflight, and the aggregate readiness gate, then writes an
+optional `owner_raw_d3_rehearsal_v1` summary with only safe gate status,
+counts, and issue categories. It fails closed when any gate fails, including a
+missing live review summary, an unreviewed front door, missing viewer identity
+configuration, unproven inbound viewer-header stripping, or enabled raw source
+without a rehearsal kill switch.
+
+The rehearsal runner is an operator convenience for the D3 path; it is not a
+new auth mode, not a substitute for the real live checks above, and not a raw
+source enablement command. It does not print config paths, review paths, dev SSO
+URLs, usernames, login secrets, header names or values, query ids, credentials,
+auth material, or raw source.
+
+## Source-Enable Canary Gate
+
+After rehearsal passes, create a separate ignored local config for the planned
+canary source-enable step. Keep the reviewed front door, viewer-header mapping,
+owner-raw source set, non-local bind, and rollback plan unchanged from the
+passing rehearsal. The canary config must explicitly set
+`owner_raw_source_enabled=true`; do not rely on defaults for this step.
+
+Before starting the canary web process, audit the planned config and the retained
+raw-free rehearsal summary:
+
+```bash
+python3 scripts/audit_owner_raw_d3_source_enable.py \
+  --config <ignored-local-source-enabled-config.json> \
+  --rehearsal-summary-json <raw-free-d3-rehearsal-summary.json> \
+  --allow-nonlocal-web-bind \
+  --confirm-source-enable-canary \
+  --confirm-no-disable-owner-raw-source \
+  --confirm-no-front-door-or-header-change \
+  --confirm-kill-switch-rollback-plan
+```
+
+The source-enable gate checks only safe statuses and counts. It requires a
+passing `owner_raw_d3_rehearsal_v1` summary from a disabled-source rehearsal,
+one matching non-local owner-raw source set, valid viewer identity config,
+explicit `owner_raw_source_enabled=true`, unchanged front-door/header mapping by
+operator confirmation, no planned `--disable-owner-raw-source` startup flag, and
+a confirmed kill-switch rollback plan. It can write an
+`owner_raw_d3_source_enable_canary_v1` summary with only safe gate status,
+counts, failed-gate names, and issue categories.
+
+This gate does not start Query Doctor, does not perform authentication, does not
+enable raw source, and does not replace the runtime checks below. It must fail
+closed if the rehearsal summary is missing or not green, if the planned config
+changes the owner-raw source count, if the canary config omits explicit
+`owner_raw_source_enabled=true`, if `viewer_identity_header` is missing or
+invalid, if the bind is not D3/non-local, or if the operator confirmations are
+missing. It does not print config paths, summary paths, URLs, users, header
+names or values, query ids, credentials, auth material, or raw source.
+
+## Post-Enable Canary Gate
+
+After the short canary window, retain only a raw-free post-enable review
+summary. Do not retain proxy logs, source screenshots, raw source pages, query
+ids, case ids, user names, header values, URLs, paths, tokens, cookies, tickets,
+or assertions. Validate the retained source-enable summary and post-enable
+review with:
+
+```bash
+python3 scripts/audit_owner_raw_d3_post_enable.py \
+  --source-enable-summary-json <raw-free-source-enable-summary.json> \
+  --post-enable-review-json <raw-free-post-enable-review.json>
+```
+
+To create a fail-closed review template or inspect the supported field labels:
+
+```bash
+python3 scripts/audit_owner_raw_d3_post_enable.py --template-json <raw-free-post-enable-review.json>
+python3 scripts/audit_owner_raw_d3_post_enable.py --list-required-fields
+```
+
+The post-enable gate requires a passing
+`owner_raw_d3_source_enable_canary_v1` summary, confirms source was enabled by
+the operator rather than by a Query Doctor script, and validates only boolean or
+enum post-enable evidence: unchanged front door/header mapping, direct upstream
+blocking, matching-viewer allow, different/missing/invalid/duplicate/spoofed
+viewer denial, raw-free denied pages, raw-free audit lines, raw-free trusted
+surfaces, rollback verification, monitoring, and a final source-state enum of
+`leave_enabled` or `rollback_completed`.
+
+This gate does not contact the proxy, does not open cases, does not read source
+text, does not decide user access, and does not change the final source state.
+It can write an `owner_raw_d3_post_enable_canary_v1` summary with only safe
+gate status, counts, failed-gate names, issue categories, and the final
+source-state enum. It must fail closed when the source-enable summary is missing
+or not green, runtime allow/deny evidence is incomplete, rollback is unverified,
+final source state is internally inconsistent, or retained evidence contains
+raw fields.
+
+## Launch Closure Gate
+
+After the post-enable canary is reviewed, use the launch closure gate to bind
+the retained raw-free D3 evidence into one final closure summary:
+
+```bash
+python3 scripts/audit_owner_raw_d3_launch_closure.py \
+  --front-door-review-summary-json <raw-free-front-door-review-audit-summary.json> \
+  --readiness-summary-json <raw-free-d3-readiness-summary.json> \
+  --rehearsal-summary-json <raw-free-d3-rehearsal-summary.json> \
+  --source-enable-summary-json <raw-free-source-enable-summary.json> \
+  --post-enable-summary-json <raw-free-post-enable-summary.json>
+```
+
+To retain a single local manifest with safe relative references to those five
+summaries, first build the manifest from a local evidence directory:
+
+```bash
+python3 scripts/build_owner_raw_d3_launch_closure_manifest.py \
+  --redaction-reviewed \
+  --front-door-review-summary-json <raw-free-front-door-review-audit-summary.json> \
+  --readiness-summary-json <raw-free-d3-readiness-summary.json> \
+  --rehearsal-summary-json <raw-free-d3-rehearsal-summary.json> \
+  --source-enable-summary-json <raw-free-source-enable-summary.json> \
+  --post-enable-summary-json <raw-free-post-enable-summary.json> \
+  --out <raw-free-d3-launch-closure-manifest.json>
+
+python3 scripts/audit_owner_raw_d3_launch_closure.py \
+  --launch-closure-manifest <raw-free-d3-launch-closure-manifest.json>
+```
+
+The builder writes an `owner_raw_d3_launch_closure_manifest_v1` manifest with
+one entry, safe relative `*.json` references, `redaction_reviewed=true`, and
+only fixed limitation labels. It checks that referenced artifacts exist, that
+the manifest output does not overwrite an input, and that references are
+unique and safe to express relative to the manifest. It does not validate
+summary contents; the launch closure gate remains the validator.
+
+The launch closure gate consumes only already raw-free summaries. It verifies
+the front-door review, disabled-source readiness, dev SSO rehearsal,
+operator-planned source-enable canary, post-enable runtime allow/deny evidence,
+rollback verification, and final source-state enum as one chain. It can write an
+`owner_raw_d3_launch_closure_v1` summary with only safe gate status, counts,
+failed-gate names, issue categories, a `closed` or `blocked` verdict, and a
+final source-state enum of `leave_enabled` or `rollback_completed`.
+
+This gate does not contact the proxy, perform authentication, open cases, read
+source text, read config, enable or disable owner-raw source reveal, or decide
+user access. It must fail closed when any retained summary is missing or not
+green, when the chain does not preserve disabled rehearsal to operator-planned
+enablement to reviewed post-enable closure, when Query Doctor script-driven
+source enablement or native auth appears, when the final source state is
+invalid, when the manifest is missing redaction review or safe relative
+references, or when retained evidence contains raw fields.
+
+## Artifact Workspace Helper
+
+Use the artifact workspace helper when an operator needs a repeatable local
+directory containing the D3 config templates, fail-closed review templates, an
+operator checklist, the latest deployment-bundle summary, and the final
+support-readiness summary:
+
+```bash
+python3 scripts/prepare_owner_raw_d3_artifacts.py \
+  --artifact-dir <ignored-local-d3-artifact-dir> \
+  --confirm-local-ignored-artifact-dir \
+  --allow-nonlocal-web-bind \
+  --confirm-source-enable-canary \
+  --confirm-no-disable-owner-raw-source \
+  --confirm-no-front-door-or-header-change \
+  --confirm-kill-switch-rollback-plan
+```
+
+The helper creates missing artifacts and preserves existing review evidence by
+default. Pass `--replace-templates` only when intentionally resetting local
+templates back to fail-closed defaults. Pass `--skip-bundle` to create or
+preserve the scaffold without running the deployment bundle.
+
+After the deployment bundle passes, the helper runs
+`scripts/audit_owner_raw_sso_proxy_support_readiness.py` by default and writes a
+local `support-readiness.summary.json`. A passing helper run therefore means
+the retained local D3 evidence also satisfies the release-facing support claim
+gate for deployment behind a trusted SSO/auth proxy via
+`viewer_identity_header`. Pass `--skip-support-readiness` only when
+intentionally stopping at scaffold or bundle preparation. Pass
+`--require-source-left-enabled` when the release cutoff requires the canary to
+finish with `final_source_state=leave_enabled`; without it, both
+`leave_enabled` and `rollback_completed` are accepted as reviewed support-path
+closure states.
+
+The helper prints only raw-free status labels and issue categories. It never
+prints the artifact directory, filenames, config paths, review paths, retained
+manifest paths, dev SSO URLs, usernames, login secrets, header names or values,
+query ids, credentials, auth material, or raw source. The workspace directory
+must be local and ignored; do not commit the generated config templates, review
+templates, summaries, checklists, or operator evidence.
+
+## Deployment Bundle Gate
+
+For an operator handoff that needs one raw-free deployment verdict, run the
+deployment bundle gate with the ignored disabled-source config, the separate
+ignored source-enabled canary config, the raw-free front-door review summary,
+and the raw-free post-enable review summary:
+
+```bash
+python3 scripts/audit_owner_raw_d3_deployment_bundle.py \
+  --config <ignored-local-web-config.json> \
+  --source-enable-config <ignored-local-source-enabled-config.json> \
+  --front-door-review-json <raw-free-front-door-review.json> \
+  --post-enable-review-json <raw-free-post-enable-review.json> \
+  --allow-nonlocal-web-bind \
+  --confirm-source-enable-canary \
+  --confirm-no-disable-owner-raw-source \
+  --confirm-no-front-door-or-header-change \
+  --confirm-kill-switch-rollback-plan
+```
+
+If a retained launch-closure manifest already exists, add
+`--launch-closure-manifest <raw-free-d3-launch-closure-manifest.json>` to audit
+that retained manifest in addition to the bundle-generated closure. If the
+disabled-source rehearsal startup uses the CLI kill switch instead of config
+`owner_raw_source_enabled=false`, also pass `--disable-owner-raw-source`.
+
+The bundle runs the existing front-door review audit, readiness gate, rehearsal
+runner, source-enable canary gate, post-enable gate, manifest builder, and
+launch-closure gate in order. It suppresses child command output and writes an
+optional `owner_raw_d3_deployment_bundle_v1` summary with only safe gate
+status, counts, failed-gate names, issue categories, a `ready` or `blocked`
+deployment verdict, and the final source-state enum. It is an orchestration
+gate only: it does not add auth, start Query Doctor, contact a proxy outside
+the existing dev SSO smoke, open cases, read source text, change source state,
+or decide user access. It does not print config paths, review paths, retained
+manifest paths, dev SSO URLs, usernames, login secrets, header names or values,
+query ids, credentials, auth material, or raw source.
+
+## SSO/Auth Proxy Support Readiness Gate
+
+Use the support readiness gate before release notes, README wording, or an
+operator handoff states that Query Doctor supports deployment behind a trusted
+SSO/auth proxy via `viewer_identity_header`:
+
+```bash
+python3 scripts/audit_owner_raw_sso_proxy_support_readiness.py \
+  --deployment-bundle-summary-json <raw-free-d3-deployment-bundle-summary.json>
+```
+
+The input must be a passing `owner_raw_d3_deployment_bundle_v1` summary from
+the full live-front-door, disabled-source rehearsal, source-enable canary,
+post-enable, and launch-closure chain. Dev Keycloak smoke output alone must not
+be used as support evidence. Add `--require-source-left-enabled` only when the
+operator handoff specifically requires the canary to finish with
+`final_source_state=leave_enabled`; otherwise both `leave_enabled` and
+`rollback_completed` are accepted because both prove the reviewed support path
+and the kill-switch rollback path.
+
+The gate writes an optional `owner_raw_sso_proxy_support_readiness_v1` summary
+with only safe support status, issue categories, final source-state enum, and
+the fixed support claim
+`deployment_behind_trusted_sso_auth_proxy_via_viewer_identity_header`. It
+does not add native OIDC, SAML, SPNEGO/Kerberos, LDAP, password, MFA, session,
+group, RBAC, logout, or token handling inside Query Doctor. It does not contact
+a proxy, perform authentication, start Query Doctor, open cases, read source
+text, print artifact paths, URLs, users, header names or values, query ids,
+credentials, auth material, or raw source.
+
 ## Policy Simulator
 
 Use the dev-only `scripts/owner_raw_policy_simulator.py` helper to audit the
@@ -356,6 +683,72 @@ does not contact an IdP, proxy, Kerberos service, LDAP server, or Query Doctor
 web server. It is a local regression smoke for the application contract, not a
 replacement for testing the real front-door deployment and network isolation.
 
+## Dev Keycloak SSO Smoke
+
+When a real Keycloak or ingress administrator is not available yet, the
+developer-only compose harness in `dev/sso/compose.yaml` can exercise an actual
+OIDC login flow through Keycloak and oauth2-proxy while preserving the same
+Query Doctor contract:
+
+```bash
+docker compose -f dev/sso/compose.yaml up --pull missing
+```
+
+The harness is documented in [dev-sso-keycloak.md](dev-sso-keycloak.md). It
+starts Query Doctor only inside the compose network, exposes Keycloak and
+oauth2-proxy on localhost, configures Query Doctor to trust
+`X-Forwarded-Preferred-Username`, and keeps
+`owner_raw_source_enabled=false` by default. oauth2-proxy strips inbound
+`X-Forwarded-*` auth headers, injects the authenticated preferred username, and
+does not forward access tokens, ID tokens, Basic auth, or Authorization bearer
+headers upstream.
+
+With the compose stack running, use the dev-only live smoke to verify the local
+OIDC path without printing cookies, tokens, code/state values, usernames, login
+secrets, or URLs:
+
+```bash
+python3 scripts/dev_sso_keycloak_smoke.py --compact
+```
+
+This is a local SSO smoke, not live D3 validation. It does not prove corporate
+TLS, MFA, device posture, identity lifecycle, production Keycloak operations,
+target-environment network isolation, or audit transport. After a real proxy or
+ingress exists, use the live review summary gate below and keep deployment
+commands, logs, screenshots, URLs, users, realms, and secrets out of committed
+docs.
+
+## Live Review Summary Gate
+
+After a real proxy or ingress exists, keep the deployment-specific commands and
+logs in ignored local notes and retain only a raw-free review summary. Validate
+that summary with:
+
+```bash
+python3 scripts/audit_owner_raw_live_front_door_review.py --template-json <raw-free-front-door-review.json>
+python3 scripts/audit_owner_raw_live_front_door_review.py --review-json <raw-free-front-door-review.json>
+```
+
+For the stricter shared Trino hardening path, require the Trino profile:
+
+```bash
+python3 scripts/audit_owner_raw_live_front_door_review.py --template-json <raw-free-front-door-review.json> --require-trino-shared-hardening
+python3 scripts/audit_owner_raw_live_front_door_review.py --review-json <raw-free-front-door-review.json> --require-trino-shared-hardening
+```
+
+The template is raw-free and fail-closed: it uses `review_status=unreviewed`
+and false proof fields, so it must not pass until the operator edits only the
+supported boolean and enum review fields after the live proxy checks complete.
+The review summary must not contain real URLs, paths, users, header names or
+values, query ids, case ids, auth subjects, tokens, cookies, tickets,
+assertions, screenshots, SQL, proxy logs, or source text. Use this helper to
+write or audit retained evidence, not to perform authentication or make network
+requests. To print the supported field labels without reading the summary, run:
+
+```bash
+python3 scripts/audit_owner_raw_live_front_door_review.py --review-json <raw-free-front-door-review.json> --list-required-fields
+```
+
 ## Live Front Door Validation Gate
 
 Run this gate only after the target proxy or ingress exists. Passing the local
@@ -389,7 +782,9 @@ Retain only raw-free validation evidence: pass/fail checklist rows, command
 names, HTTP status classes, reason codes, and boolean/count summaries. Do not
 commit real hostnames, identity-provider URLs, realm names, usernames, query
 ids, case ids, local paths, screenshots with source SQL, proxy logs containing
-headers, or auth material.
+headers, or auth material. When retaining machine-readable evidence, use the
+live review summary gate above and keep private command lines and raw proxy
+outputs out of the retained JSON.
 
 ## Operator Response
 
