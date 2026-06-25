@@ -1,6 +1,8 @@
 # Configuration Reference
 
-Last reviewed: 2026-06-19
+Last reviewed: 2026-06-22
+
+Language: English | [Russian](i18n/ru/configuration.md)
 
 Query Doctor reads non-secret local settings from a JSON config file. Keep
 passwords, tokens, keytabs, ticket contents, Authorization headers, and API keys
@@ -299,24 +301,28 @@ shared `owner_raw` only behind the D3 front-door contract described in
 [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md); they are not a
 general multi-tenant service mode.
 
-## Trino Beta Recent And One Query ID
+## Trino Local Recent And One Query ID
 
-Trino Beta is a local web lane for bounded retained-list Recent diagnosis and
-one explicit Query ID. Recent reads one bounded pruned coordinator query list
-after an accepted local query-list source contract, then reads bounded pruned
-coordinator QueryInfo payloads through the QueryInfo source contract for the
-selected retained rows. One Query ID uses the same bounded QueryInfo path for
-one explicit ID. Both paths build raw-free boundaries in memory and render
-deterministic compact diagnosis. They do not enable Trino Running scans,
-query-history crawling, metadata collection, Details/trusted reports, optimizer
-behavior, SQL execution, or generated Trino SQL.
+Trino local web mode is a bounded local production lane for retained-list Recent diagnosis and
+one explicit Query ID. `trino_support_mode=beta` keeps the existing Trino Beta
+label; `trino_support_mode=production` removes the beta label for the same
+bounded raw-free local production surfaces. Recent reads one bounded pruned coordinator
+query list after an accepted local query-list source contract, then reads
+bounded pruned coordinator QueryInfo payloads through the QueryInfo source
+contract for the selected retained rows. One Query ID uses the same bounded
+QueryInfo path for one explicit ID. Both paths build raw-free boundaries in
+memory and render deterministic compact diagnosis. They do not enable Trino
+Running scans, query-history crawling, metadata collection, LLM reports,
+Query Optimizer jobs, SQL execution, or generated Trino SQL. They may open the
+raw-free Trino Details view, deterministic Python Report, and optimizer guidance
+only after the web lane materializes server-owned case artifacts.
 
 Minimal local config shape:
 
 ```json
 {
   "engine": "trino",
-  "trino_beta_enabled": true,
+  "trino_support_mode": "beta",
   "trino_coordinator_url": "https://trino-coordinator.example.com",
   "trino_query_info_source_contract": "./trino-query-info-contract.json",
   "trino_query_list_source_contract": "./trino-query-list-contract.json",
@@ -328,27 +334,35 @@ Minimal local config shape:
 | Field | Type | Scope | Notes |
 | --- | --- | --- | --- |
 | `engine` | string | global | Optional default UI engine selection: `impala` or `trino`. Browser submits the selected engine explicitly; invalid values are rejected by config validation. |
-| `trino_beta_enabled` | boolean | global or cluster | Enables only the local Trino Beta retained-list Recent and One Query ID lanes. Public demo mode rejects this setting. |
+| `trino_support_mode` | string | global or cluster | Explicit Trino local mode: `off`, `beta`, or `production`. `production` uses the same bounded raw-free Recent, One Query ID, materialized Details, Python Report, and optimizer guidance surfaces as local production support and does not enable Running, LLM reports, Query Optimizer jobs, generated SQL, SQL execution, or broader Trino production triage. Public demo mode rejects this setting. |
+| `trino_beta_enabled` | boolean | global or cluster | Legacy beta-only switch for existing local configs. It maps to `trino_support_mode=beta` when no explicit mode is set and must not be combined with `trino_support_mode=production`. Public demo mode rejects this setting. |
 | `trino_coordinator_url` | string URL | global or cluster | Trino coordinator base URL used by the bounded pruned QueryInfo and retained query-list readers. Keep it in local config; the browser form does not ask for or render it. |
 | `trino_query_info_source_contract` | string path | global or cluster | Local path to an accepted `coordinator_query_info` source contract. Required for One Query ID and for fetching facts for selected Trino Recent rows. Relative values resolve from the JSON config file. |
-| `trino_query_list_source_contract` | string path | global or cluster | Local path to an accepted retained coordinator query-list source contract. Required only for Trino Beta Recent. Relative values resolve from the JSON config file. |
+| `trino_query_list_source_contract` | string path | global or cluster | Local path to an accepted retained coordinator query-list source contract. Required only for Trino Recent. Relative values resolve from the JSON config file. |
 | `trino_auth_header_file` | string path | global or cluster | Optional local file containing one operator-managed `Authorization:` header line. Store the secret value only in this local file, not in JSON. Relative values resolve from the JSON config file. |
-| `trino_kerberos_principal` | string | global or cluster | Optional local Kerberos/SPNEGO client principal for Trino Beta GET collectors. Do not combine with `trino_auth_header_file`. |
+| `trino_kerberos_principal` | string | global or cluster | Optional local Kerberos/SPNEGO client principal for Trino GET collectors. Do not combine with `trino_auth_header_file`. |
 | `trino_kerberos_service_name` | string | global or cluster | Optional Kerberos service name for SPNEGO. Defaults to `HTTP`. |
 | `trino_krb5_ccname` | string | global or cluster | Optional local ticket-cache reference, for example `FILE:/tmp/krb5cc_query_doctor_trino`. Keep ticket contents out of JSON. |
 | `trino_krb5_config` | string path | global or cluster | Optional local `krb5.conf` path for the Trino SPNEGO fetcher. Relative values resolve from the JSON config file. |
 | `trino_kerberos_ca_cert` | string path | global or cluster | Optional CA certificate path for the Trino SPNEGO fetcher. Relative values resolve from the JSON config file. |
 | `trino_kerberos_insecure_tls` | boolean | global or cluster | Optional local test-cluster override for the Trino SPNEGO fetcher. Prefer `trino_kerberos_ca_cert` when possible. |
 
-Cluster entries may carry the same Trino Beta keys when different Trino targets
-need separate contracts. The web UI marks configured Trino Beta sources as
-`Trino Beta Recent + One Query ID`, `Trino Beta Recent`, or
-`Trino Beta One Query ID` in the source selector. The Diagnose Engine control
-narrows the Source cluster selector to Impala-capable sources or Trino
-Beta-ready sources before workflow selection. Forged or stale Trino submits
-still fail closed before analysis or async job creation. The web UI must not
-render coordinator URLs, auth reference paths/values, raw QueryInfo, raw
-query-list payloads, local source-contract paths, or raw SQL.
+Cluster entries may carry the same Trino keys when different Trino targets need
+separate contracts. The web UI marks configured beta sources as
+`Trino Beta Recent + One Query ID`, `Trino Beta Recent`, or `Trino Beta One
+Query ID`; configured production-mode sources use the same labels without
+`Beta`. The Diagnose Engine control narrows the Source cluster selector to
+Impala-capable sources or Trino-ready sources before workflow selection. Forged
+or stale Trino submits still fail closed before analysis or async job creation.
+The web UI must not render coordinator URLs, auth reference paths/values, raw
+QueryInfo, raw query-list payloads, local source-contract paths, or raw SQL.
+
+The standalone `query-doctor-trino-metadata-cli-summary` command does not add
+web config fields. It takes `--source-contract`, `--trino-cli`, `--server`, and
+`--connector-family` explicitly for one local operator run, validates the
+metadata allowlist contract, and emits only a sanitized aggregate metadata
+summary. It is not wired into Recent, Details, reports, optimizer actions, or
+web metadata collection.
 
 ## Cloudera Manager
 
