@@ -2,11 +2,9 @@
 
 Last reviewed: 2026-05-29
 
-Language: English | [Russian](i18n/ru/trino-test-cluster-evidence-checklist.md)
-
 This checklist defines the first safe handoff from a test Trino cluster to
 Query Doctor research. It is not a live collector, support announcement, engine
-selector, Details/trusted-report surface, or permission to execute Trino SQL.
+selector, LLM report surface, or permission to execute Trino SQL.
 The separate isolated compact-diagnosis page accepts only already raw-free
 direct boundary JSON excluding local metadata summary boundaries or one selected
 sample boundary from a package boundary export.
@@ -59,6 +57,19 @@ The first export should contain compact evidence only:
   `query-doctor-trino-metadata-source-contract-check --redaction-reviewed`
   accepts the local contract; keep the raw relation/column allowlist local and
   retain only the path-free, identifier-free summary for handoff;
+- local metadata CLI summary output only after
+  `query-doctor-trino-metadata-cli-summary --redaction-reviewed` accepts the
+  allowlist and operator-installed Trino CLI target; retain only the sanitized
+  aggregate metadata summary or path-free safe summary, never statement text,
+  object identifiers, endpoint URLs, local paths, raw metadata values, or CLI
+  stdout/stderr;
+- dev-only metadata CLI smoke summary output only after
+  `python3 scripts/trino_metadata_cli_summary_smoke.py --redaction-reviewed`
+  verifies the safe dry-run plan, aggregate metadata summary collection, and
+  local metadata summary import round-trip; retain only the raw-free smoke
+  summary or sanitized aggregate metadata summary, never statement text, object
+  identifiers, endpoint URLs, local paths, raw metadata values, or CLI
+  stdout/stderr;
 - compact metadata summary exports only as aggregate relation/column coverage
   and stats-completeness counts after raw identifiers and metadata values are
   omitted; validate them with
@@ -137,6 +148,12 @@ The first test-cluster handoff should include:
 - one redaction note describing removed field classes, not removed values;
 - optional metadata source-contract summary output, never the raw allowlist
   contract with relation or column names;
+- optional local metadata CLI summary output, never statement text, endpoint
+  URLs, local paths, raw CLI stdout/stderr, raw metadata values, or object
+  identifiers;
+- optional dev-only metadata CLI smoke summary output, never statement text,
+  endpoint URLs, local paths, raw CLI stdout/stderr, raw metadata values, or
+  object identifiers;
 - optional compact metadata summary import output, never raw metadata values or
   object identifiers;
 - one known-gap note for missing connector families or source schema versions;
@@ -231,10 +248,10 @@ The package is ready for Query Doctor fixture work only when:
   version-scoped;
 - every unsupported or absent field has an explicit `unknown` or omission
   reason;
-- no Details route, trusted report, optimizer behavior, live adapter, public
-  README live-support claim is needed to consume it; the packaged offline
-  import path must still keep Details/trusted report and live-reader surfaces
-  out. The separate isolated compact-diagnosis page accepts only already
+- no materialized Details route, Python Report, optimizer guidance, live
+  adapter, public README live-support claim is needed to consume it; the
+  packaged offline import path must still keep materialized Details, Python
+  Report, optimizer guidance, and live-reader surfaces out. The separate isolated compact-diagnosis page accepts only already
   raw-free direct boundary JSON excluding local metadata summary boundaries or
   one selected sample boundary from a package boundary export.
 

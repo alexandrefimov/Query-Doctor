@@ -2,13 +2,11 @@
 
 Last reviewed: 2026-06-03
 
-Language: English | [Russian](i18n/ru/trino-evidence-package-templates.md)
-
 This document defines safe manifest and redaction-note templates for sanitized
 Trino offline evidence package import, bounded local event-store import, and
 bounded local query-detail, query-list, statement-stats, and operator HTTP
 archive import, plus pruned coordinator query-info probe and import setup. It is not a
-live Trino coordinator collector, production engine selector, Details/trusted-report
+live Trino coordinator collector, production engine selector, LLM report
 surface, optimizer workflow, or permission to execute Trino SQL.
 
 Use these templates with
@@ -117,9 +115,10 @@ attention area only from supported one-query `trino_retried_task_count` or
 attention area only from supported one-query `trino_connector_metric_signal`
 facts. It does not ingest raw Trino
 payloads, copy input summaries or string metric values, claim root causes,
-submit SQL, crawl query history, collect production Query ID support, or add
-browser/report output outside the explicit Trino Beta Recent/One Query ID lanes
-or optimizer output.
+submit SQL, crawl query history, collect standalone production Query ID support, or add
+browser/report output outside the explicit local production Trino Recent/One Query ID,
+raw-free materialized Details, deterministic Python Report, and optimizer guidance lanes or
+Query Optimizer job output.
 For single-boundary local query-detail, local query-list aggregate, local
 statement-stats, local pruned QueryInfo, HTTP query-detail archive, and pruned
 coordinator query-info imports, the same diagnosis can be written directly from
@@ -248,8 +247,9 @@ operator-managed `Authorization` header line. The command does not follow HTTP
 redirects and prints no auth header path or value, URL, Query ID, raw QueryInfo,
 query text, session fields, endpoint URLs, object names, or raw payload content.
 It does not map QueryInfo to facts, submit SQL, crawl query history, collect
-production Query ID support, or add browser/report output outside the explicit
-Trino Beta Recent/One Query ID lanes or optimizer output.
+standalone production Query ID support, or add browser/report output outside the explicit
+local production Trino Recent/One Query ID, raw-free materialized Details, and deterministic
+Python Report and optimizer guidance lanes or Query Optimizer job output.
 
 If an operator wants to import only the allowlisted lifecycle and `queryStats`
 fields from an already compact sanitized local pruned QueryInfo file into
@@ -312,9 +312,9 @@ URL, Query ID, raw QueryInfo, query text, session fields, endpoint URLs, object
 names, stage/task identifiers, worker identifiers, raw failure details,
 connector internals, auth header path or value, output boundary path, or raw
 payload content, and it does not follow HTTP redirects. It does not submit SQL,
-crawl query history, collect production Query ID support, or add browser/report
-output outside the explicit Trino Beta Recent/One Query ID lanes or optimizer
-output.
+crawl query history, collect standalone production Query ID support, or add browser/report
+output outside the explicit local production Trino Recent/One Query ID, raw-free
+materialized Details, deterministic Python Report, and optimizer guidance lanes or Query Optimizer job output.
 
 If an operator has already prepared one compact sanitized query-list aggregate
 summary, use the query-list import command instead of wrapping it as a package:
@@ -569,13 +569,13 @@ Before a package can become committed fixtures:
   evidence. Full packages keep supported-attention and known-parser-coverage
   requirements off by default because unknown and unsupported samples remain
   part of the package contract;
-- consuming the package requires no live reader, Details route, trusted report
-  behavior, optimizer behavior, or live engine selector. The separate isolated
+- consuming the package requires no live reader, materialized Details route,
+  Python Report behavior, optimizer guidance route, or live engine selector. The separate isolated
   compact-diagnosis page accepts only already raw-free direct boundary JSON
   excluding local metadata summary boundaries or one selected sample boundary
   from a package boundary export.
 
 The next implementation step after accepted package import is still separate:
-wire only raw-free normalized facts into future consumers with Details/trusted
-report safety tests. Broader Trino coordinator readers remain a later source-contract
-task beyond the one-query pruned import.
+wire only raw-free normalized facts into future consumers with Details and
+Python Report safety tests. Broader Trino coordinator readers remain a later
+source-contract task beyond the one-query pruned import.

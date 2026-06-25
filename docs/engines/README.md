@@ -2,9 +2,11 @@
 
 Last reviewed: 2026-06-16
 
-Query Doctor production triage support remains Apache Impala. Trino and Spark
-materials in this directory are bounded raw-free preview, compact-intake, and
-research contracts unless the engine support matrix says otherwise.
+Query Doctor full production triage support remains Apache Impala. Trino local
+production support is limited to the raw-free web lanes named in the engine
+support matrix. Spark materials and other Trino materials in this directory are
+bounded raw-free preview, compact-intake, and research contracts unless the
+engine support matrix says otherwise.
 
 Use [../engine-support-gap-matrix.md](../engine-support-gap-matrix.md) as the
 source of truth before changing support wording, command visibility, adapter
@@ -22,13 +24,14 @@ behavior, or generated SQL behavior for any second engine.
   diagnosis.
 - [trino-live-collection-design.md](trino-live-collection-design.md): future
   live-collection design constraints; current product support is limited to the
-  local Trino Beta retained-list Recent and One Query ID surfaces named in the
-  support matrix.
+  local production Trino retained-list Recent, One Query ID, raw-free
+  materialized Details, Python Report, and optimizer guidance surfaces named in
+  the support matrix; Trino Beta remains the legacy local label.
 - [trino-test-cluster-evidence-checklist.md](trino-test-cluster-evidence-checklist.md):
   safe operator-reviewed evidence handoff checklist.
 - [trino-private-preview-release.md](trino-private-preview-release.md): closed
-  private-preview release path plus the local Recent and One Query ID beta
-  boundary.
+  private-preview release path plus the bounded local production Recent and One
+  Query ID lanes; Trino Beta remains the legacy local label.
 
 ## Spark
 
@@ -40,12 +43,15 @@ behavior, or generated SQL behavior for any second engine.
 
 ## Boundary Summary
 
-- Do not treat Trino or Spark preview commands as production Recent scans.
-- Do not broaden Trino beyond the local retained-list Recent and One Query ID
-  beta surfaces without the support matrix, product boundary audit, and
+- Do not treat Trino or Spark preview commands as production Recent scans. The
+  only Trino production Recent path is the bounded local web retained-list lane
+  named in the support matrix.
+- Do not broaden Trino beyond the local production retained-list Recent, One
+  Query ID, raw-free materialized Details, Python Report, and optimizer guidance
+  surfaces without the support matrix, product boundary audit, and
   browser/report safety tests.
-- Do not add Details, trusted report, optimizer, metadata, SQL execution, broad
-  live collection, or support claims for a second engine without explicit
+- Do not add LLM reports, Query Optimizer jobs, metadata, SQL execution, broad live
+  collection, or support claims for a second engine without explicit
   implementation, fixtures, raw-free browser/report tests, and support-gap
   closure.
 - Keep raw payloads, query text, identifiers, hostnames, credentials, local

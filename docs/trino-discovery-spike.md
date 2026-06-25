@@ -14,6 +14,12 @@ checking, one-query pruned coordinator query-info probing, and one-query
 pruned coordinator fact import, plus local compact diagnosis over raw-free
 boundary JSON.
 
+Lifecycle note: this is an archived discovery snapshot. Use
+[engine-support-gap-matrix.md](engine-support-gap-matrix.md) and the Trino docs
+under [engines/](engines/README.md) for current support boundaries before
+changing product wording, routes, collectors, reports, optimizer behavior, or
+SQL behavior.
+
 ## Purpose
 
 Use Trino as the first bounded second-engine candidate to test the engine fact
