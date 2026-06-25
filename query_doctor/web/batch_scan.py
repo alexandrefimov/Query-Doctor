@@ -175,6 +175,7 @@ def parse_batch_run_config(
         settings_for_cluster_key(settings, cluster_key) if settings is not None else None
     )
     local_config = _local_config_values(settings)
+    requested_engine = normalize_query_engine(first_form_value(form, "engine"))
     scan_preset = normalize_scan_preset(first_form_value(form, "scan_preset"))
     scan_timezone = configured_recent_scan_timezone(selected_settings, local_config)
     scan_date, scan_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
@@ -253,17 +254,18 @@ def parse_batch_run_config(
         default=_config_int(local_config, "recent_metadata_jobs", fallback=5),
         maximum=BATCH_METADATA_JOBS_MAX,
     )
+    filter_config = {} if requested_engine == ENGINE_TRINO else local_config
     user = (
         first_form_value(form, "user")
         if "user" in form
-        else _config_string(local_config, "recent_user")
+        else _config_string(filter_config, "recent_user")
     )
     pool = (
         first_form_value(form, "pool")
         if "pool" in form
-        else _config_string(local_config, "recent_pool")
+        else _config_string(filter_config, "recent_pool")
     )
-    query_type = parse_query_type_filter(form, local_config)
+    query_type = parse_query_type_filter(form, filter_config)
     collect_cm_events = _config_bool(
         local_config,
         "recent_collect_cm_events",
@@ -301,7 +303,7 @@ def parse_batch_run_config(
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
     return BatchRunConfig(
-        engine=normalize_query_engine(first_form_value(form, "engine")),
+        engine=requested_engine,
         scan_preset=scan_preset,
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,

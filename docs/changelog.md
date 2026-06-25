@@ -41,6 +41,10 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
 - The Diagnose Engine control no longer shows secondary support subtitles under
   the Impala and Trino choices. Unconfigured or production-mode Trino now uses
   the plain `Trino` label, while legacy beta sources still show `Trino Beta`.
+- Trino Recent no longer inherits Impala-only `recent_user`, `recent_pool`, or
+  `query_type` defaults from local config. Those fields stay hidden in the
+  Trino Recent form, while explicitly submitted unsupported filters still fail
+  closed before job creation.
 - Trino bounded local production support claim is now release-aligned. The
   support-gap audit reports `bounded_production_claim_pinned` and
   `broader_production_closure_status=bounded_production_claim_ready`, the
