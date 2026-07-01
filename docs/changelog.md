@@ -31,6 +31,9 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
   query-history crawling, product metadata collection, LLM reports, Query
   Optimizer jobs, generated SQL, SQL execution, and Spark production support
   out of scope.
+- README, package metadata, and 0.10.0 release notes now present Trino as
+  official bounded local production support for the current raw-free lanes,
+  while preserving Apache Impala as the full production triage engine.
 - 0.10.0 release notes now summarize the bounded local Trino production
   claim, Impala-first support boundary, public demo safety boundary, and
   release validation focus without changing historical 0.9.0 notes.

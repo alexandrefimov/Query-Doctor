@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "query-doctor"
 version = "0.10.0"
-description = "Local-first Big Data query diagnostics focused today on Apache Impala."
+description = "Local-first Big Data query diagnostics for Apache Impala production triage and bounded local Trino lanes."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
@@ -17,12 +17,14 @@ maintainers = [
 ]
 keywords = [
     "apache-impala",
+    "apache-trino",
     "big-data",
     "cloudera-manager",
     "diagnostics",
     "lakehouse",
     "query-analysis",
     "sql",
+    "trino",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

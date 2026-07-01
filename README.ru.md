@@ -1,12 +1,12 @@
 # Query Doctor
 
-Last reviewed: 2026-06-22
+Last reviewed: 2026-07-01
 
 Язык: [English](README.md) | Русский
 
-Query Doctor - локальный диагностический инструмент для Big Data-запросов,
-сфокусированный на production triage для Apache Impala и bounded local Trino
-production lanes. Он помогает операторам ранжировать подозрительные Recent
+Query Doctor - локальный диагностический инструмент для Big Data-запросов:
+Apache Impala production triage плюс официально поддержанные bounded local
+Trino production lanes. Он помогает операторам ранжировать подозрительные Recent
 queries, собирать ограниченный контекст профиля, извлекать детерминированные
 evidence и генерировать
 проверенные отчеты без показа raw SQL или raw profiles в trusted
@@ -19,10 +19,11 @@ Python owns facts. LLM owns wording only.
 ```
 
 Recent scan - основной workflow. Диагностика по Query ID вторична и рассчитана
-на один известный Impala query; есть локальный Trino lane для bounded
-retained-list Recent diagnosis и одного explicit Query ID, если настроены
-нужные coordinator contracts. Query Optimizer отдельный, read-only, не
-выполняет SQL и не показывает отправленный SQL обратно.
+на один известный Impala query. Trino официально поддержан для configured local
+retained-list Recent diagnosis, одного explicit Query ID, raw-free Details,
+deterministic Python Report и optimizer guidance over materialized Trino web
+cases. Query Optimizer отдельный, read-only, не выполняет SQL и не показывает
+отправленный SQL обратно.
 
 ## Quickstart
 
@@ -57,15 +58,16 @@ LLM. Direct Impala Web UI download с именем
 
 Query Doctor это:
 
-- локальный рабочий инструмент для Impala production triage;
+- локальный рабочий инструмент для Impala production triage с официальными
+  bounded local Trino production lanes;
 - извлекатель детерминированных diagnostic facts;
 - workflow ранжирования Recent queries для операторов и администраторов;
 - безопасный генератор отчетов на проверенных фактах;
 - практический инструмент для решения, что смотреть, что менять и как
   проверять;
 - первый узкий слой диагностики Big Data SQL/lakehouse, где full production
-  triage engine - Apache Impala, с bounded raw-free local Trino production
-  lanes и preview seams для будущих движков.
+  triage engine - Apache Impala, с официальными bounded raw-free local Trino
+  production lanes и preview seams для будущих движков.
 
 Query Doctor это не:
 
@@ -87,6 +89,10 @@ Query Doctor это не:
   вторичными режимами.
 - Работает с Cloudera Manager, когда он доступен, или с ограниченными direct
   Impala daemon endpoints для non-Cloudera-Manager Impala clusters.
+- Поддерживает bounded local Trino production lanes при явной local config:
+  retained-list Recent, один explicit Query ID, raw-free materialized Details,
+  deterministic Python Report и optimizer guidance over the same server-owned
+  case facts.
 - Опционально добавляет ограниченные Prometheus runtime summaries для direct
   Impala workflows и ограниченные read-only метаданные Impala через
   `impala-shell`.
@@ -111,14 +117,14 @@ Query Doctor это не:
 
 | Surface | Current status |
 | --- | --- |
-| Query engine | Apache Impala - full production triage engine. Trino имеет bounded local production support только для raw-free lanes ниже. |
+| Query engine | Apache Impala - full production triage engine. Trino официально поддержан для bounded local raw-free production lanes ниже. |
 | First-value intake | Один локальный экспортированный Impala text profile можно staged/redacted/analyzed и открыть через Known Query ID. |
 | Recent scan | Cloudera Manager - полный Recent discovery/profile/metrics/events provider для Impala workflows. |
 | Direct Impala | Bounded Recent scans, Running scans и один Known Query ID через impalad daemon endpoints; без Cloudera Manager events и без SQL execution. |
 | Runtime metrics | Optional bounded Prometheus summaries для configured direct Impala workflows; без arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted Impala metadata statements через `impala-shell`; без user SQL execution и unbounded metadata crawl. |
 | Reports and optimizer | Python-owned facts и validation. Known Query ID готовит deterministic Python report в explicit submit-job; LLM narratives и optimizer actions остаются explicit selected-case actions. |
-| Trino local | Local web Trino mode может прочитать один bounded retained pruned coordinator query list для Recent diagnosis, затем bounded pruned coordinator QueryInfo payloads для выбранных rows или одного explicit Query ID, показать deterministic compact diagnosis, materialize server-owned raw-free case artifacts, открыть raw-free Details view и создать deterministic Python Report плюс optimizer guidance для этих materialized cases. `trino_support_mode=beta` сохраняет legacy beta label; `trino_support_mode=production` помечает те же bounded raw-free local lanes как local production support и убирает этот label. Без Running scans, query-history crawling, metadata collection, LLM report output, Query Optimizer jobs, generated Trino SQL, SQL execution и broader/shared Trino production triage support. |
+| Trino local | Официальный bounded local production support. Local web Trino mode может прочитать один bounded retained pruned coordinator query list для Recent diagnosis, затем bounded pruned coordinator QueryInfo payloads для выбранных rows или одного explicit Query ID, показать deterministic compact diagnosis, materialize server-owned raw-free case artifacts, открыть raw-free Details view и создать deterministic Python Report плюс optimizer guidance для этих materialized cases. `trino_support_mode=production` - release-facing mode; `trino_support_mode=beta` сохраняет legacy beta label для existing local setups. Без Running scans, query-history crawling, metadata collection, LLM report output, Query Optimizer jobs, generated Trino SQL, SQL execution и broader/shared Trino production triage support. |
 | Spark | Только bounded compact support surfaces. Spark не является production engine support, live Recent scans, Details/trusted report output, optimizer behavior, raw event-log handling, Spark job execution или Query Doctor-generated SQL. |
 
 Trino compact/dev surfaces включают offline/local raw-free imports and checks:
@@ -127,7 +133,7 @@ local pruned QueryInfo JSON через `query-doctor-trino-query-info-pruned-imp
 после source-contract checks. `query-doctor-trino-coordinator-query-info-pruned-probe`
 и `query-doctor-trino-coordinator-query-info-pruned-import` могут использовать
 `--auth-header-file`, но safe output не печатает auth header paths или values.
-Local production Trino product surfaces - local web retained-list Recent diagnosis, One
+Официальные local production Trino product surfaces - local web retained-list Recent diagnosis, One
 Query ID diagnosis, raw-free Details view, deterministic Python Report и optimizer guidance для
 server-owned materialized cases из этих lanes. Diagnosis lanes требуют
 `trino_support_mode=beta` или
