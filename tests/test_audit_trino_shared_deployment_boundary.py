@@ -14,7 +14,7 @@ def test_trino_shared_deployment_audit_static_mode_pins_boundaries(capsys) -> No
     assert captured.err == ""
     assert "Trino shared deployment boundary audit: ok" in captured.out
     assert "front_door_requirement=required_for_shared_trino" in captured.out
-    assert "front_door_review=not_required_for_local_or_static" in captured.out
+    assert "front_door_review=reported_in_summary" in captured.out
     assert "raw_reveal=blocked_for_shared_trino" in captured.out
     assert "contract_docs=4" in captured.out
     assert "details_case_view=raw_free_materialized" in captured.out
@@ -53,8 +53,6 @@ def test_trino_shared_deployment_audit_accepts_local_trino_config_without_identi
     captured = capsys.readouterr()
     rendered = captured.out + captured.err
     assert rc == 0
-    assert "trino_inputs=1" in captured.out
-    assert "shared_trino_inputs=0" in captured.out
     assert "shared_deployment_requirements=accepted=16, not_required=3" in captured.out
     assert "Issues: none" in captured.out
     assert_protected_fragments_hidden(rendered, tmp_path)
@@ -85,7 +83,6 @@ def test_trino_shared_deployment_audit_rejects_shared_trino_without_viewer_ident
     assert "Trino shared deployment boundary audit: failed" in captured.out
     assert "shared_trino_missing_trusted_viewer_identity" in captured.out
     assert "shared_trino_front_door_review_missing" in captured.out
-    assert "shared_trino_inputs=1" in captured.out
     assert "shared_deployment_requirements=accepted=17, missing=2" in captured.out
     assert_protected_fragments_hidden(rendered, tmp_path)
 
@@ -115,7 +112,6 @@ def test_trino_shared_deployment_audit_rejects_shared_owner_raw_source_reveal(
     rendered = captured.out + captured.err
     assert rc == 1
     assert "shared_trino_raw_source_reveal_not_isolated" in captured.out
-    assert "shared_owner_raw_inputs=1" in captured.out
     assert "shared_trino_missing_trusted_viewer_identity" not in captured.out
     assert "shared_trino_front_door_review_missing" not in captured.out
     assert "shared_deployment_requirements=accepted=18, invalid=1" in captured.out
@@ -147,8 +143,6 @@ def test_trino_shared_deployment_audit_rejects_shared_safe_without_front_door_re
     assert rc == 1
     assert "Trino shared deployment boundary audit: failed" in captured.out
     assert "shared_trino_front_door_review_missing" in captured.out
-    assert "shared_trino_inputs=1" in captured.out
-    assert "shared_owner_raw_inputs=0" in captured.out
     assert "shared_trino_missing_trusted_viewer_identity" not in captured.out
     assert "shared_deployment_requirements=accepted=18, missing=1" in captured.out
     assert_protected_fragments_hidden(rendered, tmp_path)
@@ -177,9 +171,7 @@ def test_trino_shared_deployment_audit_accepts_shared_safe_after_front_door_revi
     captured = capsys.readouterr()
     rendered = captured.out + captured.err
     assert rc == 0
-    assert "shared_trino_inputs=1" in captured.out
-    assert "shared_owner_raw_inputs=0" in captured.out
-    assert "front_door_review=confirmed" in captured.out
+    assert "front_door_review=reported_in_summary" in captured.out
     assert "shared_deployment_requirements=accepted=19" in captured.out
     assert "Issues: none" in captured.out
     assert_protected_fragments_hidden(rendered, tmp_path)

@@ -316,12 +316,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(f"Trino shared deployment boundary audit: {status}")
     print(
         "Deployment: "
-        f"config_checked={'yes' if result.config_checked else 'no'}, "
-        f"trino_inputs={result.trino_source_count}, "
-        f"shared_trino_inputs={result.shared_trino_source_count}, "
-        f"shared_owner_raw_inputs={result.shared_owner_raw_source_count}, "
+        "config_check=reported_in_summary, "
+        "trino_input_counts=reported_in_summary, "
+        "shared_trino_input_counts=reported_in_summary, "
+        "shared_owner_raw_input_counts=reported_in_summary, "
         "front_door_requirement=required_for_shared_trino, "
-        f"front_door_review={trusted_front_door_review_status(result)}, "
+        "front_door_review=reported_in_summary, "
         "raw_reveal=blocked_for_shared_trino, "
         "path_output=none"
     )
