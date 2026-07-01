@@ -24,6 +24,7 @@ from query_doctor.web.config import (
     resolve_web_config_path,
 )
 from query_doctor.web.models import WebClusterConfig, WebError
+from query_doctor.trino.support_mode import trino_support_mode_enabled
 from query_doctor.web.trino_beta_query import validate_trino_auth_mode
 
 
@@ -153,7 +154,10 @@ def _audit_cluster(
         return
     result.trino_configured_cluster_count += 1
 
-    if not cluster.trino_beta_enabled:
+    trino_enabled = (
+        trino_support_mode_enabled(cluster.trino_support_mode) or cluster.trino_beta_enabled
+    )
+    if not trino_enabled:
         result.issue_counts["trino_beta_disabled"] += 1
     if not cluster.trino_coordinator_url:
         result.issue_counts["trino_coordinator_url_missing"] += 1
@@ -165,10 +169,7 @@ def _audit_cluster(
     )
     auth_ready = _auth_reference_ready(cluster, config_base_dir=config_base_dir, result=result)
     query_ready = bool(
-        cluster.trino_beta_enabled
-        and cluster.trino_coordinator_url
-        and query_info_ready
-        and auth_ready
+        trino_enabled and cluster.trino_coordinator_url and query_info_ready and auth_ready
     )
     if query_ready:
         result.query_id_ready_cluster_count += 1

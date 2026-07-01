@@ -56,6 +56,29 @@ def test_trino_web_beta_readiness_accepts_recent_and_query_id_config(tmp_path: P
         assert "trino-query-info-contract.json" not in text
 
 
+def test_trino_web_beta_readiness_accepts_production_support_mode(
+    tmp_path: Path,
+) -> None:
+    config = _write_config(
+        tmp_path,
+        query_list=True,
+        trino_support_mode="production",
+        trino_beta_enabled=False,
+    )
+
+    result = audit_trino_web_beta_readiness(
+        config,
+        cwd=tmp_path,
+        require_query_id=True,
+        require_recent=True,
+    )
+
+    assert result.ok
+    assert result.issue_counts == {}
+    assert result.query_id_ready_cluster_count == 1
+    assert result.recent_ready_cluster_count == 1
+
+
 def test_trino_web_beta_readiness_can_gate_query_id_without_recent(
     tmp_path: Path,
 ) -> None:
@@ -185,6 +208,8 @@ def _write_config(
     tmp_path: Path,
     *,
     query_list: bool,
+    trino_support_mode: str | None = None,
+    trino_beta_enabled: bool = True,
     auth_header: Path | None = None,
     kerberos_principal: str | None = None,
     krb5_ccname: str | None = None,
@@ -197,7 +222,6 @@ def _write_config(
             {
                 "id": "trino",
                 "label": "Trino",
-                "trino_beta_enabled": True,
                 "trino_coordinator_url": COORDINATOR_URL,
                 "trino_query_info_source_contract": query_info_contract.name,
             }
@@ -205,6 +229,10 @@ def _write_config(
     }
     cluster = config_payload["clusters"][0]
     assert isinstance(cluster, dict)
+    if trino_support_mode is not None:
+        cluster["trino_support_mode"] = trino_support_mode
+    if trino_beta_enabled:
+        cluster["trino_beta_enabled"] = True
     if query_list:
         query_list_contract = tmp_path / "trino-query-list-contract.json"
         query_list_contract.write_text(json.dumps(_query_list_contract()), encoding="utf-8")

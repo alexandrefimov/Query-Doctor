@@ -51,6 +51,34 @@ def test_trino_kerberos_entries_inherit_defaults_and_resolve_config_path(tmp_pat
     )
 
 
+def test_trino_kerberos_entries_accept_production_support_mode(tmp_path: Path) -> None:
+    config = tmp_path / "query-doctor-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "clusters": [
+                    {
+                        "id": "trino",
+                        "trino_support_mode": "production",
+                        "trino_kerberos_principal": "trino@EXAMPLE.COM",
+                        "trino_krb5_ccname": "FILE:/tmp/trino-cache",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entries = refresher.trino_kerberos_entries_from_config(config)
+
+    assert entries == (
+        refresher.TrinoKerberosEntry(
+            principal="trino@EXAMPLE.COM",
+            krb5_ccname="FILE:/tmp/trino-cache",
+        ),
+    )
+
+
 def test_refresh_trino_kerberos_entries_uses_kinit_without_shell(tmp_path: Path) -> None:
     keytab = tmp_path / "query-doctor.keytab"
     keytab.write_text("not a real keytab", encoding="utf-8")

@@ -54,21 +54,26 @@ def write_config(home: Path, payload: dict) -> Path:
     return config
 
 
-def trino_config_payload(tmp_path: Path) -> dict:
-    return {
-        "clusters": [
-            {
-                "id": "trino-beta-prod",
-                "label": "Trino PROD",
-                "trino_beta_enabled": True,
-                "trino_coordinator_url": COORDINATOR_URL,
-                "trino_query_info_source_contract": str(tmp_path / "query-info-contract.json"),
-                "trino_query_list_source_contract": str(tmp_path / "query-list-contract.json"),
-                "trino_kerberos_principal": PRINCIPAL,
-                "trino_krb5_ccname": "FILE:/tmp/krb5cc_query_doctor_trino",
-            }
-        ]
+def trino_config_payload(
+    tmp_path: Path,
+    *,
+    trino_support_mode: str | None = None,
+    trino_beta_enabled: bool = True,
+) -> dict:
+    cluster: dict[str, object] = {
+        "id": "trino-beta-prod",
+        "label": "Trino PROD",
+        "trino_coordinator_url": COORDINATOR_URL,
+        "trino_query_info_source_contract": str(tmp_path / "query-info-contract.json"),
+        "trino_query_list_source_contract": str(tmp_path / "query-list-contract.json"),
+        "trino_kerberos_principal": PRINCIPAL,
+        "trino_krb5_ccname": "FILE:/tmp/krb5cc_query_doctor_trino",
     }
+    if trino_support_mode is not None:
+        cluster["trino_support_mode"] = trino_support_mode
+    if trino_beta_enabled:
+        cluster["trino_beta_enabled"] = True
+    return {"clusters": [cluster]}
 
 
 def load_smoke_module():
@@ -91,6 +96,36 @@ def test_web_trino_beta_smoke_dry_run_without_private_echo(tmp_path):
     combined = result.stdout + result.stderr
     assert result.returncode == 0, combined
     assert os.access(SCRIPT, os.X_OK)
+    assert "dry_run=ok" in result.stdout
+    assert "recent=true one_query=true" in result.stdout
+    for marker in (
+        COORDINATOR_URL,
+        PRINCIPAL,
+        "trino-beta-prod",
+        "query-info-contract",
+        "query-list-contract",
+        "krb5cc",
+        str(config),
+        str(tmp_path),
+    ):
+        assert marker not in combined
+
+
+def test_web_trino_beta_smoke_dry_run_accepts_production_support_mode(tmp_path):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        trino_config_payload(
+            tmp_path,
+            trino_support_mode="production",
+            trino_beta_enabled=False,
+        ),
+    )
+
+    result = run_smoke(["--dry-run", "--config", str(config)], home=home)
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0, combined
     assert "dry_run=ok" in result.stdout
     assert "recent=true one_query=true" in result.stdout
     for marker in (
@@ -151,7 +186,7 @@ def trino_result_html(title: str, *, recent_extra: str = "") -> str:
         "Query Optimizer jobs, generated SQL, and SQL execution remain unavailable. "
         "Python Report and optimizer guidance are available only from materialized Details."
     )
-    if title == "Trino Beta Recent diagnosis":
+    if title in {"Trino Beta Recent diagnosis", "Trino Recent diagnosis"}:
         return (
             f"<section><h1>{title}</h1><p>{boundary}</p><table><tr><td><code>{QUERY_ID}</code>"
             f"</td><td>ok</td></tr></table>{recent_extra}</section>"
@@ -167,7 +202,13 @@ class FakeProcess:
         return None
 
 
-def install_fake_web(monkeypatch, smoke, *, recent_extra: str = "") -> dict[str, dict[str, str]]:
+def install_fake_web(
+    monkeypatch,
+    smoke,
+    *,
+    recent_extra: str = "",
+    production_headings: bool = False,
+) -> dict[str, dict[str, str]]:
     captures: dict[str, dict[str, str]] = {}
     recent_job_id = "1234567890abcdef1234567890abcdef"
     query_job_id = "abcdef1234567890abcdef1234567890"
@@ -199,25 +240,31 @@ def install_fake_web(monkeypatch, smoke, *, recent_extra: str = "") -> dict[str,
             }
             return smoke.HttpResponse(303, {"location": f"/jobs/{query_job_id}"}, "")
         if method == "GET" and path == f"/jobs/{recent_job_id}/status":
+            recent_title = (
+                "Trino Recent diagnosis" if production_headings else "Trino Beta Recent diagnosis"
+            )
             payload = {
                 "status": "ok",
                 "stage": "Done",
                 "progress": 100,
                 "kind": "trino_recent",
-                "result_html": trino_result_html(
-                    "Trino Beta Recent diagnosis", recent_extra=recent_extra
-                ),
+                "result_html": trino_result_html(recent_title, recent_extra=recent_extra),
             }
             return smoke.HttpResponse(
                 200, {"content-type": "application/json"}, json.dumps(payload)
             )
         if method == "GET" and path == f"/jobs/{query_job_id}/status":
+            query_title = (
+                "Trino Query ID diagnosis"
+                if production_headings
+                else "Trino Beta Query ID diagnosis"
+            )
             payload = {
                 "status": "ok",
                 "stage": "Done",
                 "progress": 100,
                 "kind": "trino_query",
-                "result_html": trino_result_html("Trino Beta Query ID diagnosis"),
+                "result_html": trino_result_html(query_title),
             }
             return smoke.HttpResponse(
                 200, {"content-type": "application/json"}, json.dumps(payload)
@@ -281,6 +328,46 @@ def test_web_trino_beta_smoke_runs_recent_and_query_id_without_echo(tmp_path, mo
     assert query_form["engine"] == "trino"
     assert query_form["query_id"] == QUERY_ID
     assert query_form["cluster_key"] == "trino-beta-prod"
+
+
+def test_web_trino_beta_smoke_accepts_production_result_headings(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    home = tmp_path / "home"
+    config = write_config(
+        home,
+        trino_config_payload(
+            tmp_path,
+            trino_support_mode="production",
+            trino_beta_enabled=False,
+        ),
+    )
+    smoke = load_smoke_module()
+    captures = install_fake_web(monkeypatch, smoke, production_headings=True)
+
+    rc = smoke.main(
+        [
+            "--config",
+            str(config),
+            "--port",
+            "12345",
+            "--timeout-sec",
+            "10",
+            "--poll-interval-sec",
+            "0.05",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    combined = captured.out + captured.err
+    assert rc == 0, combined
+    assert "[web-trino-beta-smoke] ok" in captured.out
+    assert captures["recent"]["engine"] == "trino"
+    assert captures["query"]["engine"] == "trino"
+    for marker in (QUERY_ID, COORDINATOR_URL, PRINCIPAL, str(config), str(tmp_path)):
+        assert marker not in combined
 
 
 def test_web_trino_beta_smoke_rejects_unsupported_result_link(tmp_path, monkeypatch, capsys):
