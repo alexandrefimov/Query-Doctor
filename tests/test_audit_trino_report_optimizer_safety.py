@@ -151,9 +151,7 @@ def test_trino_report_optimizer_safety_cli_writes_path_free_summary(tmp_path: Pa
     assert "generated_sql=blocked" in captured.out
     assert "trino_sql_execution=not_performed" in captured.out
     assert "report_optimizer_requirements=accepted=30" in captured.out
-    assert "Production review profile: profile=production_review_report_optimizer_v1" in (
-        captured.out
-    )
+    assert "Production review: review=report_optimizer" in captured.out
     assert "status=ready" in captured.out
     assert "requirements=accepted=5" in captured.out
     assert "Issues: none" in captured.out
