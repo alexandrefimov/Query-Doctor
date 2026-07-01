@@ -46,7 +46,10 @@ VERSION = project_version()
 setup(
     name="query-doctor",
     version=VERSION,
-    description="Local-first Big Data query diagnostics focused today on Apache Impala.",
+    description=(
+        "Local-first Big Data query diagnostics for Apache Impala production triage "
+        "and bounded local Trino lanes."
+    ),
     author="Aleksandr Efimov",
     maintainer="Aleksandr Efimov",
     url="https://github.com/alexandrefimov/Query-Doctor",
@@ -73,10 +76,12 @@ setup(
     ],
     keywords=[
         "apache-impala",
+        "apache-trino",
         "cloudera-manager",
         "diagnostics",
         "query-analysis",
         "sql",
+        "trino",
     ],
     long_description=Path("README.md").read_text(encoding="utf-8"),
     long_description_content_type="text/markdown",
