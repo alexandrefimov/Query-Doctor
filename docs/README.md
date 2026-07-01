@@ -123,7 +123,7 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
-- [release-notes-0.10.0.md](release-notes-0.10.0.md): draft 0.10.0 release
+- [release-notes-0.10.0.md](release-notes-0.10.0.md): 0.10.0 release
   notes for bounded local Trino production support, Impala production triage
   polish, and release-readiness safety gates.
 - Historical release notes:
@@ -201,7 +201,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
-| [release-notes-0.10.0.md](release-notes-0.10.0.md) | reference | Draft 0.10.0 release notes. |
+| [release-notes-0.10.0.md](release-notes-0.10.0.md) | reference | 0.10.0 release notes. |
 | [release-notes-0.9.0.md](release-notes-0.9.0.md) | archived | Historical 0.9.0 release snapshot. |
 | [release-notes-0.8.0.md](release-notes-0.8.0.md) | archived | Historical 0.8.0 release snapshot. |
 | [release-notes-0.7.0.md](release-notes-0.7.0.md) | archived | Historical 0.7.0 release snapshot. |

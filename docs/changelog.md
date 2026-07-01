@@ -9,7 +9,7 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For draft 0.10.0 release notes suitable for GitHub Release and package-index
+For 0.10.0 release notes suitable for GitHub Release and package-index
 handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
 0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
 [release-notes-0.9.0.md](release-notes-0.9.0.md),
@@ -31,7 +31,7 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
   query-history crawling, product metadata collection, LLM reports, Query
   Optimizer jobs, generated SQL, SQL execution, and Spark production support
   out of scope.
-- Draft 0.10.0 release notes now summarize the bounded local Trino production
+- 0.10.0 release notes now summarize the bounded local Trino production
   claim, Impala-first support boundary, public demo safety boundary, and
   release validation focus without changing historical 0.9.0 notes.
 - The Diagnose page now preserves the configured Trino display label when

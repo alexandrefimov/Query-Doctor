@@ -1,7 +1,7 @@
 # Query Doctor 0.10.0 Release Notes
 
 Release date: TBD
-Package: `query-doctor` 0.10.0 draft
+Package: `query-doctor` 0.10.0
 Release focus: bounded local Trino production support, Impala production
 triage polish, and release-readiness safety gates
 
