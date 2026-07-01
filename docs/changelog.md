@@ -38,6 +38,9 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
   browser-side engine switching updates the One Query ID submit button. Legacy
   beta sources keep `Run Trino Beta`, while production-mode sources use
   `Run Trino`.
+- Trino retained-list Recent now accepts coordinator query-list rows containing
+  `errorCode` and `errorType` as scrub-only input fields, keeping them out of
+  normalized facts, browser output, Details, reports, and optimizer guidance.
 - The Diagnose Engine control no longer shows secondary support subtitles under
   the Impala and Trino choices. Unconfigured or production-mode Trino now uses
   the plain `Trino` label, while legacy beta sources still show `Trino Beta`.
