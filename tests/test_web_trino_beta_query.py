@@ -1695,6 +1695,42 @@ def test_trino_beta_recent_post_runs_query_list_and_query_info_pipeline(
     assert str(tmp_path) not in job.result_html
 
 
+def test_trino_beta_recent_accepts_scrubbed_query_list_error_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _trino_settings(tmp_path)
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_list_target."
+        "fetch_trino_coordinator_pruned_query_list_text",
+        lambda *_args, **_kwargs: _raw_query_list_text_with_error_fields(),
+    )
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_pruned_import."
+        "fetch_trino_coordinator_pruned_query_info_text",
+        lambda *_args, **_kwargs: _raw_query_info_text(),
+    )
+
+    result = run_trino_recent_scan(
+        BatchRunConfig(
+            engine="trino",
+            recent_window_minutes=30,
+            triage_profile_limit=1,
+            metadata_top_limit=0,
+        ),
+        settings,
+    )
+
+    assert result.records_seen == 1
+    assert result.records_diagnosed == 1
+    assert result.rows[0].status == "ok"
+    rendered = render_trino_recent_scan_result(result)
+    assert "errorCode" not in rendered
+    assert "errorType" not in rendered
+    assert "USER_ERROR" not in rendered
+
+
 def test_trino_beta_recent_materializes_case_artifacts_for_selected_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2914,6 +2950,17 @@ def _raw_query_list_text() -> str:
             }
         ]
     )
+
+
+def _raw_query_list_text_with_error_fields() -> str:
+    records = json.loads(_raw_query_list_text())
+    records[0]["errorCode"] = {
+        "code": 1234,
+        "name": "USER_ERROR",
+        "type": "USER_ERROR",
+    }
+    records[0]["errorType"] = "USER_ERROR"
+    return json.dumps(records)
 
 
 def _raw_query_info_text() -> str:

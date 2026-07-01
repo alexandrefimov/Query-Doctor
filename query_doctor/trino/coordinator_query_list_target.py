@@ -107,6 +107,8 @@ TRINO_COORDINATOR_QUERY_LIST_RECORD_KEYS = frozenset(
         "scheduled",
         "self",
         "session",
+        "errorCode",
+        "errorType",
     }
 )
 TRINO_COORDINATOR_QUERY_LIST_STATS_KEYS = frozenset(

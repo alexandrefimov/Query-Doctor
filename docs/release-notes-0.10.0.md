@@ -25,6 +25,9 @@ optimizer guidance over server-owned materialized cases from those lanes.
   local Trino production lanes.
 - Support-gate audits now pin the bounded Trino production claim and keep the
   broader/shared expansion gates explicit.
+- Trino retained-list Recent accepts real coordinator rows that include
+  `errorCode` and `errorType` while scrubbing those fields before normalized
+  facts, browser output, Details, reports, or optimizer guidance.
 - Public demo and README first-user paths remain local-only, synthetic,
   read-only, and raw-free.
 
