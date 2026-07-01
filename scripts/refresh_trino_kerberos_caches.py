@@ -12,6 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from query_doctor.trino.support_mode import (
+    normalize_trino_support_mode,
+    trino_support_mode_enabled,
+)
+
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -54,7 +63,7 @@ def trino_kerberos_entries_from_config(config_path: Path) -> tuple[TrinoKerberos
     entries: list[TrinoKerberosEntry] = []
     seen: set[TrinoKerberosEntry] = set()
     for values in sources:
-        if values.get("trino_beta_enabled") is not True:
+        if not trino_enabled(values):
             continue
         principal = safe_nonempty_string(values.get("trino_kerberos_principal"))
         krb5_ccname = safe_nonempty_string(values.get("trino_krb5_ccname"))
@@ -72,6 +81,17 @@ def trino_kerberos_entries_from_config(config_path: Path) -> tuple[TrinoKerberos
             entries.append(entry)
             seen.add(entry)
     return tuple(entries)
+
+
+def trino_enabled(values: Mapping[str, Any]) -> bool:
+    try:
+        support_mode = normalize_trino_support_mode(
+            values.get("trino_support_mode"),
+            legacy_beta_enabled=values.get("trino_beta_enabled") is True,
+        )
+    except ValueError:
+        return False
+    return trino_support_mode_enabled(support_mode) or values.get("trino_beta_enabled") is True
 
 
 def merge_values(defaults: Mapping[str, Any], cluster: Mapping[str, Any]) -> dict[str, Any]:

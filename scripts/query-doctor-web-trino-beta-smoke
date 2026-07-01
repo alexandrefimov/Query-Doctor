@@ -21,6 +21,14 @@ from urllib.parse import quote, urlencode, urlsplit
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from query_doctor.trino.support_mode import (  # noqa: E402
+    normalize_trino_support_mode,
+    trino_support_mode_enabled,
+)
+
 DEFAULT_WEB_WRAPPER = ROOT_DIR / "scripts" / "query-doctor-web-local"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_WINDOW_MINUTES = 1_000_000
@@ -222,8 +230,15 @@ def merged_values(defaults: dict[str, Any], cluster: dict[str, Any] | None) -> d
 
 
 def trino_recent_ready(values: dict[str, Any]) -> bool:
+    try:
+        support_mode = normalize_trino_support_mode(
+            values.get("trino_support_mode"),
+            legacy_beta_enabled=values.get("trino_beta_enabled") is True,
+        )
+    except ValueError:
+        return False
     return (
-        values.get("trino_beta_enabled") is True
+        (trino_support_mode_enabled(support_mode) or values.get("trino_beta_enabled") is True)
         and bool(str(values.get("trino_coordinator_url") or "").strip())
         and bool(str(values.get("trino_query_info_source_contract") or "").strip())
         and bool(str(values.get("trino_query_list_source_contract") or "").strip())
@@ -556,10 +571,10 @@ def result_html_from_payload(payload: dict[str, Any], label: str) -> str:
 def check_result_html(
     body: str,
     *,
-    expected_heading: str,
+    expected_headings: tuple[str, ...],
     sensitive_markers: tuple[str, ...],
 ) -> None:
-    if expected_heading not in body:
+    if not any(heading in body for heading in expected_headings):
         raise SmokeError("Trino Beta result did not render the expected heading.")
     lower = body.lower()
     leaked_links = [marker for marker in FORBIDDEN_UI_LINK_MARKERS if marker.lower() in lower]
@@ -637,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         recent_html = result_html_from_payload(recent_payload, "Trino Beta Recent")
         check_result_html(
             recent_html,
-            expected_heading="Trino Beta Recent diagnosis",
+            expected_headings=("Trino Beta Recent diagnosis", "Trino Recent diagnosis"),
             sensitive_markers=selection.sensitive_markers,
         )
         selected_query_id = extract_recent_query_id(recent_html)
@@ -659,7 +674,10 @@ def main(argv: list[str] | None = None) -> int:
             query_html = result_html_from_payload(query_payload, "Trino Beta One Query ID")
             check_result_html(
                 query_html,
-                expected_heading="Trino Beta Query ID diagnosis",
+                expected_headings=(
+                    "Trino Beta Query ID diagnosis",
+                    "Trino Query ID diagnosis",
+                ),
                 sensitive_markers=selection.sensitive_markers,
             )
             print("[web-trino-beta-smoke] query_id=ok", flush=True)
