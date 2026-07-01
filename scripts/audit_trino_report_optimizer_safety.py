@@ -19,7 +19,6 @@ if str(ROOT) not in sys.path:
 from query_doctor.trino.report_optimizer_safety import (  # noqa: E402
     TRINO_REPORT_OPTIMIZER_GENERATED_SQL_STATUS,
     TRINO_REPORT_OPTIMIZER_LLM_REPORTS_STATUS,
-    TRINO_REPORT_OPTIMIZER_PRODUCTION_REVIEW_PROFILE,
     TRINO_REPORT_OPTIMIZER_QUERY_OPTIMIZER_JOBS_STATUS,
     TRINO_REPORT_OPTIMIZER_SAFETY_GATE,
     TRINO_REPORT_OPTIMIZER_SAFETY_STATUS,
@@ -89,9 +88,9 @@ def main(argv: Iterable[str] | None = None) -> int:
         f"{counter_text(result.report_optimizer_requirement_tracking_counts) or 'none'}"
     )
     print(
-        "Production review profile: "
-        f"profile={TRINO_REPORT_OPTIMIZER_PRODUCTION_REVIEW_PROFILE}, "
-        f"status={summary['production_review_profile_status']}, "
+        "Production review: "
+        "review=report_optimizer, "
+        f"status={production_review_stdout_status(result)}, "
         f"requirements={counter_text(result.production_review_tracking_counts) or 'none'}"
     )
     print(
@@ -134,6 +133,14 @@ def print_issues(issues: list[tuple[str, Any]], *, limit: int) -> None:
 
 def counter_text(counter: Counter[str]) -> str:
     return ", ".join(f"{key}={counter[key]}" for key in sorted(counter))
+
+
+def production_review_stdout_status(result: Any) -> str:
+    if not result.production_review_tracking:
+        return "not_required"
+    if set(result.production_review_tracking_counts) == {"accepted"}:
+        return "ready"
+    return "failed"
 
 
 def positive_int(raw: str) -> int:

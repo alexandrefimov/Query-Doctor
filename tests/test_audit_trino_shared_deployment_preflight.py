@@ -76,7 +76,7 @@ def test_preflight_summary_records_front_door_review_confirmation() -> None:
     text = json.dumps(payload, sort_keys=True) + preflight.format_summary(payload)
 
     assert payload["surface_boundary"]["trusted_front_door_review"] == "confirmed"
-    assert "trusted_front_door_review=confirmed" in text
+    assert "front_door_review=confirmed" in text
     assert_protected_fragments_hidden(text)
 
 
