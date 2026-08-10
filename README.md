@@ -15,7 +15,7 @@ Impala production triage, with bounded local Trino production lanes. It helps
 operators rank suspicious Recent
 queries, collect bounded profile context, derive deterministic evidence, and
 generate validated reports without exposing raw SQL or raw profiles in trusted
-browser/report surfaces. The Query Doctor 0.11.0 release candidate adds a
+browser/report surfaces. The Query Doctor 0.11.0 release adds a
 supported container image, Kubernetes manifests, a Helm chart, raw-free Online
 History, and bounded parsing of one already-provided Impala EXPLAIN artifact.
 
@@ -820,9 +820,9 @@ configs, credentials, raw profiles, raw metadata, or temporary outputs.
 
 ## Public Status
 
-This repository is public. Public source releases start at `v0.4.2`; the
-`v0.11.0` release candidate continues that public source release line once it
-is approved and published. Older package-index releases remain visible on
+This repository is public. Public source releases start at `v0.4.2`;
+`v0.11.0` continues that public source release line. Older package-index
+releases remain visible on
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) where needed for
 installed-artifact history. The public license is Apache-2.0.
 
