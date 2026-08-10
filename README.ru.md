@@ -11,7 +11,7 @@ queries, собирать ограниченный контекст профил
 evidence и генерировать
 проверенные отчеты без показа raw SQL или raw profiles в trusted
 browser/report surfaces.
-В release candidate 0.11.0 добавлены supported container image, Kubernetes
+В релизе 0.11.0 добавлены supported container image, Kubernetes
 manifests, Helm chart, raw-free Online History и bounded parsing одного уже
 предоставленного Impala EXPLAIN artifact.
 

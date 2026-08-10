@@ -1,8 +1,8 @@
 # Query Doctor 0.11.0 Release Notes
 
-Release status: release candidate; publication pending
+Release date: 2026-08-10
 Package: `query-doctor` 0.11.0
-Planned container image: `ghcr.io/alexandrefimov/query-doctor:0.11.0`
+Container image: `ghcr.io/alexandrefimov/query-doctor:0.11.0`
 Release focus: Kubernetes-ready web deployment, container image support,
 Helm chart support, synthetic Kubernetes self-test, raw-free deployment
 readiness, health probes, one-profile web intake, persistent Recent profile
