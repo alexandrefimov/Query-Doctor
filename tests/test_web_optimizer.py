@@ -23,7 +23,7 @@ def make_request(handler, path):
 def optimizer_textarea_value(html):
     marker = (
         '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" '
-        'aria-describedby="optimizer_sql_help" required>'
+        'aria-describedby="optimizer_sql_help" rows="10" spellcheck="false" required>'
     )
     assert marker in html
     return html.split(marker, 1)[1].split("</textarea>", 1)[0]
@@ -42,15 +42,27 @@ def test_optimizer_page_renders():
     assert "Query Optimizer" in body
     assert (
         '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" '
-        'aria-describedby="optimizer_sql_help" required>'
+        'aria-describedby="optimizer_sql_help" rows="10" spellcheck="false" required>'
     ) in body
     assert '<button class="run-button" type="submit">Analyze</button>' in body
-    assert "Paste one Impala SELECT/WITH statement for read-only review." in body
+    assert "Paste one Impala SELECT/WITH statement for deterministic, read-only review." in body
+    assert (
+        '<div class="optimizer-boundary-summary" id="optimizer_boundary_summary" '
+        'aria-label="Query Optimizer scope and safety">'
+    ) in body
+    assert body.count('<span class="optimizer-boundary-item">') == 3
+    assert "<strong>Scope</strong><span>One Impala SELECT/WITH statement</span>" in body
+    assert (
+        "<strong>Processing</strong><span>Local parse; bounded metadata for referenced tables</span>"
+        in body
+    )
+    assert "<strong>Safety</strong><span>Never executed or echoed after submit</span>" in body
+    assert '<div class="optimizer-submit-row">' in body
     assert '<details class="compact-details optimizer-scope-details">' in body
     assert "Input rules and safety boundary" in body
     assert '<p class="helper optimizer-field-help" id="optimizer_sql_help">' in body
-    assert "One SELECT or WITH statement only." in body
-    assert "clears this field after submit and never executes the SQL" in body
+    assert "Exactly one read-only SELECT or WITH statement." in body
+    assert "The field is cleared after submit." in body
     assert "exactly one read-only SELECT or WITH statement" in body
     assert "Rejected before metadata" in body
     assert "mutating, admin, unsafe, or multi-statement input" in body
@@ -58,6 +70,8 @@ def test_optimizer_page_renders():
     assert "optional bounded metadata reads only referenced tables" in body
     assert "referenced tables, metadata status, findings, limitations, and next checks" in body
     assert "Submitted SQL is not echoed" in body
+    assert body.index('id="optimizer_boundary_summary"') < body.index('id="optimizer_sql"')
+    assert body.index('id="optimizer_sql_help"') < body.index(">Analyze</button>")
     assert '<a class="nav-link nav-link--active" href="/optimizer">Optimizer</a>' not in body
     assert 'href="/optimizer">Query Optimizer</a>' not in body
     assert optimizer_textarea_value(body) == ""

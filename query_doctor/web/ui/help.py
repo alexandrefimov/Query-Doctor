@@ -76,7 +76,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <p class="help-lede">Query Doctor is a local-first Big Data query diagnostics tool focused on Apache Impala production triage, with bounded local Trino production lanes for operators. It ranks suspicious Recent queries, collects bounded profile context, derives deterministic evidence, optionally enriches it with safe metadata and runtime context, and generates validated raw-free reports. The full production triage engine is Apache Impala. Local Trino production support covers configured retained-list Recent diagnosis, one configured Query ID, raw-free materialized Details, deterministic Python Report, and optimizer guidance; <code>trino_support_mode=beta</code> keeps the beta label and production mode uses the same bounded local surface without expanding broader Trino production triage support.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
-<a class="help-card" href="/"><span>Diagnose</span><strong>Triage Recent queries or inspect one Known Query ID.</strong></a>
+<a class="help-card" href="/"><span>Query Inbox</span><strong>Triage materialized Recent cases or inspect one Known Query ID.</strong></a>
 <a class="help-card" href="/#recent-results"><span>Results</span><strong>Read priority filters, findings, metadata, and stats signals.</strong></a>
 <a class="help-card" href="#workload-patterns"><span>Workloads</span><strong>Find repeated patterns, open the right details, and verify reruns.</strong></a>
 <a class="help-card" href="#details-actions"><span>Details</span><strong>Start with the recommendation, then expand evidence.</strong></a>
@@ -99,7 +99,8 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <section id="quick-start" class="help-section-block">
 <h2>Quick start</h2>
 <ol class="help-step-list">
-<li><a href="/">Open Diagnose</a> and choose <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong> in the first control.</li>
+<li><a href="/">Open Query Inbox</a>. If materialized cases are already available, start from the status strip, result views, and owner/pool tag or value, lifecycle/readiness/action filters; use <strong>New scan</strong> only to refresh a stale inbox or change source, time range, workflow, or query type.</li>
+<li>Choose <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong> in the first control when starting or changing a scan.</li>
 <li>Use <strong>Engine</strong> to keep production triage on <strong>Impala</strong>. <strong>Trino</strong> becomes selectable only after local Trino config is present, for retained-list <strong>Finished queries</strong> or <strong>One Query ID</strong>.</li>
 <li>Use <strong>Finished queries</strong> for normal batch triage. Use <strong>Running now</strong> only when you need a lower-confidence live snapshot.</li>
 <li>Switch to <strong>Known Query ID</strong> when you already have one query ID. Recent-query filters are intentionally hidden in that mode.</li>
@@ -113,18 +114,21 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <details id="workflows" class="help-topic">
 <summary><span>Workflows</span><small>Recent queries, Running now, Known Query ID, Trino</small></summary>
 <div class="help-topic-body">
-<p>Most demos and investigations start from <strong>Recent queries</strong>, the flagship production triage workflow. Use <strong>Known Query ID</strong> only when you already have one query ID and want to skip batch discovery.</p>
+<p>Most demos and investigations start from <strong>Recent queries</strong>, the flagship production triage workflow. Query Inbox shows safe materialized results first when they exist, marks stale summaries only from safe freshness fields, and keeps <strong>New scan</strong> as the control for refreshing or changing source, time range, workflow, or query type. Use <strong>Known Query ID</strong> only when you already have one query ID and want to skip batch discovery.</p>
 
 <h3>Recent queries</h3>
 <p>Recent queries is the primary operator workflow. It reads query summaries from the selected source, applies filters, collects bounded profiles for selected queries, runs deterministic analysis, and shows action-oriented result filters. {web_scan_boundary}</p>
 <ul>
 <li>Verify <strong>Source cluster</strong> first. Credentials and endpoints stay in local config; the browser only selects among configured sources.</li>
 <li>The first workflow control selects <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong>. Finished queries remain the default triage path.</li>
-<li>For <strong>Finished queries</strong>, set <strong>Search depth</strong> to choose the bounded lookback window for the selected source. Large windows can increase load on Cloudera Manager, direct Impala UI endpoints, and optional Prometheus collection, so use owner, resource-pool, query-type, or duration filters when possible.</li>
+<li>For <strong>Finished queries</strong>, set <strong>Search depth</strong> or an exact UTC range to choose the bounded window for the selected source. Large windows can increase load on Cloudera Manager, direct Impala UI endpoints, and optional Prometheus collection, so use owner, resource-pool, query-type, or duration filters when possible.</li>
 <li>Leave <strong>Minimum duration</strong> empty when you want long-running queries and repeated short workload patterns in the same triage pass.</li>
 <li>Owner-gated sources keep the required <strong>Username</strong> visible in Basic scan. Optional user, resource-pool, and query-type filters stay config-owned unless <code>web_advanced_settings_enabled</code> makes them editable in Advanced settings.</li>
 <li>Runtime context is collected automatically when the selected source supports it. Cloudera Manager clusters add bounded event and metric summaries; direct Impala Recent and Running scans use profile evidence and skip Cloudera Manager-only context.</li>
 <li>The Results filter shows all available views in one toolbar: <strong>Needs attention</strong>, <strong>Worth reviewing</strong>, repeated workloads, rewrite opportunities, and stats candidates.</li>
+<li><strong>Owner tagged</strong> and <strong>Pool tagged</strong> filter rows that already carry safe owner or pool tags. Concrete <strong>Owner: ...</strong> and <strong>Pool: ...</strong> chips use opaque URL tokens derived from the current materialized rows. They do not submit raw owner or pool values and do not change scan parameters.</li>
+<li><strong>Clean analysis</strong>, <strong>Status follow-up</strong>, and <strong>Metadata available</strong> are view-only lifecycle filters over already analyzed results. They do not change scan parameters.</li>
+<li><strong>Validated reports</strong>, <strong>Optimizer guidance</strong>, and <strong>Outcomes recorded</strong> are view-only filters over already analyzed results. They do not change scan parameters or run reports, optimizer jobs, generated SQL, or SQL execution.</li>
 <li><strong>Rewrite opportunities</strong> are deterministic query-shape review opportunities. They do not promise speedup and do not execute SQL.</li>
 <li><strong>Stats to check</strong> rows require metadata evidence, estimate mismatch, and planning-sensitive runtime symptoms. They still require EXPLAIN comparison and a comparable rerun.</li>
 <li><strong>Only queries with spills</strong> is a display filter over analyzed results; it does not change scan parameters.</li>
@@ -135,7 +139,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 
 <h3>Known Query ID</h3>
 <p>Known Query ID is for one explicit query ID. Use the shared Cluster selector above What to analyze, then enter the Query ID and run analysis. {known_query_boundary}</p>
-<p>If you have one exported Impala text profile instead of live access, configure <code>manual_profile_dir</code> as a local profile inbox. Name the file with the Query ID slug by replacing <code>:</code> with <code>_</code>, for example <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>, then enter the original Query ID. The browser does not upload the profile; the server stages it through the bounded redacted analyzer path.</p>
+<p>If you have one exported Impala text profile instead of live access, use the local/private <strong>Exported profile</strong> upload in One Query ID mode, or configure <code>manual_profile_dir</code> as a local profile inbox. For inbox files, name the file with the Query ID slug by replacing <code>:</code> with <code>_</code>, for example <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>. Both paths stage exactly one text profile through the bounded redacted analyzer path; the browser never renders the uploaded profile content, filename, file-system location, or temporary upload artifact. Public demo mode hides uploads.</p>
 <h3>Trino Recent and One Query ID</h3>
 <p>When <strong>Trino</strong> is configured, <strong>Finished queries</strong> reads one bounded retained pruned coordinator query list, then bounded pruned coordinator QueryInfo payloads for selected rows; <strong>One Query ID</strong> performs the same bounded QueryInfo read for one explicit ID. Both render deterministic compact diagnosis from raw-free boundaries and can open a raw-free Details view plus deterministic Python Report and optimizer guidance after server-owned case materialization. Configured beta sources keep the Trino Beta labels in the Source cluster selector; configured production-mode sources use the same labels without Beta. The Engine control narrows that selector to Impala-capable sources or Trino-ready sources before workflow selection. Forged or stale Trino submits still fail closed before analysis or async job creation. It does not support Trino Running scans, query-history crawling, metadata collection, LLM reports, Query Optimizer jobs, generated Trino SQL, or SQL execution.</p>
 </div>
@@ -306,7 +310,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <p class="help-lede">Query Doctor - local-first Big Data query diagnostics tool, сфокусированный на Apache Impala production triage и bounded local Trino production lanes для operators. Он ранжирует подозрительные Recent queries, собирает bounded profile context, выводит deterministic evidence, опционально обогащает его safe metadata и runtime context и генерирует validated raw-free reports. Полный production triage engine сейчас Apache Impala. Local Trino production support покрывает configured retained-list Recent diagnosis, один configured Query ID, raw-free materialized Details, deterministic Python Report и optimizer guidance; <code>trino_support_mode=beta</code> сохраняет beta label, а production mode использует тот же bounded local surface без расширения broader Trino production triage support.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
-<a class="help-card" href="/"><span>Диагностика</span><strong>Разобрать Recent queries или один Known Query ID.</strong></a>
+<a class="help-card" href="/"><span>Query Inbox</span><strong>Разобрать materialized Recent cases или один Known Query ID.</strong></a>
 <a class="help-card" href="/#recent-results"><span>Результаты</span><strong>Смотреть priority filters, findings, metadata и stats signals.</strong></a>
 <a class="help-card" href="#workload-patterns"><span>Workloads</span><strong>Найти repeated patterns, открыть правильные Details и проверить rerun.</strong></a>
 <a class="help-card" href="#details-actions"><span>Детали</span><strong>Начать с рекомендации, затем раскрывать evidence.</strong></a>
@@ -329,7 +333,8 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <section id="quick-start" class="help-section-block">
 <h2>Быстрый старт</h2>
 <ol class="help-step-list">
-<li><a href="/">Откройте Diagnose</a> и выберите <strong>Finished queries</strong>, <strong>Running now</strong> или <strong>One Query ID</strong> в первом переключателе.</li>
+<li><a href="/">Откройте Query Inbox</a>. Если materialized cases уже есть, начинайте со status strip, result views и owner/pool tag или value filters, lifecycle/readiness/action filters; <strong>New scan</strong> используйте только для refresh stale inbox или смены source, time range, workflow или query type.</li>
+<li>При запуске или изменении scan выберите <strong>Finished queries</strong>, <strong>Running now</strong> или <strong>One Query ID</strong> в первом переключателе.</li>
 <li><strong>Engine</strong> оставляет production triage на <strong>Impala</strong>. <strong>Trino</strong> становится selectable только после local Trino config, для retained-list <strong>Finished queries</strong> или <strong>One Query ID</strong>.</li>
 <li>Для обычного batch triage используйте <strong>Finished queries</strong>. <strong>Running now</strong> оставляйте для live snapshot с меньшей уверенностью.</li>
 <li>Переключитесь на <strong>Known Query ID</strong>, если у вас уже есть один query ID. Фильтры Recent-query в этом режиме скрыты.</li>
@@ -343,23 +348,26 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <details id="workflows" class="help-topic">
 <summary><span>Рабочие режимы</span><small>Recent queries, Running now, Known Query ID, Trino</small></summary>
 <div class="help-topic-body">
-<p>Flagship workflow для operator triage - <strong>Recent queries</strong>. <strong>Known Query ID</strong> нужен, когда уже известен один query ID и batch discovery не требуется.</p>
+<p>Flagship workflow для operator triage - <strong>Recent queries</strong>. Query Inbox сначала показывает safe materialized results, если они есть, помечает stale summaries только по safe freshness fields, а <strong>New scan</strong> остается control для refresh или смены source, time range, workflow или query type. <strong>Known Query ID</strong> нужен, когда уже известен один query ID и batch discovery не требуется.</p>
 <h3>Recent queries</h3>
 <p>Recent queries читает summaries из выбранного источника, применяет фильтры, собирает bounded profiles, запускает детерминированный analysis и показывает action-oriented result filters. {web_scan_boundary}</p>
 <ul>
 <li>Сначала проверьте <strong>Source cluster</strong>. Credentials и endpoints остаются в local config.</li>
 <li>Первый переключатель выбирает <strong>Finished queries</strong>, <strong>Running now</strong> или <strong>One Query ID</strong>. Finished queries остается основным triage path.</li>
-<li>Для <strong>Finished queries</strong> задайте <strong>Search depth</strong>, чтобы выбрать bounded lookback window для выбранного источника. Большие окна могут увеличивать нагрузку на Cloudera Manager, direct Impala UI endpoints и optional Prometheus collection, поэтому по возможности используйте owner, resource-pool, query-type или duration filters.</li>
+<li>Для <strong>Finished queries</strong> задайте <strong>Search depth</strong> или exact UTC range, чтобы выбрать bounded window для выбранного источника. Большие окна могут увеличивать нагрузку на Cloudera Manager, direct Impala UI endpoints и optional Prometheus collection, поэтому по возможности используйте owner, resource-pool, query-type или duration filters.</li>
 <li>Оставляйте <strong>Minimum duration</strong> пустым, если в одном triage pass нужны long-running queries и repeated short workload patterns.</li>
 <li>Runtime context собирается автоматически, когда выбранный source это поддерживает.</li>
 <li>Фильтр Results показывает все доступные срезы в одной панели: <strong>Needs attention</strong>, <strong>Worth reviewing</strong>, repeated workloads, rewrite opportunities и stats candidates.</li>
+<li><strong>Owner tagged</strong> и <strong>Pool tagged</strong> фильтруют строки, где уже есть safe owner или pool tags. Конкретные chips <strong>Owner: ...</strong> и <strong>Pool: ...</strong> используют opaque URL tokens, рассчитанные по текущим materialized rows. Они не submit raw owner или pool values и не меняют scan parameters.</li>
+<li><strong>Clean analysis</strong>, <strong>Status follow-up</strong> и <strong>Metadata available</strong> - view-only lifecycle filters по уже analyzed results. Они не меняют scan parameters.</li>
+<li><strong>Validated reports</strong>, <strong>Optimizer guidance</strong> и <strong>Outcomes recorded</strong> - view-only filters по уже analyzed results. Они не меняют scan parameters и не запускают reports, optimizer jobs, generated SQL или SQL execution.</li>
 <li><strong>Only queries with spills</strong> - display filter по уже проанализированным результатам.</li>
 </ul>
 <h3>Running now</h3>
 <p>Running now использует такую же форму результатов и Details, но сканирует только running queries на момент запуска. Профили могут быть неполными, поэтому уверенность ниже, чем для completed-query analysis.</p>
 <h3>Known Query ID</h3>
 <p>Known Query ID анализирует один явный query ID. Используйте общий Cluster selector, введите Query ID и запустите analysis. {known_query_boundary}</p>
-<p>Если вместо live access есть один exported Impala text profile, настройте <code>manual_profile_dir</code> как local profile inbox. Назовите файл slug-версией Query ID: замените <code>:</code> на <code>_</code>, например <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>, затем введите исходный Query ID. Browser не загружает profile; server staged его через bounded redacted analyzer path.</p>
+<p>Если вместо live access есть один exported Impala text profile, используйте local/private upload <strong>Exported profile</strong> в режиме One Query ID или настройте <code>manual_profile_dir</code> как local profile inbox. Для inbox files назовите файл slug-версией Query ID: замените <code>:</code> на <code>_</code>, например <code>aaaaaaaaaaaaaaaa_0000000000000001.txt</code>. Оба пути stage ровно один text profile через bounded redacted analyzer path; browser никогда не render uploaded profile content, filename, file-system location или temporary upload artifact. Public demo mode скрывает uploads.</p>
 <h3>Trino Recent и One Query ID</h3>
 <p>Когда <strong>Trino</strong> настроен, <strong>Finished queries</strong> читает один bounded retained pruned coordinator query list, затем bounded pruned coordinator QueryInfo payloads для выбранных rows; <strong>One Query ID</strong> выполняет тот же bounded QueryInfo read для одного explicit ID. Оба пути показывают deterministic compact diagnosis из raw-free boundaries и могут открыть raw-free Details view плюс deterministic Python Report и optimizer guidance после server-owned case materialization. Configured beta sources сохраняют Trino Beta labels в Source cluster selector; configured production-mode sources используют такие же labels без Beta. Engine control сужает selector до Impala-capable sources или Trino-ready sources до выбора workflow. Forged или stale Trino submits все равно fail closed до analysis или async job creation. Trino не поддерживает Running scans, query-history crawling, metadata collection, LLM reports, Query Optimizer jobs, generated Trino SQL или SQL execution.</p>
 </div>

@@ -1,0 +1,56 @@
+mode: configured
+
+config:
+  create: true
+  inlineJson: |
+    {
+      "clusters": [
+        {
+          "id": "cm-impala",
+          "label": "Impala via Cloudera Manager",
+          "cluster_type": "cm",
+          "cm_url": "https://cm.example.com:7183/",
+          "cluster": "example_cluster",
+          "service": "impala"
+        }
+      ],
+      "language": "en",
+      "source_visibility": "safe",
+      "no_llm": true,
+      "corpus_dir": "/var/lib/query-doctor/cases",
+      "recent_batch_root": "/tmp/query-doctor-web-batches",
+      "recent_history_db": "/var/lib/query-doctor/recent-history/recent-history.sqlite3",
+      "recent_history_backend": "sqlite",
+      "recent_history_summary_retention_days": 30,
+      "recent_history_profile_job_retention_days": 7,
+      "recent_history_analysis_cache_retention_days": 30,
+      "recent_history_profile_artifact_retention_days": 30,
+      "recent_scan_timezone": "UTC",
+      "recent_profile_analysis_limit": 5000,
+      "recent_parallelism": 4,
+      "recent_metadata_jobs": 2,
+      "recent_metadata_top_limit": 10
+    }
+
+credentials:
+  existingSecret: query-doctor-credentials
+
+kerberos:
+  enabled: false
+  existingSecret: query-doctor-kerberos
+  principalKey: principal
+  keytabKey: query-doctor.keytab
+  krb5ConfKey: krb5.conf
+  renewer:
+    enabled: true
+    refreshIntervalSeconds: 1800
+
+persistence:
+  enabled: true
+  recentBatchMountPath: /tmp/query-doctor-web-batches
+
+networkPolicy:
+  enabled: false
+
+ingress:
+  enabled: false

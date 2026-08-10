@@ -60,6 +60,18 @@ environment variables или local env files, описанных в
   окна могут увеличивать нагрузку на Cloudera Manager, direct Impala UI
   endpoints и optional Prometheus collection, поэтому используйте filters, если
   можно;
+- `recent_history_db` включает optional local SQLite history store для
+  raw-free Recent summaries. Он сохраняет bounded summary signals,
+  selected/suspicion reason codes, profile status и planned profile jobs для
+  discover-only runs, но не raw SQL и не profile text;
+- `recent_history_backend` может включить `postgres` backend для raw-free
+  Recent summary history. DSN читается только из переменной окружения с именем
+  из `recent_history_postgres_dsn_env`; само значение DSN не храните в JSON;
+- `recent_history_operator_readiness_summary_json` может указать web UI на уже
+  сохраненный raw-free `query_doctor_recent_history_operator_readiness_v1`
+  summary. Query Inbox показывает только allowlisted readiness, evidence,
+  reason-code labels, schema, worker и retention counters и не отображает путь,
+  raw JSON, raw SQL, profile text, local store paths или raw artifact names;
 - `recent_scan_timezone`, например `UTC`; поле сохранено для explicit
   date/hour helper paths, а web Finished-query scans по умолчанию используют
   `recent_window_minutes`;
@@ -123,12 +135,12 @@ configs. Он maps to `trino_support_mode=beta`, когда explicit mode не �
 Cluster entries могут иметь отдельные Trino keys для разных local targets. Web
 UI помечает configured beta sources как `Trino Beta Recent + One Query ID`,
 `Trino Beta Recent` или `Trino Beta One Query ID`; configured production-mode
-sources используют такие же labels без `Beta`. Diagnose Engine control сужает
-Source cluster selector до Impala-capable sources или Trino-ready sources до
-выбора workflow. Web UI не показывает coordinator URLs, auth reference
-paths/values, local source-contract paths, raw QueryInfo, raw query-list
-payloads или raw SQL, и fail-closed для stale или forged Trino submits до
-analysis или async job creation.
+sources используют configured source label без capability suffixes. Diagnose
+Engine control сужает Source cluster selector до Impala-capable sources или
+Trino-ready sources до выбора workflow. Web UI не показывает coordinator URLs,
+auth reference paths/values, local source-contract paths, raw QueryInfo, raw
+query-list payloads или raw SQL, и fail-closed для stale или forged Trino
+submits до analysis или async job creation.
 
 Trino не включает Running scans, query-history crawling, metadata collection,
 LLM reports, Query Optimizer jobs, generated Trino SQL или SQL execution.

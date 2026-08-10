@@ -1,6 +1,6 @@
 # Query Doctor Codex Instructions
 
-Last updated: 2026-06-22
+Last updated: 2026-08-10
 
 ## Project
 
@@ -25,6 +25,13 @@ Do not promote Spark into production triage support, Recent scans,
 Details/trusted report output, optimizer behavior, broader live collection, raw
 event-log handling, raw SQL/plan display, environment/log dumps, or Spark job
 execution without explicit implementation and validation.
+
+This repository is the public upstream and source of truth for the standalone
+`query-doctor` package. Platform-specific runtimes, internal service contracts,
+private registry wiring, and corporate CI belong in a separate private
+downstream repository. Run
+`python3 scripts/audit_public_distribution_boundary.py` before proposing a
+public release or packaging change.
 
 Cloudera Manager remains the full Recent discovery/profile/metrics/events
 provider for Impala workflows. Direct Impala daemon collection is current

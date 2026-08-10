@@ -108,7 +108,10 @@ def is_public_markdown_path(path: str) -> bool:
     normalized = path.replace("\\", "/")
     parts = PurePosixPath(normalized).parts
     return normalized.endswith(".md") and (
-        len(parts) == 1 or normalized.startswith("docs/") or normalized.startswith(".github/")
+        len(parts) == 1
+        or normalized.startswith("docs/")
+        or normalized.startswith("deploy/")
+        or normalized.startswith(".github/")
     )
 
 

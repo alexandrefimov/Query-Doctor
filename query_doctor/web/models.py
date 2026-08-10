@@ -45,12 +45,20 @@ WEB_CM_EVENTS_MAX_EVENTS_DEFAULT = 50
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def batch_output_dir(job_id: str) -> Path:
-    return Path("/tmp") / f"query-doctor-web-batch-{job_id}"
+DEFAULT_WEB_BATCH_ROOT = Path("/tmp")
 
 
-def batch_progress_path(job_id: str) -> Path:
-    return batch_output_dir(job_id) / "progress.jsonl"
+def batch_output_dir(job_id: str, root: Path | None = None) -> Path:
+    return (root or DEFAULT_WEB_BATCH_ROOT) / f"query-doctor-web-batch-{job_id}"
+
+
+def batch_reuse_root(settings: object | None = None) -> Path:
+    configured = getattr(settings, "recent_batch_root", None)
+    return configured if isinstance(configured, Path) else DEFAULT_WEB_BATCH_ROOT
+
+
+def batch_progress_path(job_id: str, root: Path | None = None) -> Path:
+    return batch_output_dir(job_id, root=root) / "progress.jsonl"
 
 
 class WebError(RuntimeError):
@@ -164,6 +172,7 @@ class WebSettings:
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
     repo_dir: Path = _REPO_ROOT
     corpus_dir: Path = DEFAULT_CORPUS_DIR
+    recent_batch_root: Path | None = None
     batch_summary: Path | None = None
     corpus_summary: dict[str, object] | None = None
     corpus_summary_root: Path | None = None
@@ -307,11 +316,13 @@ class BatchRunConfig:
     include_failed: bool = True
     include_running: bool = False
     only_running: bool = False
+    discover_only: bool = False
     collect_cm_events: bool = True
     cm_events_max_events: int = WEB_CM_EVENTS_MAX_EVENTS_DEFAULT
     collect_cm_timeseries: bool = True
     cm_metrics_profile: str = DEFAULT_CM_METRICS_PROFILE
     cm_timeseries_top_limit: int = WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT
+    publish_latest_summary: bool = True
 
 
 @dataclass(frozen=True)

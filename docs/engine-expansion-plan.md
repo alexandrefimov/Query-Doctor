@@ -1,6 +1,6 @@
 # Engine Expansion Plan
 
-Last reviewed: 2026-06-05
+Last reviewed: 2026-07-11
 
 This document records the transition plan for future source-provider and engine
 work. Current production triage is still Apache Impala. Trino support is
@@ -284,5 +284,8 @@ metadata to LLM prompts or browser UI.
   safety coverage.
 - No broad runtime engine selector before engine-specific collectors, parsers,
   metadata, and tests exist.
+- No final execution-engine selection, session routing, availability policy, or
+  fallback logic in Query Doctor. Those responsibilities remain outside this
+  repository.
 - No public "coming soon" promises for Trino or any other engine.
 - No storage/table-format root-cause claims without deterministic facts.

@@ -1,6 +1,6 @@
 # Analyzer Audit
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-07-13
 
 This public audit summarizes deterministic analyzer risks for Impala profile
 diagnostics. It avoids local case identifiers, private smoke history, generated
@@ -26,6 +26,21 @@ limits, and confidence. The LLM can only phrase validated facts.
   points are excluded from prompt input.
 - Direct Impala profile facts publish provenance, profile format, resource
   facts, and timing facts without raw profile text.
+- Already-provided Impala EXPLAIN artifacts now use a separate bounded parser
+  that publishes only allowlisted raw-free optimizer-intent and estimate facts
+  in the analyzer result (`analysis.json` when JSON output is requested). It
+  recognizes bounded classic, legacy, boxed, and selected modern fragment
+  layouts, including current `HDFS partitions` scan detail and structural stored
+  statistics availability. It closes typed detail extraction after opaque
+  expression sections, malformed tuple detail, or unexpected stored-statistics
+  content, and degrades to partial on malformed fragment or attribute
+  boundaries. It does not retain stored relation/column names, reuse runtime
+  `OperatorFact`, create findings, or promote structural overlap into execution
+  identity or causality.
+- EXPLAIN correlation records its identity basis explicitly. An accepted
+  external artifact remains `unbound_external_artifact`, while a missing or
+  rejected plan source is `no_accepted_plan_source`; statement and execution
+  identity remain `unknown` regardless of structural overlap.
 - Primary-bottleneck routing keeps aggregate-only memory-estimate top findings
   in the SQL-shape lane. It does not treat memory estimates as runtime memory
   pressure without selected-query spill/scratch evidence, and it does not treat
@@ -77,6 +92,16 @@ Any new analyzer fact that reaches Details, trusted reports, exported Markdown,
 or action candidates needs tests proving it does not leak raw SQL, raw profiles,
 hostnames, IP addresses, local paths, model names, process logs, or raw
 artifact filenames.
+
+### 6. EXPLAIN intent must remain separate from runtime evidence
+
+Broadcast or partitioned joins, missing-statistics warnings, estimates, and
+structural plan/profile overlap describe planner intent or correlation. They
+must not feed scoring, recommendations, primary-bottleneck promotion, trusted
+reports, or browser claims until same-revision provenance, representative
+fixtures, direct runtime evidence, and focused causal-rule validation exist.
+Co-location, adjacent query metadata, and operator-shape overlap do not provide
+that provenance.
 
 ## Update Rule
 

@@ -1,0 +1,56 @@
+name: Container CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  container:
+    name: Build and smoke container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Run Kubernetes packaging tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pytest -q tests/test_kubernetes_packaging.py tests/test_web_app.py::test_health_probe_routes_are_raw_free_json
+
+      - name: Build container image
+        run: scripts/build-image.sh query-doctor:${GITHUB_SHA}
+
+      - name: Smoke container image
+        run: scripts/image-smoke.sh query-doctor:${GITHUB_SHA}
+
+      - name: Publish release image to GHCR
+        if: github.event_name == 'release' && github.event.action == 'published'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          version="${GITHUB_REF_NAME#v}"
+          image="ghcr.io/${owner}/query-doctor"
+          printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker tag "query-doctor:${GITHUB_SHA}" "${image}:${version}"
+          docker tag "query-doctor:${GITHUB_SHA}" "${image}:latest"
+          docker push "${image}:${version}"
+          docker push "${image}:latest"

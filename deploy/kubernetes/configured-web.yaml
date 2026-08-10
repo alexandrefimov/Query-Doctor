@@ -1,0 +1,202 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: query-doctor-web
+  namespace: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: query-doctor-config
+  namespace: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+data:
+  query-doctor-config.json: |
+    {
+      "clusters": [
+        {
+          "id": "cm-impala",
+          "label": "Impala via Cloudera Manager",
+          "cluster_type": "cm",
+          "cm_url": "https://cm.example.com:7183/",
+          "cluster": "example_cluster",
+          "service": "impala"
+        }
+      ],
+      "language": "en",
+      "source_visibility": "safe",
+      "no_llm": true,
+      "corpus_dir": "/var/lib/query-doctor/cases",
+      "recent_batch_root": "/tmp/query-doctor-web-batches",
+      "recent_scan_timezone": "UTC",
+      "recent_profile_analysis_limit": 50,
+      "recent_parallelism": 4,
+      "recent_metadata_jobs": 2,
+      "recent_metadata_top_limit": 10
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: query-doctor-cases
+  namespace: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: query-doctor-web
+  namespace: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: query-doctor
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: query-doctor
+        app.kubernetes.io/component: web
+    spec:
+      serviceAccountName: query-doctor-web
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: ghcr.io/alexandrefimov/query-doctor:0.11.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8765"
+            - --allow-nonlocal-web-bind
+            - --config
+            - /etc/query-doctor/query-doctor-config.json
+            - --no-llm
+          envFrom:
+            - secretRef:
+                name: query-doctor-credentials
+          ports:
+            - name: http
+              containerPort: 8765
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 2
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/query-doctor
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: cases
+              mountPath: /var/lib/query-doctor
+            - name: cases
+              mountPath: /tmp/query-doctor-web-batches
+      volumes:
+        - name: config
+          configMap:
+            name: query-doctor-config
+        - name: cases
+          persistentVolumeClaim:
+            claimName: query-doctor-cases
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: query-doctor-web
+  namespace: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: query-doctor-web
+  namespace: query-doctor
+  labels:
+    app.kubernetes.io/name: query-doctor
+    app.kubernetes.io/component: web
+spec:
+  tls:
+    - hosts:
+        - query-doctor.example.com
+      secretName: query-doctor-tls
+  rules:
+    - host: query-doctor.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: query-doctor-web
+                port:
+                  name: http

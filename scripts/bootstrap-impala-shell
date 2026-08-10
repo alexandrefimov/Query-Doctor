@@ -38,6 +38,8 @@ if not sqlparse_pin:
 
 dist_info = Path(distribution("impala-shell")._path)
 metadata_path = dist_info / "METADATA"
+if not metadata_path.is_file():
+    metadata_path = dist_info / "PKG-INFO"
 metadata = metadata_path.read_text(encoding="utf-8")
 legacy_requirement = "Requires-Dist: sqlparse==0.3.1"
 patched_requirement = f"Requires-Dist: sqlparse=={sqlparse_pin}"

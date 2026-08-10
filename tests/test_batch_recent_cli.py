@@ -497,6 +497,102 @@ def test_batch_recent_config_cluster_loads_owner_raw_source_visibility(tmp_path)
     assert config.user == "analyst_one"
 
 
+def test_batch_recent_single_config_cluster_is_used_by_default(tmp_path):
+    module = load_batch_module()
+    config_path = write_query_doctor_config(
+        tmp_path,
+        clusters=[
+            {
+                "id": "cm",
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "prod_cluster",
+                "service": "impala",
+            },
+        ],
+    )
+    args = module.parse_args(
+        [
+            "--config",
+            str(config_path),
+            "--metadata-mode",
+            "off",
+        ]
+    )
+
+    config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+    assert config.cm_url == "https://cm.example.com:7183/"
+    assert config.cluster == "prod_cluster"
+    assert config.service == "impala"
+
+
+def test_batch_recent_active_cluster_key_selects_default_config_cluster(tmp_path):
+    module = load_batch_module()
+    config_path = write_query_doctor_config(
+        tmp_path,
+        active_cluster_key="direct-impala",
+        clusters=[
+            {
+                "id": "cm",
+                "cm_url": "https://cm.example.com:7183/",
+                "cluster": "prod_cluster",
+                "service": "impala",
+            },
+            {
+                "id": "direct-impala",
+                "query_profile_source": "impala",
+                "impala_profile_hosts": ["impalad-1.example.com"],
+            },
+        ],
+    )
+    args = module.parse_args(
+        [
+            "--config",
+            str(config_path),
+            "--metadata-mode",
+            "off",
+        ]
+    )
+
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+
+    assert config.query_profile_source == "impala"
+    assert config.impala_profile_hosts == ("impalad-1.example.com",)
+    assert config.cm_url is None
+
+
+def test_batch_recent_multi_cluster_config_requires_selection(tmp_path):
+    module = load_batch_module()
+    config_path = write_query_doctor_config(
+        tmp_path,
+        clusters=[
+            {
+                "id": "cm-a",
+                "cm_url": "https://cm-a.example.com:7183/",
+                "cluster": "cluster_a",
+                "service": "impala",
+            },
+            {
+                "id": "cm-b",
+                "cm_url": "https://cm-b.example.com:7183/",
+                "cluster": "cluster_b",
+                "service": "impala",
+            },
+        ],
+    )
+    args = module.parse_args(
+        [
+            "--config",
+            str(config_path),
+            "--metadata-mode",
+            "off",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="pass --config-cluster or set active_cluster_key"):
+        module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+
 def test_batch_recent_config_cluster_can_be_overridden_by_cli_owner_flags(tmp_path):
     module = load_batch_module()
     config_path = write_query_doctor_config(
@@ -974,6 +1070,35 @@ def allow_metadata_auth_preflight(monkeypatch):
 
 def read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def read_collector_summary_progress(path: Path) -> dict:
+    events = [
+        event
+        for event in read_jsonl(path)
+        if event.get("stage") == "recent_history_collector_summary"
+    ]
+    assert len(events) == 1
+    return events[0]
+
+
+def collector_summary_progress_from_payload(payload: dict) -> dict:
+    return {
+        "stage": "recent_history_collector_summary",
+        "summary_kind": payload["summary_kind"],
+        "status": payload["status"],
+        "observed_at_iso": payload["observed_at_iso"],
+        "discover_only": payload["discover_only"],
+        "history_backend": payload["history_backend"],
+        "summaries_inspected": payload["summaries_inspected"],
+        "candidates_discovered": payload["candidates_discovered"],
+        "selected_count": payload["selected_count"],
+        "summaries_recorded": payload["summaries_recorded"],
+        "profile_jobs_planned": payload["profile_jobs_planned"],
+        "issue_codes": payload["issue_codes"],
+        "raw_output": payload["raw_output"],
+        "sensitive_value_echo": payload["sensitive_value_echo"],
+    }
 
 
 def read_batch_summary(tmp_path: Path) -> dict:
@@ -1465,6 +1590,11 @@ def test_batch_config_values_override_internal_defaults(tmp_path):
                 "recent_collect_workload_history": True,
                 "recent_workload_history_path": "history/workload.jsonl",
                 "recent_workload_history_max_bytes": 4096,
+                "recent_history_db": "history/recent.sqlite",
+                "recent_history_summary_retention_days": 30,
+                "recent_history_profile_job_retention_days": 14,
+                "recent_history_analysis_cache_retention_days": 45,
+                "recent_history_profile_artifact_retention_days": 60,
             }
         ),
         encoding="utf-8",
@@ -1518,6 +1648,12 @@ def test_batch_config_values_override_internal_defaults(tmp_path):
     assert config.collect_workload_history is True
     assert config.workload_history_path == (tmp_path / "history" / "workload.jsonl").resolve()
     assert config.workload_history_max_bytes == 4096
+    assert config.recent_history_backend == "sqlite"
+    assert config.recent_history_db == (tmp_path / "history" / "recent.sqlite").resolve()
+    assert config.recent_history_summary_retention_days == 30
+    assert config.recent_history_profile_job_retention_days == 14
+    assert config.recent_history_analysis_cache_retention_days == 45
+    assert config.recent_history_profile_artifact_retention_days == 60
 
 
 def test_batch_cli_accepts_workload_history_options(tmp_path):
@@ -1539,6 +1675,635 @@ def test_batch_cli_accepts_workload_history_options(tmp_path):
     assert config.collect_workload_history is True
     assert config.workload_history_path == history_path
     assert config.workload_history_max_bytes == 8192
+
+
+def test_batch_cli_accepts_recent_history_db_option(tmp_path):
+    module = load_batch_module()
+    history_db = tmp_path / "history" / "recent.sqlite"
+
+    args = module.parse_args(
+        [
+            *base_args(tmp_path),
+            "--recent-history-db",
+            str(history_db),
+        ]
+    )
+    config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+    assert config.recent_history_backend == "sqlite"
+    assert config.recent_history_db == history_db
+
+
+def test_batch_cli_accepts_postgres_recent_history_backend(tmp_path):
+    module = load_batch_module()
+
+    args = module.parse_args(
+        [
+            *base_args(tmp_path),
+            "--recent-history-backend",
+            "postgres",
+            "--recent-history-postgres-dsn-env",
+            "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN",
+        ]
+    )
+    config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+    assert config.recent_history_backend == "postgres"
+    assert config.recent_history_db is None
+    assert config.recent_history_postgres_dsn_env == "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN"
+
+
+def test_batch_cli_accepts_recent_history_retention_options(tmp_path):
+    module = load_batch_module()
+    history_db = tmp_path / "history" / "recent.sqlite"
+
+    args = module.parse_args(
+        [
+            *base_args(tmp_path),
+            "--recent-history-db",
+            str(history_db),
+            "--recent-history-summary-retention-days",
+            "30",
+            "--recent-history-profile-job-retention-days",
+            "14",
+            "--recent-history-analysis-cache-retention-days",
+            "45",
+            "--recent-history-profile-artifact-retention-days",
+            "60",
+        ]
+    )
+    config = module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+    assert config.recent_history_summary_retention_days == 30
+    assert config.recent_history_profile_job_retention_days == 14
+    assert config.recent_history_analysis_cache_retention_days == 45
+    assert config.recent_history_profile_artifact_retention_days == 60
+
+
+def test_batch_cli_rejects_recent_history_retention_without_backend(tmp_path):
+    module = load_batch_module()
+
+    args = module.parse_args(
+        [
+            *base_args(tmp_path),
+            "--recent-history-summary-retention-days",
+            "30",
+        ]
+    )
+
+    with pytest.raises(
+        ValueError, match="recent history retention requires recent_history_backend"
+    ):
+        module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+
+def test_batch_cli_rejects_invalid_postgres_recent_history_dsn_env(tmp_path):
+    module = load_batch_module()
+
+    args = module.parse_args(
+        [
+            *base_args(tmp_path),
+            "--recent-history-backend",
+            "postgres",
+            "--recent-history-postgres-dsn-env",
+            "postgres-dsn",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="recent_history_postgres_dsn_env"):
+        module.build_batch_config(args, env=auth_env(), cwd=tmp_path, repo_root=REPO_DIR)
+
+
+def test_batch_recent_history_db_records_discovered_summaries_without_sql(tmp_path, monkeypatch):
+    module = load_batch_module()
+    from query_doctor.recent.sqlite_history_store import SqliteRecentHistoryStore
+
+    history_db = tmp_path / "history" / "recent.sqlite"
+    patch_discovered_candidates(
+        module,
+        monkeypatch,
+        [
+            candidate(
+                module,
+                "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                180_000,
+                statement="SELECT secret_column FROM sensitive_table",
+            )
+        ],
+    )
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-db",
+            str(history_db),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    payloads = SqliteRecentHistoryStore(history_db).load_payloads()
+    assert len(payloads) == 1
+    assert payloads[0]["query_id"] == "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"
+    assert payloads[0]["statement_present"] is True
+    assert "SELECT secret_column" not in json.dumps(payloads[0], sort_keys=True)
+    summary = read_batch_summary(tmp_path)
+    assert summary["selected_count"] == 1
+    assert summary["recent_history"] == {
+        "schema_version": 1,
+        "enabled": True,
+        "backend": "sqlite",
+        "status": "recorded",
+        "summaries_recorded": 1,
+        "profile_jobs_planned": 1,
+    }
+    jobs = SqliteRecentHistoryStore(history_db).load_profile_jobs()
+    assert len(jobs) == 1
+    assert jobs[0]["query_id"] == "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"
+
+
+def test_batch_recent_writes_raw_free_collector_run_summary(tmp_path, monkeypatch):
+    module = load_batch_module()
+    collector_summary = tmp_path / "collector-summary.json"
+    progress_path = tmp_path / "progress.jsonl"
+    history_db = tmp_path / "history" / "recent.sqlite"
+    patch_discovered_candidates(
+        module,
+        monkeypatch,
+        [
+            candidate(
+                module,
+                "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                180_000,
+                statement="SELECT secret_column FROM sensitive_table",
+            )
+        ],
+    )
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-db",
+            str(history_db),
+            "--recent-history-collector-summary-json",
+            str(collector_summary),
+            "--progress-jsonl",
+            str(progress_path),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    payload = json.loads(collector_summary.read_text(encoding="utf-8"))
+    assert payload == {
+        "summary_kind": "query_doctor_recent_history_collector_v1",
+        "status": "recorded",
+        "observed_at_iso": payload["observed_at_iso"],
+        "discover_only": True,
+        "history_backend": "sqlite",
+        "summaries_inspected": 1,
+        "candidates_discovered": 1,
+        "selected_count": 1,
+        "summaries_recorded": 1,
+        "profile_jobs_planned": 1,
+        "issue_codes": [],
+        "raw_output": False,
+        "sensitive_value_echo": False,
+    }
+    assert read_collector_summary_progress(progress_path) == (
+        collector_summary_progress_from_payload(payload)
+    )
+    payload_text = json.dumps(payload, sort_keys=True)
+    progress_text = progress_path.read_text(encoding="utf-8")
+    assert "SELECT secret_column" not in payload_text
+    assert "SELECT secret_column" not in progress_text
+    assert "sensitive_table" not in payload_text
+    assert "sensitive_table" not in progress_text
+    assert "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb" not in payload_text
+    assert "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb" not in progress_text
+    assert str(history_db) not in payload_text
+    assert str(history_db) not in progress_text
+
+
+def test_batch_recent_collector_summary_marks_disabled_backend(tmp_path, monkeypatch):
+    module = load_batch_module()
+    collector_summary = tmp_path / "collector-summary.json"
+    progress_path = tmp_path / "progress.jsonl"
+    patch_discovered_candidates(
+        module,
+        monkeypatch,
+        [
+            candidate(
+                module,
+                "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                180_000,
+                statement="SELECT secret_column FROM sensitive_table",
+            )
+        ],
+    )
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-collector-summary-json",
+            str(collector_summary),
+            "--progress-jsonl",
+            str(progress_path),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    payload = json.loads(collector_summary.read_text(encoding="utf-8"))
+    assert payload == {
+        "summary_kind": "query_doctor_recent_history_collector_v1",
+        "status": "disabled",
+        "observed_at_iso": payload["observed_at_iso"],
+        "discover_only": True,
+        "history_backend": "disabled",
+        "summaries_inspected": 1,
+        "candidates_discovered": 1,
+        "selected_count": 1,
+        "summaries_recorded": 0,
+        "profile_jobs_planned": 0,
+        "issue_codes": ["recent_history_disabled"],
+        "raw_output": False,
+        "sensitive_value_echo": False,
+    }
+    assert read_collector_summary_progress(progress_path) == (
+        collector_summary_progress_from_payload(payload)
+    )
+    payload_text = json.dumps(payload, sort_keys=True)
+    progress_text = progress_path.read_text(encoding="utf-8")
+    assert "SELECT secret_column" not in payload_text
+    assert "SELECT secret_column" not in progress_text
+    assert "sensitive_table" not in payload_text
+    assert "sensitive_table" not in progress_text
+    assert "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb" not in payload_text
+    assert "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb" not in progress_text
+
+
+def test_batch_recent_collector_summary_marks_discovery_failure_raw_free(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_batch_module()
+    collector_summary = tmp_path / "collector-summary.json"
+    progress_path = tmp_path / "progress.jsonl"
+    history_db = tmp_path / "history" / "recent.sqlite"
+
+    def fail_discovery(config, env):
+        raise RuntimeError("SELECT secret_column FROM sensitive_table")
+
+    monkeypatch.setattr(module, "discover_candidates", fail_discovery)
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-db",
+            str(history_db),
+            "--recent-history-collector-summary-json",
+            str(collector_summary),
+            "--progress-jsonl",
+            str(progress_path),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 1
+    payload = json.loads(collector_summary.read_text(encoding="utf-8"))
+    assert payload == {
+        "summary_kind": "query_doctor_recent_history_collector_v1",
+        "status": "failed",
+        "observed_at_iso": payload["observed_at_iso"],
+        "discover_only": True,
+        "history_backend": "sqlite",
+        "summaries_inspected": 0,
+        "candidates_discovered": 0,
+        "selected_count": 0,
+        "summaries_recorded": 0,
+        "profile_jobs_planned": 0,
+        "issue_codes": ["discovery_failed"],
+        "raw_output": False,
+        "sensitive_value_echo": False,
+    }
+    assert read_collector_summary_progress(progress_path) == (
+        collector_summary_progress_from_payload(payload)
+    )
+    payload_text = json.dumps(payload, sort_keys=True)
+    progress_text = progress_path.read_text(encoding="utf-8")
+    assert "SELECT secret_column" not in payload_text
+    assert "SELECT secret_column" not in progress_text
+    assert "sensitive_table" not in payload_text
+    assert "sensitive_table" not in progress_text
+    assert str(history_db) not in payload_text
+    assert str(history_db) not in progress_text
+
+
+def test_batch_recent_collector_summary_marks_recent_history_warning_raw_free(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_batch_module()
+    collector_summary = tmp_path / "collector-summary.json"
+    progress_path = tmp_path / "progress.jsonl"
+    history_db = tmp_path / "history" / "recent.sqlite"
+    patch_discovered_candidates(
+        module,
+        monkeypatch,
+        [
+            candidate(
+                module,
+                "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                180_000,
+                statement="SELECT secret_column FROM sensitive_table",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        module,
+        "persist_recent_history",
+        lambda candidates, *, config, env: (0, "recent history unavailable"),
+    )
+    monkeypatch.setattr(
+        module,
+        "enqueue_recent_profile_jobs",
+        lambda candidates, *, config, env: (0, None),
+    )
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-db",
+            str(history_db),
+            "--recent-history-collector-summary-json",
+            str(collector_summary),
+            "--progress-jsonl",
+            str(progress_path),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    payload = json.loads(collector_summary.read_text(encoding="utf-8"))
+    assert payload == {
+        "summary_kind": "query_doctor_recent_history_collector_v1",
+        "status": "warning",
+        "observed_at_iso": payload["observed_at_iso"],
+        "discover_only": True,
+        "history_backend": "sqlite",
+        "summaries_inspected": 1,
+        "candidates_discovered": 1,
+        "selected_count": 1,
+        "summaries_recorded": 0,
+        "profile_jobs_planned": 0,
+        "issue_codes": ["recent_history_warning"],
+        "raw_output": False,
+        "sensitive_value_echo": False,
+    }
+    assert read_collector_summary_progress(progress_path) == (
+        collector_summary_progress_from_payload(payload)
+    )
+    payload_text = json.dumps(payload, sort_keys=True)
+    progress_text = progress_path.read_text(encoding="utf-8")
+    assert "SELECT secret_column" not in payload_text
+    assert "SELECT secret_column" not in progress_text
+    assert "sensitive_table" not in payload_text
+    assert "sensitive_table" not in progress_text
+    assert "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb" not in payload_text
+    assert "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb" not in progress_text
+    assert str(history_db) not in payload_text
+    assert str(history_db) not in progress_text
+
+
+def test_batch_recent_history_retention_prunes_old_raw_free_rows(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from query_doctor.recent.history_store import history_record_from_candidate
+    from query_doctor.recent.profile_budget import (
+        ANALYSIS_CACHE_SCHEMA_VERSION,
+        PROFILE_ARTIFACT_SCHEMA_VERSION,
+        PROFILE_JOB_STATUS_COMPLETED,
+        ProfileBudgetPolicy,
+        RecentAnalysisCacheRecord,
+        RecentProfileArtifactRecord,
+        plan_recent_profile_jobs,
+    )
+    from query_doctor.recent.sqlite_history_store import SqliteRecentHistoryStore
+
+    module = load_batch_module()
+    history_db = tmp_path / "history" / "recent.sqlite"
+    store = SqliteRecentHistoryStore(history_db)
+    old_candidate = candidate(
+        module,
+        "old-summary-query",
+        180_000,
+        statement="SELECT secret_column FROM sensitive_table",
+    )
+    old_record = history_record_from_candidate(
+        old_candidate,
+        engine="impala",
+        source_kind="cm",
+        source_key="cm:cluster:impala",
+        recorded_at_iso="2000-01-01T00:00:00+00:00",
+    )
+    old_job = replace(
+        plan_recent_profile_jobs(
+            [old_record],
+            policy=ProfileBudgetPolicy(max_jobs=1),
+            planned_at_iso="2000-01-01T00:00:00+00:00",
+        )[0],
+        status=PROFILE_JOB_STATUS_COMPLETED,
+        updated_at_iso="2000-01-01T00:00:00+00:00",
+    )
+    store.upsert_summaries([old_record])
+    store.enqueue_profile_jobs([old_job])
+    store.store_analysis_cache_records(
+        [
+            RecentAnalysisCacheRecord(
+                schema_version=ANALYSIS_CACHE_SCHEMA_VERSION,
+                engine="impala",
+                source_kind="cm",
+                source_key="cm:cluster:impala",
+                query_id="old-cache-query",
+                profile_fingerprint="profile_fingerprint_v1",
+                analyzer_contract="profile_digest_analysis_json_v1",
+                recorded_at_iso="2000-01-01T00:00:00+00:00",
+                status="ready",
+                payload={
+                    "diagnosis_status": "old",
+                    "statement": "SELECT secret_column FROM sensitive_table",
+                },
+            )
+        ]
+    )
+    assert (
+        store.store_profile_artifact_records(
+            [
+                RecentProfileArtifactRecord(
+                    schema_version=PROFILE_ARTIFACT_SCHEMA_VERSION,
+                    engine="impala",
+                    source_kind="cm",
+                    source_key="cm:cluster:impala",
+                    query_id="old-artifact-query",
+                    profile_fingerprint="profile_fingerprint_v1",
+                    artifact_contract="profile_artifact_v1",
+                    recorded_at_iso="2000-01-01T00:00:00+00:00",
+                    status="available",
+                    storage_kind="local",
+                    storage_key="sha256_oldprofile",
+                    size_bytes=4096,
+                )
+            ]
+        )
+        == 1
+    )
+    assert (
+        store.store_profile_artifact_records(
+            [
+                RecentProfileArtifactRecord(
+                    schema_version=PROFILE_ARTIFACT_SCHEMA_VERSION,
+                    engine="impala",
+                    source_kind="cm",
+                    source_key="cm:cluster:impala",
+                    query_id="unsafe-artifact-query",
+                    profile_fingerprint="profile_fingerprint_v1",
+                    artifact_contract="profile_artifact_v1",
+                    recorded_at_iso="2000-01-01T00:00:00+00:00",
+                    status="available",
+                    storage_kind="local",
+                    storage_key="/private/tmp/query-doctor-secret/profile.txt",
+                    size_bytes=4096,
+                )
+            ]
+        )
+        == 0
+    )
+    patch_discovered_candidates(
+        module,
+        monkeypatch,
+        [
+            candidate(
+                module,
+                "new-summary-query",
+                180_000,
+                statement="SELECT other_secret FROM newer_table",
+            )
+        ],
+    )
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-db",
+            str(history_db),
+            "--recent-history-summary-retention-days",
+            "1",
+            "--recent-history-profile-job-retention-days",
+            "1",
+            "--recent-history-analysis-cache-retention-days",
+            "1",
+            "--recent-history-profile-artifact-retention-days",
+            "1",
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    summary = read_batch_summary(tmp_path)
+    assert summary["recent_history"]["retention"] == {
+        "enabled": True,
+        "status": "pruned",
+        "summaries_deleted": 1,
+        "profile_jobs_deleted": 1,
+        "analysis_cache_deleted": 1,
+        "profile_artifacts_deleted": 1,
+        "total_deleted": 4,
+    }
+    payload_text = json.dumps(SqliteRecentHistoryStore(history_db).load_payloads(), sort_keys=True)
+    assert "new-summary-query" in payload_text
+    assert "old-summary-query" not in payload_text
+    assert "SELECT secret_column" not in payload_text
+    assert "newer_table" not in payload_text
+    remaining_jobs = SqliteRecentHistoryStore(history_db).load_profile_jobs()
+    assert len(remaining_jobs) == 1
+    assert remaining_jobs[0]["query_id"] == "new-summary-query"
+    assert remaining_jobs[0]["status"] == "pending"
+    assert (
+        SqliteRecentHistoryStore(history_db).load_analysis_cache_record(
+            engine="impala",
+            source_kind="cm",
+            source_key="cm:cluster:impala",
+            query_id="old-cache-query",
+            profile_fingerprint="profile_fingerprint_v1",
+            analyzer_contract="profile_digest_analysis_json_v1",
+        )
+        is None
+    )
+    assert (
+        SqliteRecentHistoryStore(history_db).load_profile_artifact_record(
+            engine="impala",
+            source_kind="cm",
+            source_key="cm:cluster:impala",
+            query_id="old-artifact-query",
+            profile_fingerprint="profile_fingerprint_v1",
+            artifact_contract="profile_artifact_v1",
+        )
+        is None
+    )
+    history_text = json.dumps(SqliteRecentHistoryStore(history_db).load_payloads(), sort_keys=True)
+    assert "/private/tmp/query-doctor-secret" not in history_text
+    assert "profile.txt" not in history_text
+
+
+def test_batch_recent_postgres_history_backend_missing_dsn_warns_safely(tmp_path, monkeypatch):
+    module = load_batch_module()
+    patch_discovered_candidates(
+        module,
+        monkeypatch,
+        [
+            candidate(
+                module,
+                "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                180_000,
+                statement="SELECT secret_column FROM sensitive_table",
+            )
+        ],
+    )
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--discover-only",
+            "--recent-history-backend",
+            "postgres",
+            "--recent-history-postgres-dsn-env",
+            "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN",
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    summary = read_batch_summary(tmp_path)
+    assert summary["recent_history"] == {
+        "schema_version": 1,
+        "enabled": True,
+        "backend": "postgres",
+        "status": "warning",
+        "summaries_recorded": 0,
+        "profile_jobs_planned": 0,
+    }
+    warnings_text = json.dumps(summary["warnings"], sort_keys=True)
+    assert "Recent history store was not updated" in warnings_text
+    assert "Recent profile jobs were not planned" in warnings_text
+    assert "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN" not in warnings_text
+    assert "SELECT secret_column" not in warnings_text
 
 
 def test_batch_skips_workload_history_without_opt_in(tmp_path, monkeypatch):
@@ -2006,6 +2771,144 @@ def test_zero_selected_candidates_after_discovery_exits_success(tmp_path, monkey
     assert "- excluded candidates: 1" in summary_md
     assert "## Candidate Selection Breakdown" in summary_md
     assert "- excluded: not analyzable query text: 1" in summary_md
+
+
+def test_batch_reuses_prior_analyzed_profile_for_matching_query_id(tmp_path, monkeypatch):
+    module = load_batch_module()
+    query_id = "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"
+    prior_root = tmp_path / "reuse-root"
+    prior_out = prior_root / "query-doctor-web-batch-old"
+    prior_wrapper = prior_out / "cases" / "case-001"
+    prior_case = prior_wrapper / query_id.replace(":", "_")
+    write_case(prior_case, healthy_facts())
+    (prior_case / "analysis.json").write_text("{}", encoding="utf-8")
+    prior_out.mkdir(parents=True, exist_ok=True)
+    (prior_out / "batch_summary.json").write_text(
+        json.dumps(
+            {
+                "mode": "recent-query-batch",
+                "query_profile_source": "cm",
+                "source_visibility": "safe",
+                "include_running": False,
+                "only_running": False,
+                "collect_cm_timeseries": False,
+                "collect_prometheus_timeseries": False,
+                "runtime_metrics_provider": "none",
+                "metadata_top_limit": 0,
+                "profile_reuse_contract": {
+                    "version": "recent_analyzed_profile_reuse_v1",
+                    "case_artifact_contract": "profile_digest_analysis_json_v1",
+                    "query_profile_source": "cm",
+                    "source_visibility": "safe",
+                    "privacy_mode": True,
+                    "redact_identifiers": True,
+                    "redact_hosts": True,
+                    "metadata_top_limit": 0,
+                    "collect_cm_timeseries": False,
+                    "collect_prometheus_timeseries": False,
+                    "runtime_metrics_provider": "none",
+                },
+                "cases": [
+                    {
+                        "query_id": query_id,
+                        "case_dir": str(prior_wrapper),
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    patch_discovered_candidates(module, monkeypatch, [candidate(module, query_id, 120_000)])
+
+    def fail_run_subprocess(*args, **kwargs):
+        raise AssertionError("collector and analyzer subprocesses should not run for reused cases")
+
+    monkeypatch.setattr(module, "run_subprocess", fail_run_subprocess)
+
+    result = module.main(
+        [
+            *base_args(tmp_path),
+            "--metadata-mode",
+            "off",
+            "--no-min-duration-filter",
+            "--reuse-analyzed-profiles-from",
+            str(prior_root),
+        ],
+        env=auth_env(),
+    )
+
+    assert result == 0
+    payload = read_batch_summary(tmp_path)
+    assert payload["profile_reused_case_count"] == 1
+    assert payload["profile_reuse"]["status_counts"] == {"reused": 1}
+    assert payload["cases"][0]["profile_reuse_status"] == "reused"
+    assert payload["cases"][0]["collection_status"] == "ok"
+    assert payload["cases"][0]["analysis_status"] == "ok"
+    assert payload["cases"][0]["case_dir"] == str(batch_dir(tmp_path) / "cases" / "case-001")
+    assert (
+        batch_dir(tmp_path)
+        / "cases"
+        / "case-001"
+        / query_id.replace(":", "_")
+        / "analysis_facts.md"
+    ).is_file()
+    assert str(prior_wrapper) not in json.dumps(payload)
+    summary_md = read_batch_summary_markdown(tmp_path)
+    assert "- reused analyzed profiles: 1" in summary_md
+
+
+def test_batch_reuse_requires_profile_reuse_contract(tmp_path):
+    module = load_batch_module()
+    from query_doctor.recent.case_reuse import summary_is_compatible
+
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--metadata-mode",
+        "off",
+        "--reuse-analyzed-profiles-from",
+        str(tmp_path),
+    )
+
+    assert (
+        summary_is_compatible(
+            {
+                "mode": "recent-query-batch",
+                "query_profile_source": "cm",
+                "source_visibility": "safe",
+                "include_running": False,
+                "only_running": False,
+                "collect_cm_timeseries": False,
+                "collect_prometheus_timeseries": False,
+                "runtime_metrics_provider": "none",
+                "metadata_top_limit": 0,
+            },
+            config,
+        )
+        is False
+    )
+
+
+def test_analyzed_profile_reuse_is_disabled_for_owner_raw(tmp_path):
+    module = load_batch_module()
+    from query_doctor.recent.case_reuse import analyzed_profile_reuse_skip_reason
+
+    config = build_cm_config(
+        module,
+        tmp_path,
+        "--source-visibility",
+        "owner_raw",
+        "--source-owner-user",
+        "analyst",
+        "--user",
+        "analyst",
+        "--reuse-analyzed-profiles-from",
+        str(tmp_path),
+    )
+
+    assert analyzed_profile_reuse_skip_reason(config) == "source_visibility_not_safe"
 
 
 def test_existing_non_empty_out_path_fails_without_overwrite(tmp_path, monkeypatch, capsys):

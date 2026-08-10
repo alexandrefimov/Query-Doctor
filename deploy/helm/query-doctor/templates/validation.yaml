@@ -1,0 +1,340 @@
+{{- $kerberos := .Values.kerberos | default dict -}}
+{{- $kerberosEnabled := (get $kerberos "enabled") | default false -}}
+{{- $kerberosExistingSecret := (get $kerberos "existingSecret") | default "" -}}
+{{- $kerberosPrincipalKey := (get $kerberos "principalKey") | default "principal" -}}
+{{- $kerberosKeytabKey := (get $kerberos "keytabKey") | default "query-doctor.keytab" -}}
+{{- $kerberosCachePath := (get $kerberos "cachePath") | default "/tmp/query-doctor-krb5/krb5cc_query_doctor" -}}
+{{- $kerberosRenewer := (get $kerberos "renewer") | default dict -}}
+{{- $kerberosRenewerEnabled := dig "enabled" true $kerberosRenewer -}}
+{{- $kerberosRefreshIntervalSeconds := dig "refreshIntervalSeconds" 1800 $kerberosRenewer -}}
+{{- $recentHistory := .Values.recentHistory | default dict -}}
+{{- $recentHistoryPostgres := (get $recentHistory "postgres") | default dict -}}
+{{- $recentHistoryPostgresEnabled := (get $recentHistoryPostgres "enabled") | default false -}}
+{{- $recentHistoryPostgresExistingSecret := (get $recentHistoryPostgres "existingSecret") | default "" -}}
+{{- $recentHistoryPostgresDsnKey := (get $recentHistoryPostgres "dsnKey") | default "dsn" -}}
+{{- $recentHistoryPostgresDsnEnvName := (get $recentHistoryPostgres "dsnEnvName") | default "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN" -}}
+{{- $recentHistoryPostgresCnpg := (get $recentHistoryPostgres "cnpg") | default dict -}}
+{{- $recentHistoryPostgresCnpgEnabled := (get $recentHistoryPostgresCnpg "enabled") | default false -}}
+{{- $recentHistoryPostgresCnpgInstances := (get $recentHistoryPostgresCnpg "instances") | default 1 -}}
+{{- $recentHistoryPostgresCnpgDatabase := (get $recentHistoryPostgresCnpg "database") | default "query_doctor" -}}
+{{- $recentHistoryPostgresCnpgOwner := (get $recentHistoryPostgresCnpg "owner") | default "query_doctor" -}}
+{{- $recentHistoryPostgresCnpgStorage := (get $recentHistoryPostgresCnpg "storage") | default dict -}}
+{{- $recentHistoryPostgresCnpgStorageSize := (get $recentHistoryPostgresCnpgStorage "size") | default "20Gi" -}}
+{{- $recentHistoryRetention := (get $recentHistoryPostgres "retention") | default dict -}}
+{{- $recentHistoryRetentionEnabled := (get $recentHistoryRetention "enabled") | default false -}}
+{{- $recentHistoryRetentionSchedule := (get $recentHistoryRetention "schedule") | default "" -}}
+{{- $recentHistoryRetentionConcurrencyPolicy := (get $recentHistoryRetention "concurrencyPolicy") | default "Forbid" -}}
+{{- $recentHistorySummaryRetentionDays := (get $recentHistoryRetention "summaryRetentionDays") | default nil -}}
+{{- $recentHistoryProfileJobRetentionDays := (get $recentHistoryRetention "profileJobRetentionDays") | default nil -}}
+{{- $recentHistoryAnalysisCacheRetentionDays := (get $recentHistoryRetention "analysisCacheRetentionDays") | default nil -}}
+{{- $recentHistoryProfileArtifactRetentionDays := (get $recentHistoryRetention "profileArtifactRetentionDays") | default nil -}}
+{{- $recentHistoryProfileRemediation := (get $recentHistoryPostgres "profileRemediation") | default dict -}}
+{{- $recentHistoryProfileRemediationEnabled := (get $recentHistoryProfileRemediation "enabled") | default false -}}
+{{- $recentHistoryProfileRemediationSchedule := (get $recentHistoryProfileRemediation "schedule") | default "" -}}
+{{- $recentHistoryProfileRemediationConcurrencyPolicy := (get $recentHistoryProfileRemediation "concurrencyPolicy") | default "Forbid" -}}
+{{- $recentHistoryProfileRemediationMaxJobs := (get $recentHistoryProfileRemediation "maxJobs") | default 50 -}}
+{{- $recentHistoryOperatorReadiness := (get $recentHistory "operatorReadiness") | default dict -}}
+{{- $recentHistoryOperatorReadinessEnabled := (get $recentHistoryOperatorReadiness "enabled") | default false -}}
+{{- $recentHistoryOperatorReadinessSchedule := (get $recentHistoryOperatorReadiness "schedule") | default "" -}}
+{{- $recentHistoryOperatorReadinessConcurrencyPolicy := (get $recentHistoryOperatorReadiness "concurrencyPolicy") | default "Forbid" -}}
+{{- $recentHistoryOperatorReadinessSummaryDir := (get $recentHistoryOperatorReadiness "summaryDir") | default "/var/lib/query-doctor/recent-history/operator-readiness" -}}
+{{- $recentHistoryOperatorReadinessPostgresSummary := (get $recentHistoryOperatorReadiness "postgresReadinessSummaryJson") | default "" -}}
+{{- $recentHistoryOperatorReadinessWorkerSummary := (get $recentHistoryOperatorReadiness "profileWorkerSummaryJson") | default "" -}}
+{{- $recentHistoryOperatorReadinessCollectorSummary := (get $recentHistoryOperatorReadiness "collectorSummaryJson") | default "" -}}
+{{- $recentHistoryOperatorReadinessRetentionSummary := (get $recentHistoryOperatorReadiness "retentionSummaryJson") | default "" -}}
+{{- $recentHistoryOperatorReadinessRemediationSummary := (get $recentHistoryOperatorReadiness "profileRemediationSummaryJson") | default "" -}}
+{{- $recentHistoryOperatorReadinessOutputSummary := (get $recentHistoryOperatorReadiness "outputSummaryJson") | default "" -}}
+{{- $recentHistoryPostgresReadiness := (get $recentHistoryPostgres "readiness") | default dict -}}
+{{- $recentHistoryPostgresReadinessEnabled := (get $recentHistoryPostgresReadiness "enabled") | default true -}}
+{{- $recentSummaryCollector := .Values.recentSummaryCollector | default dict -}}
+{{- $recentSummaryCollectorEnabled := (get $recentSummaryCollector "enabled") | default false -}}
+{{- $recentSummaryCollectorSchedule := (get $recentSummaryCollector "schedule") | default "" -}}
+{{- $recentSummaryCollectorConcurrencyPolicy := (get $recentSummaryCollector "concurrencyPolicy") | default "Forbid" -}}
+{{- $recentSummaryCollectorOut := (get $recentSummaryCollector "out") | default "/tmp/query-doctor-recent-collector" -}}
+{{- $recentSummaryCollectorSummaryJson := (get $recentSummaryCollector "summaryJson") | default "/var/lib/query-doctor/recent-history/collector-summary.json" -}}
+{{- $recentSummaryCollectorProgressJsonl := (get $recentSummaryCollector "progressJsonl") | default "/var/lib/query-doctor/recent-history/collector-progress.jsonl" -}}
+{{- $recentProfileWorker := .Values.recentProfileWorker | default dict -}}
+{{- $recentProfileWorkerEnabled := (get $recentProfileWorker "enabled") | default false -}}
+{{- $recentProfileWorkerSchedule := (get $recentProfileWorker "schedule") | default "" -}}
+{{- $recentProfileWorkerConcurrencyPolicy := (get $recentProfileWorker "concurrencyPolicy") | default "Forbid" -}}
+{{- $recentProfileWorkerMaxJobs := (get $recentProfileWorker "maxJobs") | default 1 -}}
+{{- $recentProfileWorkerLeaseSeconds := (get $recentProfileWorker "leaseSeconds") | default 900 -}}
+{{- $recentProfileWorkerMaxAttempts := (get $recentProfileWorker "maxAttempts") | default 3 -}}
+{{- $recentProfileWorkerLeaseOwner := (get $recentProfileWorker "leaseOwner") | default "recent-profile-worker" -}}
+{{- $recentProfileWorkerOut := (get $recentProfileWorker "out") | default "/tmp/query-doctor-profile-worker" -}}
+{{- $recentBatchMountPath := .Values.persistence.recentBatchMountPath | default "/tmp/query-doctor-web-batches" -}}
+{{- $persistenceMountPath := .Values.persistence.mountPath | default "/var/lib/query-doctor" -}}
+{{- $persistenceMountPathPrefix := printf "%s/" (trimSuffix "/" $persistenceMountPath) -}}
+{{- $selectorLabelKeys := list "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/component" -}}
+{{- if not (has .Values.mode (list "publicDemo" "configured")) -}}
+{{- fail "mode must be one of: publicDemo, configured" -}}
+{{- end -}}
+{{- range $key, $_value := (.Values.podLabels | default dict) -}}
+{{- if has $key $selectorLabelKeys -}}
+{{- fail (printf "podLabels must not override selector-owned label %s" $key) -}}
+{{- end -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") .Values.credentials.existingSecret -}}
+{{- fail "credentials.existingSecret must stay empty in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $kerberosEnabled -}}
+{{- fail "kerberos.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentHistoryPostgresEnabled -}}
+{{- fail "recentHistory.postgres.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentHistoryPostgresCnpgEnabled -}}
+{{- fail "recentHistory.postgres.cnpg.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentHistoryRetentionEnabled -}}
+{{- fail "recentHistory.postgres.retention.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentHistoryProfileRemediationEnabled -}}
+{{- fail "recentHistory.postgres.profileRemediation.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentHistoryOperatorReadinessEnabled -}}
+{{- fail "recentHistory.operatorReadiness.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentSummaryCollectorEnabled -}}
+{{- fail "recentSummaryCollector.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") $recentProfileWorkerEnabled -}}
+{{- fail "recentProfileWorker.enabled must stay false in publicDemo mode" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "publicDemo") (or .Values.config.create .Values.config.existingConfigMap .Values.config.inlineJson) -}}
+{{- fail "config values must stay empty in publicDemo mode" -}}
+{{- end -}}
+{{- if eq .Values.mode "configured" -}}
+{{- if not (or .Values.config.create .Values.config.existingConfigMap) -}}
+{{- fail "configured mode requires config.create=true or config.existingConfigMap" -}}
+{{- end -}}
+{{- if and .Values.config.create (not .Values.config.inlineJson) -}}
+{{- fail "configured mode with config.create=true requires config.inlineJson" -}}
+{{- end -}}
+{{- if not (or .Values.persistence.enabled .Values.persistence.existingClaim) -}}
+{{- fail "configured mode requires persistence.enabled=true or persistence.existingClaim" -}}
+{{- end -}}
+{{- end -}}
+{{- if $kerberosEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "kerberos.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $kerberosExistingSecret -}}
+{{- fail "kerberos.enabled requires kerberos.existingSecret" -}}
+{{- end -}}
+{{- if not $kerberosPrincipalKey -}}
+{{- fail "kerberos.enabled requires kerberos.principalKey" -}}
+{{- end -}}
+{{- if not $kerberosKeytabKey -}}
+{{- fail "kerberos.enabled requires kerberos.keytabKey" -}}
+{{- end -}}
+{{- if not (hasPrefix "/tmp/query-doctor-krb5/" $kerberosCachePath) -}}
+{{- fail "kerberos.cachePath must stay under /tmp/query-doctor-krb5/" -}}
+{{- end -}}
+{{- if and $kerberosRenewerEnabled (or (lt (int $kerberosRefreshIntervalSeconds) 60) (gt (int $kerberosRefreshIntervalSeconds) 86400)) -}}
+{{- fail "kerberos.renewer.refreshIntervalSeconds must be between 60 and 86400" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentHistoryPostgresEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentHistory.postgres.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresExistingSecret -}}
+{{- fail "recentHistory.postgres.enabled requires recentHistory.postgres.existingSecret" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresDsnKey -}}
+{{- fail "recentHistory.postgres.enabled requires recentHistory.postgres.dsnKey" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresDsnEnvName -}}
+{{- fail "recentHistory.postgres.enabled requires recentHistory.postgres.dsnEnvName" -}}
+{{- end -}}
+{{- if not (regexMatch "^[A-Z_][A-Z0-9_]{0,127}$" $recentHistoryPostgresDsnEnvName) -}}
+{{- fail "recentHistory.postgres.dsnEnvName must be an uppercase environment variable name" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentHistoryPostgresCnpgEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentHistory.postgres.cnpg.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresEnabled -}}
+{{- fail "recentHistory.postgres.cnpg.enabled requires recentHistory.postgres.enabled=true" -}}
+{{- end -}}
+{{- if lt (int $recentHistoryPostgresCnpgInstances) 1 -}}
+{{- fail "recentHistory.postgres.cnpg.instances must be at least 1" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresCnpgDatabase -}}
+{{- fail "recentHistory.postgres.cnpg.database is required" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresCnpgOwner -}}
+{{- fail "recentHistory.postgres.cnpg.owner is required" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresCnpgStorageSize -}}
+{{- fail "recentHistory.postgres.cnpg.storage.size is required" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentHistoryRetentionEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentHistory.postgres.retention.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresEnabled -}}
+{{- fail "recentHistory.postgres.retention.enabled requires recentHistory.postgres.enabled=true" -}}
+{{- end -}}
+{{- if not $recentHistoryRetentionSchedule -}}
+{{- fail "recentHistory.postgres.retention.schedule is required" -}}
+{{- end -}}
+{{- if not (has $recentHistoryRetentionConcurrencyPolicy (list "Allow" "Forbid" "Replace")) -}}
+{{- fail "recentHistory.postgres.retention.concurrencyPolicy must be one of: Allow, Forbid, Replace" -}}
+{{- end -}}
+{{- if not (or $recentHistorySummaryRetentionDays $recentHistoryProfileJobRetentionDays $recentHistoryAnalysisCacheRetentionDays $recentHistoryProfileArtifactRetentionDays) -}}
+{{- fail "recentHistory.postgres.retention requires at least one retention day value" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentHistoryProfileRemediationEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentHistory.postgres.profileRemediation.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresEnabled -}}
+{{- fail "recentHistory.postgres.profileRemediation.enabled requires recentHistory.postgres.enabled=true" -}}
+{{- end -}}
+{{- if not $recentHistoryOperatorReadinessEnabled -}}
+{{- fail "recentHistory.postgres.profileRemediation.enabled requires recentHistory.operatorReadiness.enabled=true" -}}
+{{- end -}}
+{{- if not $recentHistoryOperatorReadinessRemediationSummary -}}
+{{- fail "recentHistory.postgres.profileRemediation.enabled requires recentHistory.operatorReadiness.profileRemediationSummaryJson" -}}
+{{- end -}}
+{{- if not $recentHistoryProfileRemediationSchedule -}}
+{{- fail "recentHistory.postgres.profileRemediation.schedule is required" -}}
+{{- end -}}
+{{- if not (has $recentHistoryProfileRemediationConcurrencyPolicy (list "Allow" "Forbid" "Replace")) -}}
+{{- fail "recentHistory.postgres.profileRemediation.concurrencyPolicy must be one of: Allow, Forbid, Replace" -}}
+{{- end -}}
+{{- if lt (int $recentHistoryProfileRemediationMaxJobs) 1 -}}
+{{- fail "recentHistory.postgres.profileRemediation.maxJobs must be at least 1" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentHistoryOperatorReadinessEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentHistory.operatorReadiness.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresEnabled -}}
+{{- fail "recentHistory.operatorReadiness.enabled requires recentHistory.postgres.enabled=true" -}}
+{{- end -}}
+{{- if not $recentProfileWorkerEnabled -}}
+{{- fail "recentHistory.operatorReadiness.enabled requires recentProfileWorker.enabled=true" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresReadinessEnabled -}}
+{{- fail "recentHistory.operatorReadiness.enabled requires recentHistory.postgres.readiness.enabled=true" -}}
+{{- end -}}
+{{- if not $recentHistoryOperatorReadinessSchedule -}}
+{{- fail "recentHistory.operatorReadiness.schedule is required" -}}
+{{- end -}}
+{{- if not (has $recentHistoryOperatorReadinessConcurrencyPolicy (list "Allow" "Forbid" "Replace")) -}}
+{{- fail "recentHistory.operatorReadiness.concurrencyPolicy must be one of: Allow, Forbid, Replace" -}}
+{{- end -}}
+{{- if not (or (eq $recentHistoryOperatorReadinessSummaryDir $persistenceMountPath) (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessSummaryDir)) -}}
+{{- fail "recentHistory.operatorReadiness.summaryDir must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if not (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessPostgresSummary) -}}
+{{- fail "recentHistory.operatorReadiness.postgresReadinessSummaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if not (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessWorkerSummary) -}}
+{{- fail "recentHistory.operatorReadiness.profileWorkerSummaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if not (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessOutputSummary) -}}
+{{- fail "recentHistory.operatorReadiness.outputSummaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessRetentionSummary (not (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessRetentionSummary)) -}}
+{{- fail "recentHistory.operatorReadiness.retentionSummaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessCollectorSummary (not (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessCollectorSummary)) -}}
+{{- fail "recentHistory.operatorReadiness.collectorSummaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessRemediationSummary (not (hasPrefix $persistenceMountPathPrefix $recentHistoryOperatorReadinessRemediationSummary)) -}}
+{{- fail "recentHistory.operatorReadiness.profileRemediationSummaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessRetentionSummary (not $recentHistoryRetentionEnabled) -}}
+{{- fail "recentHistory.operatorReadiness.retentionSummaryJson requires recentHistory.postgres.retention.enabled=true" -}}
+{{- end -}}
+{{- if eq $recentHistoryOperatorReadinessOutputSummary $recentHistoryOperatorReadinessPostgresSummary -}}
+{{- fail "recentHistory.operatorReadiness.outputSummaryJson must differ from postgresReadinessSummaryJson" -}}
+{{- end -}}
+{{- if eq $recentHistoryOperatorReadinessOutputSummary $recentHistoryOperatorReadinessWorkerSummary -}}
+{{- fail "recentHistory.operatorReadiness.outputSummaryJson must differ from profileWorkerSummaryJson" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessRetentionSummary (eq $recentHistoryOperatorReadinessOutputSummary $recentHistoryOperatorReadinessRetentionSummary) -}}
+{{- fail "recentHistory.operatorReadiness.outputSummaryJson must differ from retentionSummaryJson" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessCollectorSummary (eq $recentHistoryOperatorReadinessOutputSummary $recentHistoryOperatorReadinessCollectorSummary) -}}
+{{- fail "recentHistory.operatorReadiness.outputSummaryJson must differ from collectorSummaryJson" -}}
+{{- end -}}
+{{- if and $recentHistoryOperatorReadinessRemediationSummary (eq $recentHistoryOperatorReadinessOutputSummary $recentHistoryOperatorReadinessRemediationSummary) -}}
+{{- fail "recentHistory.operatorReadiness.outputSummaryJson must differ from profileRemediationSummaryJson" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentSummaryCollectorEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentSummaryCollector.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresEnabled -}}
+{{- fail "recentSummaryCollector.enabled requires recentHistory.postgres.enabled=true" -}}
+{{- end -}}
+{{- if not $recentSummaryCollectorSchedule -}}
+{{- fail "recentSummaryCollector.schedule is required" -}}
+{{- end -}}
+{{- if not (has $recentSummaryCollectorConcurrencyPolicy (list "Allow" "Forbid" "Replace")) -}}
+{{- fail "recentSummaryCollector.concurrencyPolicy must be one of: Allow, Forbid, Replace" -}}
+{{- end -}}
+{{- if not (hasPrefix "/tmp/query-doctor-" $recentSummaryCollectorOut) -}}
+{{- fail "recentSummaryCollector.out must stay under /tmp/query-doctor-*" -}}
+{{- end -}}
+{{- if not (hasPrefix $persistenceMountPathPrefix $recentSummaryCollectorSummaryJson) -}}
+{{- fail "recentSummaryCollector.summaryJson must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if not (hasPrefix $persistenceMountPathPrefix $recentSummaryCollectorProgressJsonl) -}}
+{{- fail "recentSummaryCollector.progressJsonl must stay under persistence.mountPath" -}}
+{{- end -}}
+{{- if eq $recentSummaryCollectorProgressJsonl $recentSummaryCollectorSummaryJson -}}
+{{- fail "recentSummaryCollector.progressJsonl must differ from summaryJson" -}}
+{{- end -}}
+{{- end -}}
+{{- if $recentProfileWorkerEnabled -}}
+{{- if ne .Values.mode "configured" -}}
+{{- fail "recentProfileWorker.enabled requires configured mode" -}}
+{{- end -}}
+{{- if not $recentHistoryPostgresEnabled -}}
+{{- fail "recentProfileWorker.enabled requires recentHistory.postgres.enabled=true" -}}
+{{- end -}}
+{{- if not $recentProfileWorkerSchedule -}}
+{{- fail "recentProfileWorker.schedule is required" -}}
+{{- end -}}
+{{- if not (has $recentProfileWorkerConcurrencyPolicy (list "Allow" "Forbid" "Replace")) -}}
+{{- fail "recentProfileWorker.concurrencyPolicy must be one of: Allow, Forbid, Replace" -}}
+{{- end -}}
+{{- if lt (int $recentProfileWorkerMaxJobs) 1 -}}
+{{- fail "recentProfileWorker.maxJobs must be at least 1" -}}
+{{- end -}}
+{{- if lt (int $recentProfileWorkerLeaseSeconds) 1 -}}
+{{- fail "recentProfileWorker.leaseSeconds must be at least 1" -}}
+{{- end -}}
+{{- if lt (int $recentProfileWorkerMaxAttempts) 1 -}}
+{{- fail "recentProfileWorker.maxAttempts must be at least 1" -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9-]{0,62}$" $recentProfileWorkerLeaseOwner) -}}
+{{- fail "recentProfileWorker.leaseOwner must be a safe lowercase label" -}}
+{{- end -}}
+{{- if not (hasPrefix "/tmp/query-doctor-" $recentProfileWorkerOut) -}}
+{{- fail "recentProfileWorker.out must stay under /tmp/query-doctor-*" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.config.create .Values.config.existingConfigMap -}}
+{{- fail "set only one of config.create or config.existingConfigMap" -}}
+{{- end -}}
+{{- if and .Values.persistence.enabled .Values.persistence.existingClaim -}}
+{{- fail "set only one of persistence.enabled or persistence.existingClaim" -}}
+{{- end -}}
+{{- if and (eq .Values.mode "configured") (not (hasPrefix "/tmp/query-doctor-" $recentBatchMountPath)) -}}
+{{- fail "persistence.recentBatchMountPath must stay under /tmp/query-doctor-*" -}}
+{{- end -}}
+{{- if not (has .Values.networkPolicy.egressMode (list "denyAll" "allowAll" "custom")) -}}
+{{- fail "networkPolicy.egressMode must be one of: denyAll, allowAll, custom" -}}
+{{- end -}}

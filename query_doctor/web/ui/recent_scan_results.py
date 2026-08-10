@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from query_doctor.web.action_outcomes import (
     WorkloadOutcomeMetric,
@@ -22,25 +24,53 @@ from query_doctor.web.ui.diagnostic_i18n import localize_diagnostic_text
 from query_doctor.web.trusted_artifacts import decorate_cases_with_optimizer_artifact_status
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseRowView,
+    is_online_history_summary,
     numeric_count,
     numeric_value,
+    online_history_profile_status_count,
     present_recent_scan_case_row,
     present_recent_scan_summary,
+    recent_scan_rows_with_action_outcomes,
+)
+from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanSummaryView,
+    RecentScanWorkloadGroupView,
 )
 from query_doctor.web.presenters.recent_scan_values import safe_truthy
+from query_doctor.web.presenters.workload_action_contract import (
+    top_owner_summary,
+    workload_group_impact as workload_total_impact,
+)
+from query_doctor.web.recent_history_inbox import recent_history_inbox_summary_from_settings
+from query_doctor.web.ui.recent_scan_view_cache import cached_recent_scan_summary_view
 from query_doctor.web.ui.recent_scan_groups import (
+    DEFAULT_RESULT_SORT,
     DEFAULT_QUERY_GROUP,
     QUERY_GROUPS,
     batch_table_column_count,
     batch_table_head,
     filter_rows_by_query_group,
     filter_rows_by_spills,
+    normalize_result_sort,
     normalize_query_group,
     render_result_filters,
     render_workload_followup_shortlist,
+    safe_extra_result_query,
     sort_rows_for_query_group,
     workload_group_impact,
+    workload_href,
     workload_history_context_text,
+)
+from query_doctor.web.ui.recent_scan_result_filters import (
+    RESULT_FILTER_PARAMS,
+    ResultFilterToggle,
+    RecentScanResultFilters,
+    active_recent_scan_result_filter_count,
+    active_recent_scan_result_filter_labels,
+    filter_rows_by_result_filters,
+    normalize_recent_scan_result_filters,
+    recent_scan_result_filter_toggles,
+    row_matches_result_filters,
 )
 from query_doctor.web.ui.recent_scan_progress import (
     batch_progress_percent,
@@ -55,26 +85,40 @@ from query_doctor.web.ui.recent_scan_progress import (
 from query_doctor.web.ui.source_locations import render_source_location_chips
 
 
+RESULTS_PAGE_PARAM = "results_page"
+RESULTS_PAGE_SIZE = 250
+RESULTS_MAX_PAGE = 10000
+
+
 def render_batch_card(
     settings: Any,
     query_group: str = DEFAULT_QUERY_GROUP,
     *,
     only_with_spills: bool = False,
+    result_filters: RecentScanResultFilters | None = None,
+    result_sort: str = DEFAULT_RESULT_SORT,
+    results_page: Any = 1,
     workload_admin_scope: str = "all",
     workload_admin_signal: str = "all",
     workload_group_scope: str = "",
     workload_group_name: str = "",
     workload_group_signal: str = "all",
+    extra_query: dict[str, str] | None = None,
     title: str = "Finished Queries",
     details_base_path: str = "/batch/case",
 ) -> str:
     summary_path = getattr(settings, "batch_summary", None)
     corpus_summary = getattr(settings, "corpus_summary", None)
     if summary_path is None and not isinstance(corpus_summary, dict):
-        return ""
+        history_summary = recent_history_inbox_summary_from_settings(settings)
+        if history_summary is None:
+            return ""
+        payload = history_summary
+        summary_view = None
     if isinstance(corpus_summary, dict):
         payload = corpus_summary
-    else:
+        summary_view = None
+    elif summary_path is not None:
         escaped_title = html.escape(title)
         aria_label = html.escape(title.lower())
         try:
@@ -87,6 +131,7 @@ def render_batch_card(
                 f'<div class="batch-note">{html.escape(type(exc).__name__)}</div>'
                 "</section>"
             )
+        summary_view = None
     if not isinstance(payload, dict):
         escaped_title = html.escape(title)
         aria_label = html.escape(title.lower())
@@ -96,27 +141,46 @@ def render_batch_card(
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
+    language = getattr(settings, "language", "en")
+    if summary_view is None and not isinstance(corpus_summary, dict) and summary_path is not None:
+        summary_view = cached_recent_scan_summary_view(
+            payload,
+            summary_path=Path(summary_path),
+            language=language,
+        )
+    render_payload = (
+        payload
+        if summary_view is not None
+        else decorate_cases_with_optimizer_artifact_status(payload)
+    )
     effective_title = corpus_summary_title(payload) or title
     return render_batch_summary(
-        decorate_cases_with_optimizer_artifact_status(payload),
+        render_payload,
         query_group=query_group,
         only_with_spills=only_with_spills,
+        result_filters=result_filters,
+        result_sort=result_sort,
+        results_page=results_page,
         workload_admin_scope=workload_admin_scope,
         workload_admin_signal=workload_admin_signal,
         workload_group_scope=workload_group_scope,
         workload_group_name=workload_group_name,
         workload_group_signal=workload_group_signal,
+        extra_query=extra_query,
         title=effective_title,
         details_base_path=details_base_path,
         action_outcomes_recorded=action_outcome_count(),
         workload_outcome_metrics=workload_outcome_metrics_by_fingerprint(),
-        language=getattr(settings, "language", "en"),
+        summary_view=summary_view,
+        language=language,
     )
 
 
 def corpus_summary_title(summary: dict[str, Any]) -> str | None:
     if str(summary.get("mode") or "").strip().lower() == "manual-profile-corpus":
         return "Exported Profiles"
+    if str(summary.get("mode") or "").strip().lower() == "recent-history-online":
+        return "Online History"
     return None
 
 
@@ -125,50 +189,162 @@ def render_batch_summary(
     query_group: str = DEFAULT_QUERY_GROUP,
     *,
     only_with_spills: bool = False,
+    result_filters: RecentScanResultFilters | None = None,
+    result_sort: str = DEFAULT_RESULT_SORT,
+    results_page: Any = 1,
     workload_admin_scope: str = "all",
     workload_admin_signal: str = "all",
     workload_group_scope: str = "",
     workload_group_name: str = "",
     workload_group_signal: str = "all",
+    extra_query: dict[str, str] | None = None,
     title: str = "Finished Queries",
     details_base_path: str = "/batch/case",
     action_outcomes_recorded: int | None = None,
     workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None = None,
+    summary_view: RecentScanSummaryView | None = None,
     language: str = "en",
 ) -> str:
-    view = present_recent_scan_summary(
-        summary,
-        workload_outcome_metrics=workload_outcome_metrics,
-    )
-    active_group = normalize_query_group(query_group)
-    rows_for_group = filter_rows_by_query_group(view.rows, active_group)
-    rows_for_group = sort_rows_for_query_group(rows_for_group, active_group)
-    rows_for_group = filter_rows_by_spills(rows_for_group, only_with_spills=only_with_spills)
-    workload_base_path = workload_base_path_for_details_base_path(details_base_path)
-    broad_scan_message = recent_scan_too_broad_message(summary)
-    rows = "\n".join(
-        render_batch_case_row(
-            display_rank,
-            row,
-            details_base_path=details_base_path,
-            workload_base_path=workload_base_path,
-            query_group=active_group,
-            language=language,
+    view = summary_view
+    if view is None:
+        view = present_recent_scan_summary(
+            summary,
+            workload_outcome_metrics=workload_outcome_metrics,
         )
-        for display_rank, row in enumerate(rows_for_group, start=1)
+    elif workload_outcome_metrics:
+        view = replace(
+            view,
+            rows=recent_scan_rows_with_action_outcomes(view.rows, workload_outcome_metrics),
+        )
+    active_group = normalize_query_group(query_group)
+    active_result_sort = normalize_result_sort(result_sort)
+    normalized_result_filters = normalize_recent_scan_result_filters(result_filters)
+    result_filter_toggles = recent_scan_result_filter_toggles(view.rows)
+    requested_page = normalize_results_page(results_page)
+    results_base_path = result_list_base_path_for_details_base_path(details_base_path)
+    workload_base_path = workload_base_path_for_details_base_path(details_base_path)
+    if active_group == "workloads":
+        rows_by_workload = rows_by_workload_fingerprint(view.rows)
+        base_workload_groups = workload_groups_for_table(
+            view.workload_groups.groups,
+            rows_by_workload,
+        )
+        workload_groups = workload_groups_for_table(
+            view.workload_groups.groups,
+            rows_by_workload,
+            only_with_spills=only_with_spills,
+            result_filters=normalized_result_filters,
+        )
+        workload_groups = sort_workload_groups_for_result_sort(
+            workload_groups,
+            active_result_sort,
+        )
+        total_unfiltered_result_rows = len(base_workload_groups)
+        current_page, page_start, page_end, total_pages = results_page_bounds(
+            len(workload_groups),
+            requested_page,
+        )
+        visible_workload_groups = workload_groups[page_start:page_end]
+        rows = "\n".join(
+            render_workload_group_table_row(
+                display_rank,
+                group,
+                group_rows=rows_by_workload.get(group.fingerprint, ()),
+                workload_base_path=workload_base_path,
+                language=language,
+            )
+            for display_rank, group in enumerate(visible_workload_groups, start=page_start + 1)
+        )
+        total_result_rows = len(workload_groups)
+        result_count_unit = "workload group"
+    else:
+        rows_for_group = filter_rows_by_query_group(view.rows, active_group)
+        total_unfiltered_result_rows = len(rows_for_group)
+        rows_for_group = filter_rows_by_result_filters(rows_for_group, normalized_result_filters)
+        rows_for_group = filter_rows_by_spills(rows_for_group, only_with_spills=only_with_spills)
+        rows_for_group = sort_rows_for_query_group(
+            rows_for_group,
+            active_group,
+            result_sort=active_result_sort,
+        )
+        current_page, page_start, page_end, total_pages = results_page_bounds(
+            len(rows_for_group),
+            requested_page,
+        )
+        visible_rows = rows_for_group[page_start:page_end]
+        rows = "\n".join(
+            render_batch_case_row(
+                display_rank,
+                row,
+                details_base_path=details_base_path,
+                workload_base_path=workload_base_path,
+                query_group=active_group,
+                language=language,
+            )
+            for display_rank, row in enumerate(visible_rows, start=page_start + 1)
+        )
+        total_result_rows = len(rows_for_group)
+        result_count_unit = "row"
+    pagination = render_results_pagination(
+        active_group,
+        current_page=current_page,
+        total_pages=total_pages,
+        total_count=total_result_rows,
+        page_start=page_start,
+        page_end=page_end,
+        only_with_spills=only_with_spills,
+        extra_query=extra_query,
+        base_path=results_base_path,
+        language=language,
     )
+    broad_scan_message = recent_scan_too_broad_message(summary)
     if not rows:
         empty_text = broad_scan_message or batch_result_empty_message(
             view.rows,
             active_group,
             only_with_spills=only_with_spills,
+            result_filters=normalized_result_filters,
+            result_filter_toggles=result_filter_toggles,
         )
-        rows = f'<tr><td colspan="{batch_table_column_count(active_group)}" class="empty-cell">{html.escape(empty_text)}</td></tr>'
-    results_notices_open = results_notices_open_by_default(summary)
+        clear_href = ""
+        if (
+            not broad_scan_message
+            and view.rows
+            and active_recent_scan_result_filter_count(normalized_result_filters)
+        ):
+            clear_href = empty_result_href(
+                active_group,
+                only_with_spills=only_with_spills,
+                extra_query=extra_query,
+                clear_result_filters=True,
+                base_path=results_base_path,
+            )
+        empty_html = batch_result_empty_cell_html(
+            empty_text,
+            clear_result_filters_href=clear_href,
+            actions=empty_result_action_links(
+                active_group,
+                only_with_spills=only_with_spills,
+                result_filters=normalized_result_filters,
+                extra_query=extra_query,
+                base_path=results_base_path,
+                include_clear_filters=bool(clear_href),
+            )
+            if not broad_scan_message and view.rows
+            else (),
+        )
+        rows = f'<tr><td colspan="{batch_table_column_count(active_group)}" class="empty-cell">{empty_html}</td></tr>'
+    empty_notice_parts = batch_empty_notice_parts_from_message(summary, view.empty_message)
+    warning_message = scan_warning_message_from_warnings(view.warning_messages)
+    results_notices_open = empty_notice_parts is not None or bool(warning_message)
     critical_results_notices = (
         render_results_notices(
             summary,
             (),
+            empty_notice_parts=empty_notice_parts,
+            warning_message=warning_message,
+            notice_inputs_precomputed=True,
+            open_by_default=results_notices_open,
             include_guidance=False,
             include_action_outcomes=False,
             language=language,
@@ -181,6 +357,9 @@ def render_batch_summary(
         view.header_items,
         action_outcomes_recorded=action_outcomes_recorded,
         compact=True,
+        empty_notice_parts=empty_notice_parts,
+        warning_message=warning_message,
+        notice_inputs_precomputed=True,
         include_guidance=False,
         include_empty=False,
         include_warnings=False,
@@ -202,7 +381,18 @@ def render_batch_summary(
         view.rows,
         active_group,
         only_with_spills=only_with_spills,
+        result_filters=normalized_result_filters,
+        result_sort=active_result_sort,
+        extra_query=extra_query,
         summary_text=scan_volume_summary(view.header_items, language=language),
+        filtered_count_text=filtered_result_count_summary(
+            total_result_rows,
+            total_unfiltered_result_rows,
+            unit=result_count_unit,
+            active=only_with_spills
+            or bool(active_recent_scan_result_filter_count(normalized_result_filters)),
+            language=language,
+        ),
         language=language,
     )
     workload_followup = render_workload_followup_shortlist(
@@ -231,10 +421,12 @@ def render_batch_summary(
         '<div class="batch-results-body">'
         f"{switcher}"
         f"{critical_results_notices}"
+        f"{pagination}"
         f'<div class="batch-table-wrap"><table class="{table_class}">'
         f"{batch_table_head(active_group, language=language)}"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
+        f"{pagination}"
         f"{result_context}"
         "</div>"
         "</details>"
@@ -248,6 +440,25 @@ def render_action_outcomes_note(count: int | None) -> str:
         '<div class="batch-note"><strong>Action outcomes recorded:</strong> '
         f'<a href="/outcomes">{html.escape(str(max(0, count)))}</a></div>'
     )
+
+
+def filtered_result_count_summary(
+    visible_count: int,
+    unfiltered_count: int,
+    *,
+    unit: str = "row",
+    active: bool = False,
+    language: str = "en",
+) -> str:
+    del language
+    if not active:
+        return ""
+    safe_unfiltered = max(0, int(unfiltered_count))
+    if safe_unfiltered <= 0:
+        return ""
+    safe_visible = max(0, int(visible_count))
+    noun = unit if safe_unfiltered == 1 else f"{unit}s"
+    return f"Showing {safe_visible} of {safe_unfiltered} {noun}"
 
 
 def render_frequent_short_limitations_note(
@@ -329,12 +540,147 @@ def workload_base_path_for_details_base_path(details_base_path: str) -> str:
     return "/batch/workload"
 
 
+def result_list_base_path_for_details_base_path(details_base_path: str) -> str:
+    normalized = details_base_path.rstrip("/")
+    if normalized == "/running" or normalized.startswith("/running/"):
+        return "/running"
+    return "/"
+
+
+def normalize_results_page(value: Any) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 1
+    try:
+        page = int(text)
+    except ValueError:
+        return 1
+    if page < 1:
+        return 1
+    return min(page, RESULTS_MAX_PAGE)
+
+
+def results_page_bounds(
+    total_count: int,
+    requested_page: int,
+    *,
+    page_size: int = RESULTS_PAGE_SIZE,
+) -> tuple[int, int, int, int]:
+    safe_total = max(0, int(total_count))
+    safe_page_size = max(1, int(page_size))
+    total_pages = max(1, (safe_total + safe_page_size - 1) // safe_page_size)
+    current_page = min(max(1, requested_page), total_pages)
+    if safe_total == 0:
+        return current_page, 0, 0, total_pages
+    page_start = (current_page - 1) * safe_page_size
+    page_end = min(safe_total, page_start + safe_page_size)
+    return current_page, page_start, page_end, total_pages
+
+
+def render_results_pagination(
+    active_group: str,
+    *,
+    current_page: int,
+    total_pages: int,
+    total_count: int,
+    page_start: int,
+    page_end: int,
+    only_with_spills: bool = False,
+    extra_query: dict[str, str] | None = None,
+    base_path: str = "/",
+    language: str = "en",
+) -> str:
+    del language
+    if total_count <= RESULTS_PAGE_SIZE:
+        return ""
+    first_row = page_start + 1
+    status = f"Rows {first_row}-{page_end} of {total_count}; page {current_page} of {total_pages}"
+    previous_link = render_results_page_link(
+        "Prev",
+        current_page - 1,
+        active_group=active_group,
+        only_with_spills=only_with_spills,
+        extra_query=extra_query,
+        base_path=base_path,
+        disabled=current_page <= 1,
+    )
+    next_link = render_results_page_link(
+        "Next",
+        current_page + 1,
+        active_group=active_group,
+        only_with_spills=only_with_spills,
+        extra_query=extra_query,
+        base_path=base_path,
+        disabled=current_page >= total_pages,
+    )
+    return (
+        '<nav class="batch-results-pagination" aria-label="Results pages">'
+        f'<span class="batch-results-page-status">{html.escape(status)}</span>'
+        '<span class="batch-results-page-links">'
+        f"{previous_link}{next_link}"
+        "</span>"
+        "</nav>"
+    )
+
+
+def render_results_page_link(
+    label: str,
+    page: int,
+    *,
+    active_group: str,
+    only_with_spills: bool,
+    extra_query: dict[str, str] | None,
+    base_path: str,
+    disabled: bool = False,
+) -> str:
+    safe_label = html.escape(label)
+    if disabled:
+        return (
+            '<span class="batch-results-page-link batch-results-page-link--disabled" '
+            f'aria-disabled="true">{safe_label}</span>'
+        )
+    href = results_page_href(
+        active_group,
+        page,
+        only_with_spills=only_with_spills,
+        extra_query=extra_query,
+        base_path=base_path,
+    )
+    safe_href = html.escape(href, quote=True)
+    return f'<a class="batch-results-page-link" href="{safe_href}">{safe_label}</a>'
+
+
+def results_page_href(
+    active_group: str,
+    page: int,
+    *,
+    only_with_spills: bool,
+    base_path: str,
+    extra_query: dict[str, str] | None = None,
+) -> str:
+    query: dict[str, str] = {"query_group": normalize_query_group(active_group)}
+    if extra_query:
+        safe_query = safe_extra_result_query(extra_query)
+        safe_query.pop("query_group", None)
+        query.update(safe_query)
+    if only_with_spills:
+        query["only_with_spills"] = "on"
+    if page > 1:
+        query[RESULTS_PAGE_PARAM] = str(normalize_results_page(page))
+    normalized_base = base_path if str(base_path or "").startswith("/") else "/"
+    return f"{html.escape(normalized_base, quote=True)}?{urlencode(query)}#recent-results"
+
+
 def render_results_notices(
     summary: dict[str, Any],
     header_items: tuple[tuple[str, Any], ...],
     *,
     action_outcomes_recorded: int | None = None,
     compact: bool = False,
+    empty_notice_parts: tuple[str, str] | None = None,
+    warning_message: str = "",
+    notice_inputs_precomputed: bool = False,
+    open_by_default: bool | None = None,
     include_guidance: bool = True,
     include_action_outcomes: bool = True,
     include_empty: bool = True,
@@ -345,6 +691,9 @@ def render_results_notices(
         summary,
         header_items,
         action_outcomes_recorded=action_outcomes_recorded,
+        empty_notice_parts=empty_notice_parts,
+        warning_message=warning_message,
+        notice_inputs_precomputed=notice_inputs_precomputed,
         include_guidance=include_guidance,
         include_action_outcomes=include_action_outcomes,
         include_empty=include_empty,
@@ -377,7 +726,14 @@ def render_results_notices(
             f'<div class="batch-notices-body">{rendered_rows}</div>'
             "</div>"
         )
-    open_attr = " open" if results_notices_open_by_default(summary) else ""
+    if open_by_default is None:
+        open_by_default = results_notices_open_by_default(
+            summary,
+            empty_notice_parts=empty_notice_parts,
+            warning_message=warning_message,
+            notice_inputs_precomputed=notice_inputs_precomputed,
+        )
+    open_attr = " open" if open_by_default else ""
     return (
         f'<details class="batch-notices" aria-label="{notice_title}"{open_attr}>'
         f"<summary>{notice_title}</summary>"
@@ -386,8 +742,17 @@ def render_results_notices(
     )
 
 
-def results_notices_open_by_default(summary: dict[str, Any]) -> bool:
-    return batch_empty_notice_parts(summary) is not None or bool(scan_warning_message(summary))
+def results_notices_open_by_default(
+    summary: dict[str, Any],
+    *,
+    empty_notice_parts: tuple[str, str] | None = None,
+    warning_message: str = "",
+    notice_inputs_precomputed: bool = False,
+) -> bool:
+    if not notice_inputs_precomputed:
+        empty_notice_parts = batch_empty_notice_parts(summary)
+        warning_message = scan_warning_message(summary)
+    return empty_notice_parts is not None or bool(warning_message)
 
 
 def render_results_context_details(*sections: str, language: str = "en") -> str:
@@ -411,6 +776,9 @@ def results_notice_rows(
     header_items: tuple[tuple[str, Any], ...],
     *,
     action_outcomes_recorded: int | None = None,
+    empty_notice_parts: tuple[str, str] | None = None,
+    warning_message: str = "",
+    notice_inputs_precomputed: bool = False,
     include_guidance: bool = True,
     include_action_outcomes: bool = True,
     include_empty: bool = True,
@@ -423,12 +791,16 @@ def results_notice_rows(
     if include_action_outcomes and action_outcomes_recorded:
         count = html.escape(str(max(0, action_outcomes_recorded)))
         rows.append(("Action outcomes", f'<a href="/outcomes">{count}</a> recorded'))
-    empty_parts = batch_empty_notice_parts(summary)
-    if include_empty and empty_parts:
-        rows.append(empty_parts)
-    warning_message = scan_warning_message(summary)
-    if include_warnings and warning_message:
-        rows.append(("Scan warnings", warning_message))
+    if include_empty:
+        if not notice_inputs_precomputed:
+            empty_notice_parts = batch_empty_notice_parts(summary)
+        if empty_notice_parts:
+            rows.append(empty_notice_parts)
+    if include_warnings:
+        if not notice_inputs_precomputed:
+            warning_message = scan_warning_message(summary)
+        if warning_message:
+            rows.append(("Scan warnings", warning_message))
     return rows
 
 
@@ -465,6 +837,7 @@ def render_batch_scan_details(
     else:
         parts = list(present_recent_scan_summary(summary).scope_parts)
         parts.extend(scan_detail_metric_parts(header_items))
+        parts.extend(profile_reuse_scan_parts(summary))
     if not parts:
         return ""
     del language
@@ -507,6 +880,12 @@ def scan_context_coverage_parts(
     *,
     workload_history: Any = None,
 ) -> list[str]:
+    if is_online_history_summary(summary):
+        return online_history_scan_context_coverage_parts(
+            summary,
+            header_items,
+            workload_history=workload_history,
+        )
     metrics = header_metric_map(header_items)
     scanned = coverage_metric_text(
         metrics.get("CM inspected") or summary.get("summaries_inspected")
@@ -535,6 +914,35 @@ def scan_context_coverage_parts(
     return parts
 
 
+def online_history_scan_context_coverage_parts(
+    summary: dict[str, Any],
+    header_items: tuple[tuple[str, Any], ...],
+    *,
+    workload_history: Any = None,
+) -> list[str]:
+    metrics = header_metric_map(header_items)
+    retained = coverage_metric_text(
+        metrics.get("CM inspected") or summary.get("summaries_inspected")
+    )
+    rows = coverage_metric_text(metrics.get("total") or summary.get("selected_count"))
+    parts: list[str] = []
+    if retained and rows:
+        parts.append(f"Retained {retained} summaries -> Showing {rows} rows")
+    elif retained:
+        parts.append(f"Retained {retained} summaries")
+    elif rows:
+        parts.append(f"Showing {rows} rows")
+    analyzed = online_history_profile_status_count(summary, "analyzed")
+    if analyzed:
+        ready = numeric_count(summary.get("history_details_ready_count"))
+        parts.append(f"Profile analysis ready: {ready}/{analyzed}")
+    parts.extend(compact_scan_context_scope_parts(summary))
+    history = workload_history_context_text(workload_history)
+    if history:
+        parts.append(history)
+    return parts
+
+
 def compact_scan_context_scope_parts(summary: dict[str, Any]) -> list[str]:
     parts: list[str] = []
     summaries = coverage_metric_text(summary.get("summaries_inspected"))
@@ -547,7 +955,21 @@ def compact_scan_context_scope_parts(summary: dict[str, Any]) -> list[str]:
     cluster_context = compact_cluster_event_context(summary)
     if cluster_context:
         parts.append(cluster_context)
+    parts.extend(profile_reuse_scan_parts(summary))
     return parts
+
+
+def profile_reuse_scan_parts(summary: dict[str, Any]) -> list[str]:
+    reused = numeric_count(summary.get("profile_reused_case_count"))
+    if reused <= 0:
+        reuse = summary.get("profile_reuse")
+        if isinstance(reuse, dict):
+            status_counts = reuse.get("status_counts")
+            if isinstance(status_counts, dict):
+                reused = numeric_count(status_counts.get("reused"))
+    if reused <= 0:
+        return []
+    return [f"Reused analyzed profiles: {reused}"]
 
 
 def compact_cluster_event_context(summary: dict[str, Any]) -> str:
@@ -597,7 +1019,16 @@ def render_batch_empty_note(summary: dict[str, Any]) -> str:
 
 
 def batch_empty_notice_parts(summary: dict[str, Any]) -> tuple[str, str] | None:
-    message = present_recent_scan_summary(summary).empty_message
+    return batch_empty_notice_parts_from_message(
+        summary,
+        present_recent_scan_summary(summary).empty_message,
+    )
+
+
+def batch_empty_notice_parts_from_message(
+    summary: dict[str, Any],
+    message: str,
+) -> tuple[str, str] | None:
     if not message:
         return None
     heading = "Partial scan" if summary.get("scan_too_broad") else "No cases selected"
@@ -633,11 +1064,23 @@ def batch_result_empty_message(
     active_group: str,
     *,
     only_with_spills: bool = False,
+    result_filters: RecentScanResultFilters | None = None,
+    result_filter_toggles: tuple[ResultFilterToggle, ...] = (),
 ) -> str:
     group_label = QUERY_GROUPS[active_group][0].lower()
     spill_suffix = " with spill evidence" if only_with_spills else ""
     if not rows:
         return f"No {group_label}{spill_suffix} were found in the configured batch summary."
+    filter_labels = active_recent_scan_result_filter_labels(
+        result_filters,
+        toggles=result_filter_toggles,
+    )
+    if filter_labels:
+        label_text = ", ".join(filter_labels)
+        return (
+            f"No {group_label}{spill_suffix} matched the active result filters "
+            f"({label_text}). Clear those filters to see all rows in this group."
+        )
     if only_with_spills:
         if active_group == "bad":
             return "No rows needing attention with spill evidence matched this result filter. Clear the spill filter to see all rows in this group."
@@ -648,7 +1091,7 @@ def batch_result_empty_message(
         if active_group == "stats":
             return "No stats-to-check rows with spill evidence matched this result filter. Clear the spill filter to see all rows in this group."
         if active_group == "workloads":
-            return "No repeated workload rows with spill evidence matched this result filter. Clear the spill filter to see all rows in this group."
+            return "No repeated workload groups with spill evidence matched this result filter. Clear the spill filter to see all workload groups."
         if active_group == "regressions":
             return "No regressed workload rows with spill evidence matched this result filter. Clear the spill filter to see all rows in this group."
         return f"No {group_label} with spill evidence matched this result filter. Clear the spill filter to see all rows in this group."
@@ -661,10 +1104,107 @@ def batch_result_empty_message(
     if active_group == "stats":
         return "No medium/high stats-to-check candidates were found. Query Doctor did not find enough stats evidence plus runtime symptoms for this scan."
     if active_group == "workloads":
-        return "No repeated workload rows were found. This scan may still contain one-off query findings."
+        return "No repeated workload groups were found. This scan may still contain one-off query findings."
     if active_group == "regressions":
         return "No regressed workload rows were found. Enable workload history or review repeated workloads for current-scan impact."
     return f"No {group_label} were found in the configured batch summary."
+
+
+def batch_result_empty_cell_html(
+    message: str,
+    *,
+    clear_result_filters_href: str = "",
+    actions: tuple[tuple[str, str], ...] = (),
+) -> str:
+    content = f'<span class="empty-cell-message">{html.escape(message)}</span>'
+    links = actions
+    if clear_result_filters_href and not links:
+        links = (("Clear filters", clear_result_filters_href),)
+    if not links:
+        return content
+    rendered_links = "".join(
+        '<a class="empty-cell-action" '
+        f'href="{html.escape(href, quote=True)}">{html.escape(label)}</a>'
+        for label, href in links
+    )
+    return f'{content}<span class="empty-cell-actions">{rendered_links}</span>'
+
+
+def empty_result_action_links(
+    active_group: str,
+    *,
+    only_with_spills: bool,
+    result_filters: RecentScanResultFilters | None,
+    extra_query: dict[str, str] | None,
+    base_path: str,
+    include_clear_filters: bool,
+) -> tuple[tuple[str, str], ...]:
+    normalized_group = normalize_query_group(active_group)
+    actions: list[tuple[str, str]] = []
+    if include_clear_filters:
+        actions.append(
+            (
+                "Clear filters",
+                empty_result_href(
+                    normalized_group,
+                    only_with_spills=only_with_spills,
+                    extra_query=extra_query,
+                    clear_result_filters=True,
+                    base_path=base_path,
+                ),
+            )
+        )
+    if only_with_spills:
+        actions.append(
+            (
+                "Remove spill filter",
+                empty_result_href(
+                    normalized_group,
+                    only_with_spills=False,
+                    extra_query=extra_query,
+                    base_path=base_path,
+                ),
+            )
+        )
+    if normalized_group != "all":
+        actions.append(
+            (
+                "Show All analyzed",
+                empty_result_href(
+                    "all",
+                    only_with_spills=only_with_spills,
+                    extra_query=extra_query,
+                    base_path=base_path,
+                    clear_result_filters=not active_recent_scan_result_filter_count(result_filters),
+                ),
+            )
+        )
+    return tuple(actions)
+
+
+def empty_result_href(
+    active_group: str,
+    *,
+    only_with_spills: bool,
+    extra_query: dict[str, str] | None,
+    base_path: str,
+    clear_result_filters: bool = False,
+) -> str:
+    query: dict[str, str] = {"query_group": normalize_query_group(active_group)}
+    if extra_query:
+        safe_query = safe_extra_result_query(extra_query)
+        safe_query.pop("query_group", None)
+        query.update(safe_query)
+    query.pop(RESULTS_PAGE_PARAM, None)
+    if clear_result_filters:
+        for result_param in RESULT_FILTER_PARAMS:
+            query.pop(result_param, None)
+    if only_with_spills:
+        query["only_with_spills"] = "on"
+    else:
+        query.pop("only_with_spills", None)
+    normalized_base = base_path if str(base_path or "").startswith("/") else "/"
+    return f"{normalized_base}?{urlencode(query)}#recent-results"
 
 
 def render_results_table_legend(active_group: str, *, language: str = "en") -> str:
@@ -682,7 +1222,15 @@ def render_results_table_legend(active_group: str, *, language: str = "en") -> s
             ("Candidate", "Follow-up rank"),
             ("Need", "Stats area"),
         )
-    elif normalized in {"workloads", "regressions"}:
+    elif normalized == "workloads":
+        items = (
+            ("Workload", "Grouped fingerprint"),
+            ("Priority", "Highest group severity"),
+            ("p95", "Observed group latency"),
+            ("Total impact", "Observed runtime sum"),
+            ("Next", "Open Workload Details"),
+        )
+    elif normalized == "regressions":
         items = (
             ("Finding", "Workload signal"),
             ("Runs", "Similar queries"),
@@ -716,10 +1264,164 @@ def render_batch_warning_note(summary: dict[str, Any]) -> str:
 
 
 def scan_warning_message(summary: dict[str, Any]) -> str:
-    warnings = present_recent_scan_summary(summary).warning_messages
+    return scan_warning_message_from_warnings(present_recent_scan_summary(summary).warning_messages)
+
+
+def scan_warning_message_from_warnings(warnings: tuple[str, ...]) -> str:
     if not warnings:
         return ""
     return "; ".join(html.escape(warning) for warning in warnings)
+
+
+def rows_by_workload_fingerprint(
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> dict[str, tuple[RecentScanCaseRowView, ...]]:
+    grouped: dict[str, list[RecentScanCaseRowView]] = {}
+    for row in rows:
+        if row.workload_fingerprint:
+            grouped.setdefault(row.workload_fingerprint, []).append(row)
+    return {fingerprint: tuple(group_rows) for fingerprint, group_rows in grouped.items()}
+
+
+def workload_groups_for_table(
+    groups: tuple[RecentScanWorkloadGroupView, ...],
+    rows_by_workload: dict[str, tuple[RecentScanCaseRowView, ...]],
+    *,
+    only_with_spills: bool = False,
+    result_filters: RecentScanResultFilters | None = None,
+) -> tuple[RecentScanWorkloadGroupView, ...]:
+    normalized_filters = normalize_recent_scan_result_filters(result_filters)
+    filter_active = bool(active_recent_scan_result_filter_count(normalized_filters))
+    selected: list[RecentScanWorkloadGroupView] = []
+    for group in groups:
+        if group.member_count <= 1:
+            continue
+        group_rows = rows_by_workload.get(group.fingerprint, ())
+        if only_with_spills and not any(row.has_spill for row in group_rows):
+            continue
+        if filter_active and not any(
+            row_matches_result_filters(row, normalized_filters) for row in group_rows
+        ):
+            continue
+        selected.append(group)
+    return tuple(selected)
+
+
+def sort_workload_groups_for_result_sort(
+    groups: tuple[RecentScanWorkloadGroupView, ...],
+    result_sort: str,
+) -> tuple[RecentScanWorkloadGroupView, ...]:
+    normalized_sort = normalize_result_sort(result_sort)
+    if normalized_sort == "duration":
+        return tuple(
+            sorted(
+                groups,
+                key=lambda group: (
+                    -numeric_value(group.duration_sec_p95),
+                    -numeric_value(group.duration_sec_total),
+                    group.fingerprint,
+                ),
+            )
+        )
+    if normalized_sort == "priority":
+        severity_order = {"failed": 4, "high": 3, "suspicious": 2, "clean": 1}
+        return tuple(
+            sorted(
+                groups,
+                key=lambda group: (
+                    -severity_order.get(str(group.score_top or "").strip().lower(), 0),
+                    -workload_total_impact(group),
+                    group.fingerprint,
+                ),
+            )
+        )
+    if normalized_sort == "start":
+        return groups
+    return tuple(
+        sorted(
+            groups,
+            key=lambda group: (
+                -workload_total_impact(group),
+                -group.member_count,
+                group.fingerprint,
+            ),
+        )
+    )
+
+
+def render_workload_group_table_row(
+    rank: int,
+    group: RecentScanWorkloadGroupView,
+    *,
+    group_rows: tuple[RecentScanCaseRowView, ...],
+    workload_base_path: str = "/batch/workload",
+    language: str = "en",
+) -> str:
+    del language
+    href = workload_href(group.fingerprint, workload_base_path=workload_base_path)
+    row_attrs = f'class="batch-row" data-href="{href}" tabindex="0"'
+    cells = [
+        compact_cell(rank),
+        workload_group_summary_cell(group),
+        workload_group_score_cell(group.score_top),
+        duration_cell(group.duration_sec_p95),
+        compact_cell(display_seconds_label(workload_total_impact(group))),
+        user_cell(top_owner_summary(group_rows)),
+        workload_group_open_cell(href),
+    ]
+    return f"<tr {row_attrs}>{''.join(cells)}</tr>"
+
+
+def workload_group_summary_cell(group: RecentScanWorkloadGroupView) -> str:
+    title = f"Repeated workload: {group.member_count} similar queries"
+    details = [
+        group.fingerprint_short,
+        group.shape_summary,
+        f"tables {group.table_summary}" if group.table_summary else "",
+    ]
+    baseline = workload_group_baseline_text(group)
+    if baseline:
+        details.append(baseline)
+    detail_text = "; ".join(str(part).strip() for part in details if str(part or "").strip())
+    return (
+        '<td class="batch-cell--summary">'
+        f"<strong>{escape_value(title)}</strong>"
+        f"<span>{escape_value(detail_text)}.</span>"
+        "</td>"
+    )
+
+
+def workload_group_baseline_text(group: RecentScanWorkloadGroupView) -> str:
+    if group.baseline_sample_count <= 0:
+        return ""
+    baseline = str(group.baseline_duration_sec_p95 or "").strip()
+    baseline_text = f"baseline p95 {baseline}s" if baseline else "baseline p95 unknown"
+    return f"{baseline_text}; regression {group.regression}; n={group.baseline_sample_count}"
+
+
+def workload_group_score_cell(value: Any) -> str:
+    normalized = str(value or "unknown").strip().lower()
+    class_name = {
+        "failed": "batch-severity--failed",
+        "high": "batch-severity--high",
+        "suspicious": "batch-severity--suspicious",
+        "clean": "batch-status--neutral",
+        "unknown": "batch-status--warning",
+    }.get(normalized, "batch-status--neutral")
+    return badge_cell(workload_group_label(normalized), class_name, cell_class="batch-cell--status")
+
+
+def workload_group_label(value: Any) -> str:
+    text = str(value or "unknown").strip().replace("_", " ")
+    return text.title() if text else "Unknown"
+
+
+def workload_group_open_cell(href: str) -> str:
+    return (
+        '<td class="batch-cell--compact batch-cell--action">'
+        f'<a class="batch-row-action" href="{href}">Open Details</a>'
+        "</td>"
+    )
 
 
 def render_batch_case_row(
@@ -946,9 +1648,11 @@ def summary_cell(
     query_group: str = DEFAULT_QUERY_GROUP,
     language: str = "en",
 ) -> str:
+    normalized = normalize_query_group(query_group)
+    default_table_group = normalized in {"all", "bad", "suspicious"}
     reason_html = (
         f"<span>{escape_value(localize_diagnostic_text(view.reason_text, language))}</span>"
-        if view.reason_text
+        if view.reason_text and not default_table_group
         else ""
     )
     primary_html = (
@@ -956,11 +1660,16 @@ def summary_cell(
         f"{escape_value(localize_diagnostic_text('Primary:', language))} "
         f"{escape_value(localize_diagnostic_text(view.primary_bottleneck.summary, language))}."
         "</span>"
-        if not view.primary_bottleneck.unavailable
+        if not view.primary_bottleneck.unavailable and not default_table_group
         else ""
     )
-    normalized = normalize_query_group(query_group)
     title = localize_diagnostic_text(view.signal_summary, language)
+    if (
+        default_table_group
+        and not view.primary_bottleneck.unavailable
+        and view.primary_bottleneck.label != "Unknown"
+    ):
+        title = localize_diagnostic_text(view.primary_bottleneck.summary, language)
     detail_html = ""
     if normalized == "optimization":
         title = (

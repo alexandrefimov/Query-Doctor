@@ -107,7 +107,7 @@ def test_trino_web_beta_readiness_accepts_kerberos_auth_reference(tmp_path: Path
     config = _write_config(
         tmp_path,
         query_list=True,
-        kerberos_principal="sa@LESTA.HADOOP",
+        kerberos_principal="sa@EXAMPLE.COM",
         krb5_ccname="FILE:/tmp/krb5cc_qd_trino",
         kerberos_insecure_tls=True,
     )
@@ -134,7 +134,7 @@ def test_trino_web_beta_readiness_rejects_combined_auth_modes_without_leaking_va
         tmp_path,
         query_list=True,
         auth_header=auth_header,
-        kerberos_principal="sa@LESTA.HADOOP",
+        kerberos_principal="sa@EXAMPLE.COM",
     )
 
     result = audit_trino_web_beta_readiness(

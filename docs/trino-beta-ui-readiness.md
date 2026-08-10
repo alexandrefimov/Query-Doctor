@@ -39,10 +39,10 @@ Trino product output for the selected workflow.
 ## Required UI Behavior
 
 - The source selector marks configured beta sources as `Trino Beta Recent + One
-  Query ID`, `Trino Beta Recent`, or `Trino Beta One Query ID`, and configured
-  production-mode sources with the same suffixes without `Beta`, without
-  exposing coordinator URLs, source-contract paths, auth-reference paths, local
-  paths, raw artifact names, or secrets.
+  Query ID`, `Trino Beta Recent`, or `Trino Beta One Query ID`. Configured
+  production-mode sources use the configured source label without capability
+  suffixes. Neither mode exposes coordinator URLs, source-contract paths,
+  auth-reference paths, local paths, raw artifact names, or secrets.
 - The Engine control narrows the Source cluster selector before workflow
   selection: Impala shows only Impala-capable sources, and Trino shows only
   Trino-ready sources.

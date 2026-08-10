@@ -1,0 +1,95 @@
+mode: configured
+
+config:
+  create: true
+  inlineJson: |
+    {
+      "clusters": [
+        {
+          "id": "cm-impala",
+          "label": "Impala via Cloudera Manager",
+          "cluster_type": "cm",
+          "cm_url": "https://cm.example.com:7183/",
+          "cluster": "example_cluster",
+          "service": "impala"
+        }
+      ],
+      "language": "en",
+      "source_visibility": "safe",
+      "no_llm": true,
+      "corpus_dir": "/var/lib/query-doctor/cases",
+      "recent_batch_root": "/tmp/query-doctor-web-batches",
+      "recent_history_backend": "postgres",
+      "recent_history_postgres_dsn_env": "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN",
+      "recent_history_operator_readiness_summary_json": "/var/lib/query-doctor/recent-history/operator-readiness/operator-readiness-summary.json",
+      "recent_history_collector_summary_json": "/var/lib/query-doctor/recent-history/collector-summary.json",
+      "recent_history_summary_retention_days": 30,
+      "recent_history_profile_job_retention_days": 14,
+      "recent_history_analysis_cache_retention_days": 45,
+      "recent_history_profile_artifact_retention_days": 60,
+      "recent_scan_timezone": "UTC",
+      "recent_profile_analysis_limit": 5000,
+      "recent_parallelism": 4,
+      "recent_metadata_jobs": 2,
+      "recent_metadata_top_limit": 10
+    }
+
+credentials:
+  existingSecret: query-doctor-credentials
+
+kerberos:
+  enabled: false
+  existingSecret: query-doctor-kerberos
+  principalKey: principal
+  keytabKey: query-doctor.keytab
+  krb5ConfKey: krb5.conf
+  renewer:
+    enabled: true
+    refreshIntervalSeconds: 1800
+
+persistence:
+  enabled: true
+  recentBatchMountPath: /tmp/query-doctor-web-batches
+
+recentHistory:
+  postgres:
+    enabled: true
+    existingSecret: query-doctor-recent-history-postgres
+    dsnKey: dsn
+    dsnEnvName: QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN
+    readiness:
+      enabled: true
+    retention:
+      enabled: true
+      schedule: "0 3 * * *"
+      summaryRetentionDays: 30
+      profileJobRetentionDays: 14
+      analysisCacheRetentionDays: 45
+      profileArtifactRetentionDays: 60
+    profileRemediation:
+      enabled: true
+      schedule: "*/15 * * * *"
+      maxJobs: 50
+  operatorReadiness:
+    enabled: true
+    schedule: "*/5 * * * *"
+    collectorSummaryJson: /var/lib/query-doctor/recent-history/collector-summary.json
+    retentionSummaryJson: /var/lib/query-doctor/recent-history/operator-readiness/retention-summary.json
+    profileRemediationSummaryJson: /var/lib/query-doctor/recent-history/operator-readiness/remediation-summary.json
+
+recentSummaryCollector:
+  enabled: true
+  schedule: "*/10 * * * *"
+  summaryJson: /var/lib/query-doctor/recent-history/collector-summary.json
+  progressJsonl: /var/lib/query-doctor/recent-history/collector-progress.jsonl
+
+recentProfileWorker:
+  enabled: true
+  schedule: "*/5 * * * *"
+  maxJobs: 1
+
+networkPolicy:
+  enabled: false
+
+ingress:
+  enabled: false

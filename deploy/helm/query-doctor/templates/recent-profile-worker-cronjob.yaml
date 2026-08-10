@@ -1,0 +1,231 @@
+{{- $recentProfileWorker := .Values.recentProfileWorker | default dict -}}
+{{- $recentProfileWorkerEnabled := and (eq .Values.mode "configured") ((get $recentProfileWorker "enabled") | default false) -}}
+{{- if $recentProfileWorkerEnabled }}
+{{- $kerberos := .Values.kerberos | default dict -}}
+{{- $kerberosEnabled := and (eq .Values.mode "configured") ((get $kerberos "enabled") | default false) -}}
+{{- $kerberosSecret := (get $kerberos "existingSecret") | default "" -}}
+{{- $kerberosPrincipalKey := (get $kerberos "principalKey") | default "principal" -}}
+{{- $kerberosKeytabKey := (get $kerberos "keytabKey") | default "query-doctor.keytab" -}}
+{{- $kerberosKrb5ConfKey := (get $kerberos "krb5ConfKey") | default "krb5.conf" -}}
+{{- $kerberosCachePath := (get $kerberos "cachePath") | default "/tmp/query-doctor-krb5/krb5cc_query_doctor" -}}
+{{- $recentHistory := .Values.recentHistory | default dict -}}
+{{- $recentHistoryPostgres := (get $recentHistory "postgres") | default dict -}}
+{{- $recentHistoryPostgresSecret := (get $recentHistoryPostgres "existingSecret") | default "" -}}
+{{- $recentHistoryPostgresDsnKey := (get $recentHistoryPostgres "dsnKey") | default "dsn" -}}
+{{- $recentHistoryPostgresDsnEnvName := (get $recentHistoryPostgres "dsnEnvName") | default "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN" -}}
+{{- $operatorReadiness := (get $recentHistory "operatorReadiness") | default dict -}}
+{{- $operatorReadinessEnabled := and (eq .Values.mode "configured") ((get $operatorReadiness "enabled") | default false) -}}
+{{- $operatorReadinessSummaryDir := (get $operatorReadiness "summaryDir") | default "/var/lib/query-doctor/recent-history/operator-readiness" -}}
+{{- $operatorReadinessWorkerSummary := (get $operatorReadiness "profileWorkerSummaryJson") | default "/var/lib/query-doctor/recent-history/operator-readiness/profile-worker-summary.json" -}}
+{{- $recentBatchMountPath := .Values.persistence.recentBatchMountPath | default "/tmp/query-doctor-web-batches" -}}
+{{- $workerOut := (get $recentProfileWorker "out") | default "/tmp/query-doctor-profile-worker" -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ printf "%s-recent-profile-worker" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "query-doctor.recentProfileWorkerLabels" . | nindent 4 }}
+  {{- with .Values.recentProfileWorker.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.recentProfileWorker.schedule | quote }}
+  suspend: {{ .Values.recentProfileWorker.suspend }}
+  concurrencyPolicy: {{ .Values.recentProfileWorker.concurrencyPolicy | quote }}
+  startingDeadlineSeconds: {{ .Values.recentProfileWorker.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.recentProfileWorker.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.recentProfileWorker.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.recentProfileWorker.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.recentProfileWorker.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "query-doctor.recentProfileWorkerSelectorLabels" . | nindent 12 }}
+          {{- with .Values.recentProfileWorker.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          serviceAccountName: {{ include "query-doctor.serviceAccountName" . | quote }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+            fsGroup: 10001
+            fsGroupChangePolicy: OnRootMismatch
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $kerberosEnabled $operatorReadinessEnabled }}
+          initContainers:
+            {{- if $operatorReadinessEnabled }}
+            - name: operator-readiness-summary-dir
+              image: {{ include "query-doctor.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+              args:
+                - mkdir -p {{ $operatorReadinessSummaryDir | quote }}
+              resources:
+                {{- toYaml .Values.recentProfileWorker.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              volumeMounts:
+                - name: cases
+                  mountPath: {{ .Values.persistence.mountPath | quote }}
+            {{- end }}
+            {{- if $kerberosEnabled }}
+            - name: kerberos-kinit
+              image: {{ include "query-doctor.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+              args:
+                - |
+                  cache_file="${KRB5CCNAME#FILE:}"
+                  rm -f "$cache_file"
+                  principal="$(cat /etc/query-doctor-kerberos/{{ $kerberosPrincipalKey }})"
+                  kinit -kt /etc/query-doctor-kerberos/{{ $kerberosKeytabKey }} -c "$cache_file" "$principal"
+                  chmod 600 "$cache_file"
+                  klist -s -c "$cache_file"
+              env:
+                - name: KRB5CCNAME
+                  value: {{ printf "FILE:%s" $kerberosCachePath | quote }}
+                {{- if $kerberosKrb5ConfKey }}
+                - name: KRB5_CONFIG
+                  value: {{ printf "/etc/query-doctor-kerberos/%s" $kerberosKrb5ConfKey | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.recentProfileWorker.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              volumeMounts:
+                - name: kerberos-init-secret
+                  mountPath: /etc/query-doctor-kerberos
+                  readOnly: true
+                - name: kerberos-cache
+                  mountPath: /tmp/query-doctor-krb5
+            {{- end }}
+          {{- end }}
+          containers:
+            - name: recent-profile-worker
+              image: {{ include "query-doctor.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - query-doctor-recent-profile-worker
+              args:
+                - --json
+                - --fail-on-warning
+                {{- if $operatorReadinessEnabled }}
+                - --summary-json
+                - {{ $operatorReadinessWorkerSummary | quote }}
+                {{- end }}
+                - --profile-worker-max-jobs
+                - {{ .Values.recentProfileWorker.maxJobs | quote }}
+                - --profile-worker-lease-owner
+                - {{ .Values.recentProfileWorker.leaseOwner | quote }}
+                - --profile-worker-lease-sec
+                - {{ .Values.recentProfileWorker.leaseSeconds | quote }}
+                - --profile-worker-max-attempts
+                - {{ .Values.recentProfileWorker.maxAttempts | quote }}
+                - --config
+                - {{ printf "%s/%s" .Values.config.mountPath .Values.config.key | quote }}
+                - --out
+                - {{ $workerOut | quote }}
+                - --recent-history-backend
+                - postgres
+                - --recent-history-postgres-dsn-env
+                - {{ $recentHistoryPostgresDsnEnvName | quote }}
+                - --metadata-mode
+                - "off"
+                - --top-reports
+                - "0"
+                {{- with .Values.recentProfileWorker.extraArgs }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              env:
+                {{- if $kerberosEnabled }}
+                - name: KRB5CCNAME
+                  value: {{ printf "FILE:%s" $kerberosCachePath | quote }}
+                {{- if $kerberosKrb5ConfKey }}
+                - name: KRB5_CONFIG
+                  value: {{ printf "/etc/query-doctor-kerberos-config/%s" $kerberosKrb5ConfKey | quote }}
+                {{- end }}
+                {{- end }}
+                - name: {{ $recentHistoryPostgresDsnEnvName | quote }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $recentHistoryPostgresSecret | quote }}
+                      key: {{ $recentHistoryPostgresDsnKey | quote }}
+              {{- if .Values.credentials.existingSecret }}
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.credentials.existingSecret | quote }}
+              {{- end }}
+              resources:
+                {{- toYaml .Values.recentProfileWorker.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: config
+                  mountPath: {{ .Values.config.mountPath | quote }}
+                  readOnly: true
+                - name: cases
+                  mountPath: {{ .Values.persistence.mountPath | quote }}
+                {{- if ne $recentBatchMountPath .Values.persistence.mountPath }}
+                - name: cases
+                  mountPath: {{ $recentBatchMountPath | quote }}
+                {{- end }}
+                {{- if $kerberosEnabled }}
+                - name: kerberos-cache
+                  mountPath: /tmp/query-doctor-krb5
+                {{- if $kerberosKrb5ConfKey }}
+                - name: kerberos-config
+                  mountPath: /etc/query-doctor-kerberos-config
+                  readOnly: true
+                {{- end }}
+                {{- end }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: config
+              configMap:
+                name: {{ include "query-doctor.configMapName" . | quote }}
+            - name: cases
+              persistentVolumeClaim:
+                claimName: {{ include "query-doctor.claimName" . | quote }}
+            {{- if $kerberosEnabled }}
+            - name: kerberos-cache
+              emptyDir: {}
+            - name: kerberos-init-secret
+              secret:
+                secretName: {{ $kerberosSecret | quote }}
+                defaultMode: 0440
+                items:
+                  - key: {{ $kerberosPrincipalKey | quote }}
+                    path: {{ $kerberosPrincipalKey | quote }}
+                  - key: {{ $kerberosKeytabKey | quote }}
+                    path: {{ $kerberosKeytabKey | quote }}
+                  {{- if $kerberosKrb5ConfKey }}
+                  - key: {{ $kerberosKrb5ConfKey | quote }}
+                    path: {{ $kerberosKrb5ConfKey | quote }}
+                  {{- end }}
+            {{- if $kerberosKrb5ConfKey }}
+            - name: kerberos-config
+              secret:
+                secretName: {{ $kerberosSecret | quote }}
+                defaultMode: 0440
+                items:
+                  - key: {{ $kerberosKrb5ConfKey | quote }}
+                    path: {{ $kerberosKrb5ConfKey | quote }}
+            {{- end }}
+            {{- end }}
+{{- end }}

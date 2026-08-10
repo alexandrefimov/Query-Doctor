@@ -1,0 +1,4 @@
+# Synthetic dev-only fixtures, not credentials. Keep each exception scoped to
+# the exact historical commit, path, rule, and line reported by Gitleaks.
+7b7ce4acf9a21daed55d8333bf20fda835a26229:dev/sso/env.example:generic-api-key:9
+5295b60ae1917df595d9f3fec4c4e361292b1016:tests/test_leak_canary_e2e.py:generic-api-key:31

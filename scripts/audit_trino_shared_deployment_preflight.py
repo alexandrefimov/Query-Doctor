@@ -233,9 +233,9 @@ def format_summary(payload: dict[str, Any]) -> str:
             f"local_config_gates={len(gates['requires_local_config'])}",
             f"front_door_review_summary_gates={len(gates['requires_front_door_review_summary'])}",
             f"network_read_gates={len(gates['performs_network_read'])}",
-            "front_door_requirement=required_for_shared_trino",
-            f"front_door_review={payload['surface_boundary']['trusted_front_door_review']}",
-            "raw_reveal=blocked_for_shared_trino",
+            "trusted_front_door_identity=required_for_shared_trino",
+            f"trusted_front_door_review={payload['surface_boundary']['trusted_front_door_review']}",
+            "raw_source_reveal=blocked_for_shared_trino",
             "details_python_report_output=materialized_details_only",
             "metadata_cli_smoke=dev_only_optional",
             "metadata_collection=not_wired",
@@ -245,10 +245,10 @@ def format_summary(payload: dict[str, Any]) -> str:
             "query_optimizer_jobs=not_wired",
             "generated_sql=not_wired",
             "sql_execution_performed=no",
-            "query_reference_output=no",
-            "coordinator_reference_output=no",
-            "credential_reference_output=no",
-            "path_output=no",
+            "query_id_output=no",
+            "coordinator_url_output=no",
+            "auth_reference_output=no",
+            "local_path_output=no",
             f"failed_gates: {failed_text}",
         )
     )
@@ -299,93 +299,8 @@ def main(argv: Iterable[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-    stdout_status = preflight_status(gates, results)
-    print(
-        format_stdout_summary(
-            status=stdout_status,
-            mode="shared_deployment_static_preflight",
-            gates_planned=len(gates),
-            gates_completed=len(results),
-            local_config_gates=sum(1 for gate in gates if gate.requires_local_config),
-            front_door_review_summary_gates=sum(
-                1 for gate in gates if gate.requires_front_door_review_summary
-            ),
-            network_read_gates=sum(1 for gate in gates if gate.performs_network_read),
-            front_door_review=front_door_review_status_from_args(args),
-            failed_gates=failed_gate_text(results),
-        )
-    )
+    print(format_summary(payload))
     return 0 if payload["status"] == "ok" else 1
-
-
-def format_stdout_summary(
-    *,
-    status: str,
-    mode: str,
-    gates_planned: int,
-    gates_completed: int,
-    local_config_gates: int,
-    front_door_review_summary_gates: int,
-    network_read_gates: int,
-    front_door_review: str,
-    failed_gates: str,
-) -> str:
-    return "\n".join(
-        (
-            f"Trino shared deployment preflight: {status}",
-            f"mode={mode}",
-            f"gates_planned={gates_planned}",
-            f"gates_completed={gates_completed}",
-            f"local_config_gates={local_config_gates}",
-            f"front_door_review_summary_gates={front_door_review_summary_gates}",
-            f"network_read_gates={network_read_gates}",
-            "front_door_requirement=required_for_shared_trino",
-            f"front_door_review={front_door_review}",
-            "raw_reveal=blocked_for_shared_trino",
-            "details_python_report_output=materialized_details_only",
-            "metadata_cli_smoke=dev_only_optional",
-            "metadata_collection=not_wired",
-            "running_scan=not_wired",
-            "query_history_crawling=not_wired",
-            "llm_reports=not_wired",
-            "query_optimizer_jobs=not_wired",
-            "generated_sql=not_wired",
-            "sql_execution_performed=no",
-            "query_reference_output=no",
-            "coordinator_reference_output=no",
-            "credential_reference_output=no",
-            "path_output=no",
-            f"failed_gates: {failed_gates}",
-        )
-    )
-
-
-def preflight_status(
-    gates: tuple[PreflightGate, ...],
-    results: tuple[PreflightGateResult, ...],
-) -> str:
-    if any(result.status != "ok" for result in results):
-        return "failed"
-    if len(results) != len(gates):
-        return "failed"
-    return "ok"
-
-
-def front_door_review_status_from_args(args: argparse.Namespace) -> str:
-    if args.front_door_review_summary is not None:
-        return "confirmed_by_review_summary"
-    if args.trusted_front_door_reviewed:
-        return "confirmed"
-    if args.config is not None:
-        return "not_confirmed"
-    return "not_required_for_static_only"
-
-
-def failed_gate_text(results: tuple[PreflightGateResult, ...]) -> str:
-    failed_text = ", ".join(
-        f"{result.name}={result.returncode}" for result in results if result.status != "ok"
-    )
-    return failed_text or "none"
 
 
 if __name__ == "__main__":

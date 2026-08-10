@@ -1,6 +1,6 @@
 # Security Model
 
-Last reviewed: 2026-06-14
+Last reviewed: 2026-07-11
 
 Язык: [English](../../security-model.md) | Русский
 
@@ -12,8 +12,12 @@ Last reviewed: 2026-06-14
 Core rule:
 
 ```text
-Python owns facts. LLM owns wording only.
+Query Doctor owns diagnostic trust and causal promotion. LLM owns wording only.
 ```
+
+Локальные deterministic Python analyzers формируют observations из bounded
+inputs. Query Doctor проверяет и объединяет accepted evidence и отвечает за
+assessment findings и causal promotion.
 
 LLM output остается untrusted, пока не пройдут normalization, sanitization и
 deterministic validation.

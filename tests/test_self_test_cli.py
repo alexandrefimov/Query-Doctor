@@ -16,6 +16,7 @@ SCRIPT_MODULES = {
     "query-doctor-analyze": "query_doctor.cli.analyze_profile",
     "query-doctor-corpus-smoke": "query_doctor.cli.corpus_smoke",
     "query-doctor-demo": "query_doctor.cli.demo_data",
+    "query-doctor-deployment-readiness": "query_doctor.cli.deployment_readiness",
     "query-doctor-report": "query_doctor.cli.report",
     "query-doctor-self-test": "query_doctor.cli.self_test",
     "query-doctor-web": "query_doctor.cli.web",

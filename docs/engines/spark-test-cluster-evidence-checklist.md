@@ -482,15 +482,16 @@ manifest filenames, compact filenames, raw payload values, History Server URLs,
 request selectors, SQL, log content, or local output paths.
 
 The optional `--summary-json` output writes a raw-free machine-readable handoff
-readiness summary with only schema/mode/status labels, pipeline stage states,
-no-support boundary labels, selected requirements, aggregate counts, safe
-counters, diagnostic-lane
-checked/readiness/source-granularity/verification-scope and fact-state
-counters, and safe issue categories/messages. The summary path must differ from
-the package input. The audit must print or write only safe aggregate
-counts. It must not echo compact input paths, raw filenames, raw payload
-values, History Server URLs, request selectors, SQL, log content, or local
-output paths. Manifest-driven audit must also not echo manifest filenames.
+readiness summary with schema `spark_evidence_handoff_summary_v1`. It must
+retain the diagnostic-lane checked/readiness/source-granularity counters plus
+verification-scope and fact-state counters, together with only
+schema/mode/status labels, pipeline stage states, no-support boundary labels,
+selected requirements, aggregate safe counters, and safe issue
+categories/messages. The summary path must differ from the package input. The
+audit must print or write only safe aggregate counts. It must not echo compact
+input paths, raw filenames, raw payload values, History Server URLs, request
+selectors, SQL, log content, or local output paths. Manifest-driven audit must
+also not echo manifest filenames.
 
 For a retained set of operator-reviewed handoff summaries, first build a local
 `spark_evidence_handoff_suite_v1` suite manifest with relative references only:

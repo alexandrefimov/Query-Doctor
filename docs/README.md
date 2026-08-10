@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-25
+Last reviewed: 2026-08-10
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -36,7 +36,8 @@ The primary source-of-truth chain is:
 
 ## Hard Rules Summary
 
-- Python/analyzer owns facts; LLM owns wording only.
+- Query Doctor's deterministic Python analyzers own diagnostic facts, evidence
+  merging, and trust decisions; LLMs own wording only.
 - Query Doctor never executes user SQL or optimizer draft SQL.
 - Trusted browser/report surfaces must not expose raw SQL, raw profiles, raw
   metadata, local paths, `case_dir`, subprocess output, secrets, model names,
@@ -59,9 +60,17 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   instructions under [i18n/ru/](i18n/ru/).
 - [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
   and public demo storyline.
+- [../deploy/kubernetes/README.md](../deploy/kubernetes/README.md): supported
+  container image and Kubernetes web deployment starting point, including
+  public-demo and configured private manifests, probes, and boundaries.
+- [../deploy/helm/query-doctor/README.md](../deploy/helm/query-doctor/README.md):
+  Helm chart modes, render validation, and deployment boundaries.
 - [configuration.md](configuration.md): local JSON configuration reference for
   Cloudera Manager, manual-profile inbox, direct Impala, Prometheus, metadata,
   and LLM routing.
+- [recent-history-store.md](recent-history-store.md): raw-free Recent summary
+  history storage contract, SQLite adapter, optional Postgres adapter, profile
+  worker, and CNPG production boundary.
 - [security-model.md](security-model.md): public security, privacy, and
   demo-sharing overview for users and external reviewers.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
@@ -70,6 +79,11 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   `owner_raw` deployment contract, pre-proxy readiness checklist, live
   front-door validation gate, and SSO/auth proxy support-readiness gate for
   trusted ingress viewer identity.
+- [kubernetes-auth-front-door.md](kubernetes-auth-front-door.md): configured
+  Kubernetes auth-proxy contract, post-Keycloak acceptance checklist, and
+  raw-free audit path for oauth2-proxy/Keycloak-style front doors and
+  NetworkPolicy isolation without enabling native Query Doctor auth or
+  owner-raw source reveal.
 - [dev-sso-keycloak.md](dev-sso-keycloak.md): Dev Keycloak SSO Smoke,
   a dev-only Keycloak and oauth2-proxy compose smoke for checking the
   front-door viewer header contract before a real site SSO owner is available.
@@ -81,13 +95,19 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 
 ## Start Here For Contributors And Agents
 
-- [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
-- [codex-handoff.md](codex-handoff.md): public-safe agent baseline.
+- [agent-quickstart.md](agent-quickstart.md): canonical operational sequence for
+  authorized changes.
+- [agent-playbook.md](agent-playbook.md): compact human-readable change router;
+  `python3 scripts/agent_preflight.py` is the executable route.
+- [codex-handoff.md](codex-handoff.md): durable product and safety baseline,
+  required for larger or sensitive work.
 - [public-documentation-boundary.md](public-documentation-boundary.md): split
   committed public docs from ignored local agent notes.
 - [code-map.md](code-map.md): code ownership lookup.
 - [test-matrix.md](test-matrix.md): focused validation matrix.
 - [code-audit.md](code-audit.md): open code risks and review baseline.
+- [archive/code-audit-resolved-guards.md](archive/code-audit-resolved-guards.md):
+  historical resolved guard details; not an active risk or support contract.
 - [engine-redaction-note-v1.md](engine-redaction-note-v1.md): shared raw-free
   evidence-package redaction note schema for package-style engine intake.
 - [customer-readiness-priorities.md](customer-readiness-priorities.md):
@@ -123,10 +143,12 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
-- [release-notes-0.10.0.md](release-notes-0.10.0.md): 0.10.0 release
-  notes for bounded local Trino production support, Impala production triage
-  polish, and release-readiness safety gates.
+- [release-notes-0.11.0.md](release-notes-0.11.0.md): 0.11.0 release
+  notes for containerized web deployment, Kubernetes manifests, health probes,
+  synthetic Kubernetes self-test, raw-free deployment readiness, one-profile
+  web intake, persistent Recent local history, and container CI.
 - Historical release notes:
+  [0.10.0](release-notes-0.10.0.md),
   [0.9.0](release-notes-0.9.0.md),
   [0.8.0](release-notes-0.8.0.md),
   [0.7.0](release-notes-0.7.0.md),
@@ -162,13 +184,14 @@ Status legend:
 | --- | --- | --- |
 | [../README.md](../README.md) | active | Demo-first public overview, install path, support boundaries, and safety summary. |
 | [../README.ru.md](../README.ru.md) | reference | Russian companion for the public overview. |
-| [../AGENTS.md](../AGENTS.md) | active | Hard rules for coding agents. |
+| [../AGENTS.md](../AGENTS.md) | active | Hard rules and canonical source routing for coding agents. |
 | [README.md](README.md) | active | Documentation status index. |
-| [agent-quickstart.md](agent-quickstart.md) | active | Shortest safe agent read path and validation bias. |
-| [codex-handoff.md](codex-handoff.md) | active | Public-safe agent baseline and safety-sensitive context. |
+| [agent-quickstart.md](agent-quickstart.md) | active | Canonical worktree, validation, commit, local-merge, and cleanup sequence. |
+| [codex-handoff.md](codex-handoff.md) | active | Durable product and safety baseline required for larger or sensitive work. |
 | [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
 | [owner-raw-d3-deployment.md](owner-raw-d3-deployment.md) | active | Shared/non-local `owner_raw` deployment contract, pre-proxy readiness checklist, live front-door validation gate, SSO/auth proxy support-readiness gate, kill switch, and audit checks. |
+| [kubernetes-auth-front-door.md](kubernetes-auth-front-door.md) | active | Configured Kubernetes auth-proxy contract, post-Keycloak acceptance checklist, and raw-free audit path for oauth2-proxy/Keycloak-style front doors and NetworkPolicy isolation. |
 | [dev-sso-keycloak.md](dev-sso-keycloak.md) | reference | Dev Keycloak SSO Smoke for the D3 front-door viewer header contract; not production SSO support. |
 | [engine-redaction-note-v1.md](engine-redaction-note-v1.md) | active | Shared raw-free evidence-package redaction note schema for package-style engine intake. |
 | [engines/README.md](engines/README.md) | reference | Index for detailed Trino and Spark preview/research docs and command catalogs. |
@@ -194,14 +217,16 @@ Status legend:
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |
 | [roadmap.md](roadmap.md) | active | Product direction, priorities, deferred work, and anti-features. |
 | [code-audit.md](code-audit.md) | active | Public engineering and safety risk summary. |
+| [archive/code-audit-resolved-guards.md](archive/code-audit-resolved-guards.md) | archived | Historical implementation detail for resolved code-audit guards; current risks remain in the active audit. |
 | [analyzer-audit.md](analyzer-audit.md) | active | Public analyzer risk summary and fact-confidence rules. |
-| [agent-playbook.md](agent-playbook.md) | active | Change-type routing for agents. |
+| [agent-playbook.md](agent-playbook.md) | active | Compact human-readable change-type routing alongside executable preflight. |
 | [test-matrix.md](test-matrix.md) | active | Focused validation matrix. |
 | [validation-log.md](validation-log.md) | active | Public validation policy and path-free release gate snapshots. |
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
-| [release-notes-0.10.0.md](release-notes-0.10.0.md) | reference | 0.10.0 release notes. |
+| [release-notes-0.11.0.md](release-notes-0.11.0.md) | reference | 0.11.0 release notes. |
+| [release-notes-0.10.0.md](release-notes-0.10.0.md) | archived | Historical 0.10.0 release snapshot. |
 | [release-notes-0.9.0.md](release-notes-0.9.0.md) | archived | Historical 0.9.0 release snapshot. |
 | [release-notes-0.8.0.md](release-notes-0.8.0.md) | archived | Historical 0.8.0 release snapshot. |
 | [release-notes-0.7.0.md](release-notes-0.7.0.md) | archived | Historical 0.7.0 release snapshot. |
@@ -213,12 +238,15 @@ Status legend:
 | [release-notes-0.4.0.md](release-notes-0.4.0.md) | archived | Historical 0.4.0 release snapshot. |
 | [release-notes-0.3.0.md](release-notes-0.3.0.md) | archived | Historical 0.3.0 release snapshot. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
+| [recent-history-store.md](recent-history-store.md) | active | Raw-free Recent summary history storage contract, SQLite adapter, optional Postgres adapter, profile worker, and CNPG production boundary. |
 | [local-smoke.md](local-smoke.md) | reference | Public-safe local validation workflows with private targets kept local. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |
 | [security-model.md](security-model.md) | reference | Public security/privacy overview; defer to `safety-contract.md` for rules. |
 | [ui-ux-audit.md](ui-ux-audit.md) | reference | Accepted UI/UX audit takeaways and follow-up backlog. |
 | [public-release-readiness.md](public-release-readiness.md) | reference | Public-release checklist. |
 | [release-checklist.md](release-checklist.md) | reference | Maintainer release checklist. |
+| [../deploy/kubernetes/README.md](../deploy/kubernetes/README.md) | reference | Supported container image and Kubernetes web deployment starting point. |
+| [../deploy/helm/query-doctor/README.md](../deploy/helm/query-doctor/README.md) | reference | Helm chart modes, validation, and deployment boundaries. |
 | [repository-hardening.md](repository-hardening.md) | reference | Public repository security and automation baseline. |
 | [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
 | [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |

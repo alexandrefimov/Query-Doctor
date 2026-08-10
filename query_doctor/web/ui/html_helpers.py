@@ -65,9 +65,9 @@ def score_badge_from_values(
 def status_badge(value: Any) -> SafeHtml:
     text = "unknown" if value is None else str(value)
     normalized = text.lower()
-    if normalized in {"ok", "collected", "passed"}:
+    if normalized in {"ok", "collected", "passed", "ready"}:
         class_name = "batch-status--ok"
-    elif normalized == "failed":
+    elif normalized in {"failed", "blocked"}:
         class_name = "batch-status--failed"
     elif normalized in {"skipped", "not_run", "not_observed", "unknown"}:
         class_name = "batch-status--neutral"

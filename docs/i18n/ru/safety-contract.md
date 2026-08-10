@@ -1,6 +1,6 @@
 # Контракт безопасности Query Doctor
 
-Last reviewed: 2026-06-17
+Last reviewed: 2026-07-13
 
 Язык: [English](../../safety-contract.md) | Русский
 
@@ -11,14 +11,26 @@ Last reviewed: 2026-06-17
 
 ## Граница фактов
 
-- Python/analyzer отвечает за факты.
+- Deterministic Python analyzers Query Doctor отвечают за diagnostic facts,
+  evidence merging, assessment findings и causal promotion.
 - LLM отвечает только за формулировку.
-- Любое диагностическое утверждение должно соответствовать evidence в
-  `analysis_facts.md`: `supported`, `not_observed` или `unknown`.
-- Нельзя заявлять root cause, если `analysis_facts.md` прямо не поддерживает
-  такую причину.
-- Report writer не должен делать выводы из raw profile text, SQL, raw Cloudera
-  Manager JSON, local config или external knowledge.
+- Любое диагностическое утверждение должно соответствовать evidence со
+  статусом `supported`, `not_observed` или `unknown`. Текущие reports
+  отображают его через `analysis_facts.md`.
+- Нельзя заявлять root cause, если accepted evidence Query Doctor прямо не
+  поддерживает такую причину.
+- Report writer не должен делать выводы из raw profile/EXPLAIN text, SQL, raw
+  Cloudera Manager JSON, local config или external knowledge.
+- Raw EXPLAIN text является local evidence artifact. Persisted plan facts могут
+  содержать только bounded allowlisted structural enums, coverage states,
+  counts и finite nonnegative estimates. Они не должны сохранять raw lines,
+  relations, predicates, literals, paths, engine-local identities или raw-plan
+  fingerprint; optimizer intent само по себе не поддерживает causal claim.
+- Accepted external EXPLAIN artifact остается не связанным с runtime profile.
+  Case co-location, соседние SQL/query metadata и structural operator overlap
+  не устанавливают statement или execution identity. Оба identity должны
+  оставаться `unknown`, пока не появится отдельно проверенный источник
+  same-snapshot provenance.
 
 ## Граница engine facts
 
@@ -84,13 +96,20 @@ Last reviewed: 2026-06-17
 
 ## Граница manual profile intake
 
-- Manual profile intake принимает только один локальный exported Apache Impala
-  text profile для одного explicit Query ID. JSON, Thrift, profile-v2 payloads,
-  browser uploads, broad profile directories и network collection находятся вне
-  этой границы.
-- Browser не должен upload или render raw profile. Web `manual_profile_dir` -
-  server-side local inbox: пользователь кладет files на disk, затем вводит
-  исходный Query ID в Known Query ID mode.
+- Manual profile intake принимает только один exported Apache Impala text
+  profile для одного explicit Query ID: через CLI/local inbox staging или через
+  explicit local/private web upload form. JSON, Thrift, profile-v2 payloads,
+  broad profile directories и network collection находятся вне этой границы.
+- Browser не должен render raw profile, uploaded filename, local path или
+  temporary upload artifact. Единственный browser upload entry point -
+  `POST /profile/upload`: он должен требовать multipart form data, принимать
+  ровно один profile file, оставаться bounded через `max_profile_bytes` плюс
+  небольшой multipart overhead, force Impala Known Query path, stage через тот
+  же redacted analyzer path и удалять temporary upload file после staging.
+  Public demo mode должен скрывать upload form и блокировать uploads до чтения
+  request body. Web `manual_profile_dir` остается server-side local inbox:
+  пользователь кладет files на disk, затем вводит исходный Query ID в Known
+  Query ID mode.
 - Manual profile staging должен пройти тот же redaction и bounded analyzer path,
   что collector-shaped cases, до того как Details page или trusted report могут
   использовать case.

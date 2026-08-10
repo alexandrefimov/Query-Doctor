@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import http.client
 import re
 import urllib.error
 import urllib.parse
@@ -217,7 +218,13 @@ def fetch_profile_url(
     try:
         with opener(request, timeout=timeout_sec) as response:
             raw = response.read(max_profile_bytes + 1)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        http.client.HTTPException,
+    ) as exc:
         raise CMClientError("Impala profile endpoint request failed safely.") from exc
     if len(raw) > max_profile_bytes:
         raise CMClientError("Impala profile endpoint response exceeded the configured byte limit.")

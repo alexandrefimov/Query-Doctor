@@ -40,6 +40,7 @@ def test_impala_shell_bootstrap_owns_patched_sqlparse_pin():
     assert _version_tuple(pins["sqlparse"]) >= (0, 5, 4)
     assert 'pip install --no-deps "impala_shell==$IMPALA_SHELL_VERSION"' in bootstrap
     assert "patched_requirement" in bootstrap
+    assert 'dist_info / "PKG-INFO"' in bootstrap
 
 
 def test_metadata_collector_cmd_accepts_command_prefix(tmp_path):

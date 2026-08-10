@@ -21,6 +21,7 @@ venv/
 *.partial.md
 
 # Query Doctor generated outputs
+tmp/agent-code-graph/
 query-doctor-config.json
 !query-doctor-config.example.json
 .query-doctor-cm.local.json
@@ -30,6 +31,7 @@ cases/cm-corpus-*/
 cases/*/analysis_facts.md
 cases/*/analysis.json
 cases/**/analysis.json
+cases/*/explain.txt
 cases/*/impala_context/
 cases/*/impala_context.md
 cases/*/diagnosis*.md

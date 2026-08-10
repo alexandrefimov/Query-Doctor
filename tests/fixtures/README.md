@@ -40,6 +40,13 @@ directory:
 Use it for metadata/context parsing tests. Keep any SQL in fixtures sanitized
 and intentionally minimal.
 
+`impala_explain/` contains synthetic minimal-, standard-, extended-, and
+verbose-like coverage, legacy-fragment and impala-shell-boxed forms, plus
+modern fragment host/instance, resource-header, `HDFS partitions`, and stored
+statistics layouts for the bounded raw-free parser. These fixtures use
+synthetic-only identifiers and contain no production SQL, hostnames, paths, or
+evidence.
+
 ## Primary Bottleneck Fixtures
 
 `primary_bottleneck_fixtures/` contains compact sanitized JSON fixtures with

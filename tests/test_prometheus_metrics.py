@@ -1,3 +1,4 @@
+import http.client
 import json
 from urllib.parse import parse_qs, urlsplit
 
@@ -29,6 +30,17 @@ class FakeResponse:
 
     def read(self, _size: int) -> bytes:
         return self.body
+
+
+class BrokenReadResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, _size: int) -> bytes:
+        raise http.client.IncompleteRead(b"partial")
 
 
 def test_prometheus_config_rejects_secret_bearing_url():
@@ -173,3 +185,29 @@ def test_prometheus_context_reports_unavailable_without_query_timestamps():
     assert context["available"] is False
     assert context["reason"] == "query start/end time unavailable"
     assert context["queries"] == []
+
+
+def test_prometheus_context_marks_incomplete_read_metrics_unavailable():
+    def fake_opener(request, timeout, context=None):
+        return BrokenReadResponse()
+
+    context = collect_prometheus_timeseries_context(
+        CMQuerySummary(
+            query_id="abc:def",
+            start_time="2024-01-01T00:00:00Z",
+            end_time="2024-01-01T00:05:00Z",
+        ),
+        prometheus_url="https://prom.example.net",
+        padding_sec=60,
+        step_sec=30,
+        max_response_bytes=2048,
+        max_points=100,
+        opener=fake_opener,
+    )
+
+    assert context["available"] is False
+    assert len(context["queries"]) == len(PROMETHEUS_TIMESERIES_MAPPINGS)
+    assert {query["status"] for query in context["queries"]} == {"unavailable"}
+    assert all(
+        "Prometheus request failed safely" in query["reason"] for query in context["queries"]
+    )

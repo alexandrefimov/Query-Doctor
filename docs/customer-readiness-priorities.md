@@ -1,6 +1,6 @@
 # Customer Readiness Priorities
 
-Last reviewed: 2026-06-11
+Last reviewed: 2026-07-03
 
 This note records the near-term product-readiness backlog for making Query
 Doctor easier to show to external reviewers and design partners. It is public
@@ -16,6 +16,12 @@ runs with useful feedback. Those runs may start from one manually exported
 profile or from a bounded Recent scan; both paths must stay safe, raw-free on
 public surfaces, and no-LLM-capable.
 
+The main operator path should evolve into a Recent-first Query Inbox over
+already materialized safe cases: open the UI, pick the configured source and
+time range, use first-screen result presets for the ranked bad queries, and
+drill into Details. The one-profile path remains the shortest first-value demo
+and restricted-access fallback, not the long-term center of production triage.
+
 Trino and Spark work remains useful for bounded raw-free contracts, fixture
 shape, and future engine seams. It should not distract from the current
 customer path: Apache Impala Recent scans, Details, safe recommendations,
@@ -24,26 +30,31 @@ knowing the internal analyzer pipeline.
 
 ## Near-Term Product Slice
 
-1. One-profile first value: keep the shortest entry path focused on one
+1. Query Inbox direction: make bounded Recent scans and materialized safe cases
+   the primary operator path for production triage. Prioritize a clean results
+   table, time-range and source context, first-screen high-signal filters,
+   workload grouping, freshness/coverage status, and direct Details navigation
+   over collector internals.
+2. One-profile first value: keep the shortest entry path focused on one
    exported Impala profile to one useful diagnosis without requiring Cloudera
    Manager discovery, Kerberos setup, metadata collection, Prometheus, or an
    LLM provider.
-2. Demo site: use the existing `query-doctor-web --public-demo` mode as the
+3. Demo site: use the existing `query-doctor-web --public-demo` mode as the
    first read-only click-through demo surface. Do not build a separate demo app
    until the public-demo path proves insufficient.
-3. Real-cluster validation: seek read-only Cloudera Manager plus Impala access
+4. Real-cluster validation: seek read-only Cloudera Manager plus Impala access
    for bounded Recent-scan validation. Keep outreach emails, contacts,
    endpoints, and partner-specific details outside the public repository.
-4. Minimal config: keep a copy-pasteable Cloudera Manager starter config
+5. Minimal config: keep a copy-pasteable Cloudera Manager starter config
    separate from advanced direct-Impala, Prometheus, metadata, and LLM settings.
-5. UI/UX polish: prioritize Recent results and Details. Browser labels should
+6. UI/UX polish: prioritize Recent results and Details. Browser labels should
    use analyst workflow language such as `Scan context`, `Scan notes`,
    `Scan warnings`, `Workload follow-up`, `Workload p95`, `Open Details`, and
    `Record rerun outcome` instead of
    internal analyzer concepts. Results should keep available views in one
    visible toolbar, and Details should lead with why the query matters, where
    to inspect, what to try, and how to verify before collapsed evidence.
-6. Documentation hygiene: keep README, demo, config, safety, roadmap, and
+7. Documentation hygiene: keep README, demo, config, safety, roadmap, and
    support boundaries easy to find. Move deep contracts and historical material
    behind the documentation index, and avoid sending new users through the full
    knowledge base.
@@ -52,6 +63,7 @@ knowing the internal analyzer pipeline.
 
 | Item | Proposed action | Rationale |
 | --- | --- | --- |
+| Query Inbox operator path | Make Recent/materialized safe cases the main production triage path before adding broader providers | Operators get value when the bad queries are already ranked and filterable; this also creates the right vendor-neutral source contract without weakening support boundaries. |
 | One-profile first value | Keep a one-profile diagnosis path visible before full Recent setup | It is the lowest-friction way for a design partner to see value without giving broad cluster access. |
 | Demo site | Build from `--public-demo` first | Existing synthetic demo is read-only, local-safe, and already blocks writes. |
 | Read-only Impala validation access | Keep partner-specific outreach outside public docs; public docs should record only the generic validation need and safety boundaries | Real Impala/CM validation is the highest-leverage way to improve the primary product, but outreach copy is not product documentation. |

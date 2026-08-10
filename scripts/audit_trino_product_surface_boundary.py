@@ -211,6 +211,11 @@ ALLOWED_TRINO_PRODUCT_SOURCE_IMPORT_PREFIXES = {
             "query_doctor.trino.support_mode",
         }
     ),
+    "query_doctor.web.deployment_readiness": frozenset(
+        {
+            "query_doctor.trino.support_mode",
+        }
+    ),
     "query_doctor.web.models": frozenset(
         {
             "query_doctor.trino.support_mode",

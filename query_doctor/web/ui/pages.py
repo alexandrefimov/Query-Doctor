@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from dataclasses import replace
 from typing import Any
 
 from query_doctor.web.ui.home import render_no_reports_note, render_run_panel, render_trust_strip
@@ -26,7 +27,25 @@ from query_doctor.web.ui.i18n import normalize_ui_language
 from query_doctor.web.ui.errors import render_error_panel as render_safe_error_panel
 from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
 from query_doctor.web.ui.recent_scan_form import render_batch_run_panel
+from query_doctor.web.ui.query_inbox import (
+    QueryInboxScopeFilters,
+    query_inbox_refresh_form_values_from_settings,
+    query_inbox_scope_filter_query,
+    query_inbox_scope_filters_match_settings,
+    query_inbox_status_from_settings,
+    render_query_inbox_status,
+)
+from query_doctor.web.ui.recent_scan_groups import (
+    DEFAULT_RESULT_SORT,
+    RESULT_SORT_PARAM,
+    normalize_result_sort,
+)
 from query_doctor.web.ui.recent_scan_results import render_batch_card
+from query_doctor.web.ui.recent_scan_result_filters import (
+    RecentScanResultFilters,
+    normalize_recent_scan_result_filters,
+    recent_scan_result_filter_query,
+)
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import render_specific_query_result
 
@@ -132,52 +151,97 @@ def render_batch_page(
     form_values: dict[str, Any] | None = None,
     query_group: str = "bad",
     only_with_spills: bool = False,
+    result_sort: str = DEFAULT_RESULT_SORT,
+    results_page: Any = 1,
     workload_admin_scope: str = "all",
     workload_admin_signal: str = "all",
     workload_group_scope: str = "",
     workload_group_name: str = "",
     workload_group_signal: str = "all",
+    inbox_scope_filters: QueryInboxScopeFilters | None = None,
+    result_filters: RecentScanResultFilters | None = None,
 ) -> str:
     effective_form_values = form_values
     if effective_form_values is None and job is not None:
         effective_form_values = getattr(job, "batch_form_values", None)
+    scope_filters = inbox_scope_filters or QueryInboxScopeFilters()
+    scope_query = query_inbox_scope_filter_query(scope_filters)
+    normalized_result_filters = normalize_recent_scan_result_filters(result_filters)
+    normalized_result_sort = normalize_result_sort(result_sort)
+    result_query = recent_scan_result_filter_query(normalized_result_filters)
+    result_extra_query = {**scope_query, **result_query}
+    if normalized_result_sort != DEFAULT_RESULT_SORT:
+        result_extra_query[RESULT_SORT_PARAM] = normalized_result_sort
+    display_settings = _history_display_settings(settings, scope_filters)
+    scope_matches = query_inbox_scope_filters_match_settings(display_settings, scope_filters)
     batch_card = None
-    if job is None or job.status != "ok":
+    if scope_matches and (job is None or job.status != "ok"):
         batch_card = render_batch_card(
-            settings,
+            display_settings,
             query_group=query_group,
             only_with_spills=only_with_spills,
+            result_filters=normalized_result_filters,
+            result_sort=normalized_result_sort,
+            results_page=results_page,
             workload_admin_scope=workload_admin_scope,
             workload_admin_signal=workload_admin_signal,
             workload_group_scope=workload_group_scope,
             workload_group_name=workload_group_name,
             workload_group_signal=workload_group_signal,
+            extra_query=result_extra_query,
         )
     has_existing_results = bool(batch_card) and job is None and error is None
+    if effective_form_values is None and (
+        has_existing_results or query_inbox_scope_filter_query(scope_filters)
+    ):
+        effective_form_values = query_inbox_refresh_form_values_from_settings(
+            display_settings,
+            scope_filters=scope_filters,
+        )
+    if scope_query:
+        effective_form_values = dict(effective_form_values or {})
+        effective_form_values.update(scope_query)
+    inbox_status = render_query_inbox_status(
+        query_inbox_status_from_settings(settings, job=job, scope_filters=scope_filters),
+        active_group=query_group,
+        only_with_spills=only_with_spills,
+        scope_filters=scope_filters,
+        result_filters=normalized_result_filters,
+        result_sort=normalized_result_sort,
+    )
     sections = [
+        inbox_status,
         render_batch_run_panel(
             settings,
             effective_form_values,
             run_disabled=job is not None and job.status == "running",
-            heading_title="New scan" if has_existing_results else "Diagnose queries",
-        )
+            collapsed=has_existing_results,
+            heading_title="Query Inbox",
+        ),
     ]
     if job is not None:
         result_html = None
-        if job.status == "ok" and getattr(job, "kind", "") == "batch":
+        if scope_matches and job.status == "ok" and getattr(job, "kind", "") == "batch":
             result_html = render_batch_card(
-                settings,
+                display_settings,
                 query_group=query_group,
                 only_with_spills=only_with_spills,
+                result_filters=normalized_result_filters,
+                result_sort=normalized_result_sort,
+                results_page=results_page,
                 workload_admin_scope=workload_admin_scope,
                 workload_admin_signal=workload_admin_signal,
                 workload_group_scope=workload_group_scope,
                 workload_group_name=workload_group_name,
                 workload_group_signal=workload_group_signal,
+                extra_query=result_extra_query,
             )
         sections.append(render_job_panel(job, result_html_override=result_html))
     if batch_card:
-        sections.append(batch_card)
+        if has_existing_results:
+            sections.insert(1, batch_card)
+        else:
+            sections.append(batch_card)
     from query_doctor.web.ui.trino_demo import render_trino_demo_sections
 
     trino_demo_sections = render_trino_demo_sections(settings)
@@ -190,6 +254,15 @@ def render_batch_page(
         error=error,
         extra_sections=sections,
     )
+
+
+def _history_display_settings(settings: Any, scope_filters: QueryInboxScopeFilters) -> Any:
+    if scope_filters.source != "history":
+        return settings
+    try:
+        return replace(settings, batch_summary=None, corpus_summary=None)
+    except TypeError:
+        return settings
 
 
 def render_batch_case_detail_view_page(

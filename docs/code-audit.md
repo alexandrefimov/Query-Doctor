@@ -1,27 +1,25 @@
 # Query Doctor Code Audit
 
-Last updated: 2026-06-14
+Last updated: 2026-07-10
 
 This public audit tracks current engineering and safety risk areas at a level
 that is useful to contributors without publishing local calibration history.
 Detailed branch notes, real-batch measurements, private fixture identifiers,
 generated paths, and per-run investigation logs belong in local exclude-only notes.
+Resolved implementation history is retained in
+[archive/code-audit-resolved-guards.md](archive/code-audit-resolved-guards.md);
+this document remains the source for active risks and maintenance boundaries.
 
 ## Summary
 
 Query Doctor has a deterministic diagnostic core: collection is bounded,
 Python extracts facts, browser presenters sanitize display data, and LLM output
-is hidden unless validation accepts it. The latest trust-boundary audit round
-has implemented guards for shared outbound HTTP egress, inline SQL-like trusted
-report rejection, marker schema-version binding, browser internal-fingerprint
-redaction, parent-side subprocess output caps, generated staging artifacts,
-artifact-route containment, committed fixture provenance, README screenshot
-provenance, and single-source packaging metadata. The largest remaining public
-risks are now release-readiness and maintenance risks: product usefulness gaps,
-review complexity, rendered-Markdown internal coupling, fixture depth,
-lower-priority redaction bypass variants, regex resource-bound regression
-drift, and merge-heavy local history that must be rewritten into reviewable
-semantic commits before public sharing.
+is hidden unless validation accepts it. The largest remaining public risks are
+release-readiness and maintenance risks: product usefulness gaps, review
+complexity, rendered-Markdown internal coupling, fixture depth, lower-priority
+redaction bypass variants, regex resource-bound regression drift, and
+merge-heavy local history that must be rewritten into reviewable semantic
+commits before public sharing.
 
 ## Current Strengths
 
@@ -29,9 +27,10 @@ semantic commits before public sharing.
   reports or optimizer jobs.
 - Cloudera Manager and direct Impala collection paths are bounded and
   read-only for the supported workflow.
-- Production Impala workflows remain Impala-only. Direct Impala collection,
-  normalized engine-fact projections, Trino fixtures, and Spark compact intake
-  must not be combined into a fake multi-engine support claim.
+- Full production triage remains Impala-only. Trino is limited to the
+  matrix-listed bounded raw-free import and local production lanes, while Spark
+  remains bounded compact-only. Do not combine them into an Impala-parity or
+  generic multi-engine support claim.
 - The normalized engine-fact projection is not the product engine registry or a
   replacement for current Impala analyzer facts; existing Impala recommendations
   still come from the production analyzer, presenter, and report contracts until
@@ -55,10 +54,14 @@ semantic commits before public sharing.
 - User-controlled web and optimizer text inputs are byte-bounded before
   regex-heavy parsing or validation paths.
 - Synthetic demo data and public README screenshots are kept raw-free.
-- Runtime packaging has no third-party dependencies; optional developer and E2E
-  tooling stays outside the default install path.
+- Base Python and web runtime packaging has no new third-party dependencies;
+  optional developer and E2E tooling stays outside the default install path.
 
 ## Open Risk Areas
+
+Finding numbers are stable audit identifiers. Closed findings and detailed
+implementation histories move to the resolved-guard archive instead of being
+renumbered here.
 
 ### 1. Optimizer usefulness remains narrow
 
@@ -94,126 +97,18 @@ When touching these areas:
 - avoid formatting-only churn mixed with behavior changes;
 - add focused tests around the boundary being changed.
 
-Implemented guard for second-engine architecture drift: Trino/Spark adapter
-flags, CLI roles, isolated compact web routes, and dev-only script taxonomy are
-now pinned by the machine-checkable engine capability manifest in
-`query_doctor/engines/capabilities.py`. Isolated compact browser routes are
-owned by `query_doctor/web/preview_surfaces.py` and tested against that
-manifest. Keep future Trino/Spark support-surface changes aligned through those
-registries instead of expanding independent docs, adapter, command-spec,
-web-router, and audit-script lists.
+Machine-checkable capability, source-contract, collector, production-review,
+representative-evidence, and fact-promotion registries now pin the bounded
+Trino/Spark and cross-engine seams. Capability or support changes must update
+the relevant registry, focused tests, and support matrix before product wording
+or routing changes. The detailed implementation record is in the
+[resolved-guard archive](archive/code-audit-resolved-guards.md#architecture-and-engine-boundary-drift-guards).
 
-Implemented guard for Trino preview source-contract drift: accepted Trino
-preview `source_type` values, raw policy, required bounds, network-access
-class, auth-reference policy, source-schema gate, retry policy, fail-closed
-policy, and promotion gate now live in
-`query_doctor/trino/source_contract_registry.py`. The support-gap audit checks
-that implemented preview source types are registered, that network-capable
-source entries require safe auth references and bounded retry behavior, and
-that registry entries do not enable product surfaces, Details/trusted reports,
-Recent scans, optimizer behavior, SQL execution, raw storage,
-browser/report output, or metadata identifier output. Future Trino intake
-surfaces must update this registry and focused tests before support wording or
-routing changes.
-
-Implemented guard for Trino bounded-reader drift: the production collector
-contract audit now pins reader status, bounded scope, implementation module,
-CLI role, and capability surface for existing local lanes, preview readers,
-local imports, contract-only checks, and aggregate metadata CLI summary. It
-also rejects broad query-history, Running, broad QueryInfo, statement, or
-`EXPLAIN ANALYZE` reader roles/capabilities before their closure gates exist.
-Future Trino reader additions must update the production collector contract
-audit, command/capability manifests, focused tests, and support matrix before
-support wording or product-surface changes.
-
-Implemented guard for Trino query-linked production-review drift: the
-query-linked fact coverage audit now records the
-`production_review_query_linked_v1` profile over raw-free bounded core fact
-families, linkage scopes, one-query source granularities, and retained
-operator/split-detail/telemetry blockers. The broader production closure gate
-rejects missing or drifted profile/status/requirement tracking before support
-wording can claim broader Trino production readiness.
-
-Implemented guard for Trino operator/connector/telemetry decision drift: the
-query-linked fact coverage audit records
-`operator_connector_telemetry_decision_v1`, with connector metric signal as the
-only current bounded-supported decision and operator-level, split-detail, and
-JMX/OpenMetrics/OpenTelemetry linkage as deliberate unsupported gaps until
-raw-free source contracts exist. The broader production closure gate rejects
-missing or drifted decision-profile status, requirements, and counts.
-
-Implemented guard for Trino product-metadata production-review drift: the
-product metadata collection audit records `production_review_metadata_v1` over
-the allowlist/source lanes, aggregate-only metadata boundary, metadata fact
-namespace, bounded sources, redaction blocks, explicit metadata SQL policy,
-product-surface blocks, and retained product-metadata open blocker. The broader
-production closure gate rejects missing or drifted metadata profile status,
-requirements, and counts before product metadata support wording can change.
-
-Implemented guard for Trino report/optimizer production-review drift: the
-report optimizer safety audit records `production_review_report_optimizer_v1`
-over report/guidance families, materialized capabilities, raw-source policy
-fields, validator sentinel matrix, and blocked product-surface requirements.
-The broader production closure gate rejects missing or drifted report/optimizer
-profile status, requirements, and counts before LLM report, Query Optimizer job,
-generated SQL, SQL execution, or support wording can change.
-
-Implemented guard for Trino shared-deployment production-review drift: the
-shared deployment boundary audit records
-`production_review_shared_deployment_v1` over review families,
-deployment-config requirements, product-boundary requirements, capability
-requirements, release requirements, documentation requirements, and
-unsupported-surface blocks. The broader production closure gate rejects missing
-or drifted shared-deployment profile status, requirements, and counts before
-shared/non-local Trino deployment hardening or support wording can change.
-
-Implemented guard for Trino browser/report production-review drift: the
-browser/report regression audit records `production_review_browser_report_v1`
-over regression families, test files, materialized route capabilities,
-raw-output blocks, unsupported-surface blocks, download regressions, and
-public-claim regressions. The broader production closure gate rejects missing
-or drifted browser/report profile status, requirements, and counts before
-browser/report support wording or broad Trino release claims can change.
-
-Implemented guard for Trino bounded production support-claim drift: the
-support-gap audit now pins `bounded_production_claim_pinned` plus
-`bounded_production_claim_ready`, product-surface summaries use
-local-production machine labels for retained-list Recent and One Query ID, and
-the production-closure audit reports the bounded claim ready only when every
-current raw-free tracking summary is accepted and collector evidence is linked
-to representative evidence. Broader/shared Trino expansion, Running,
-query-history crawling, product metadata collection, LLM reports, Query
-Optimizer jobs, generated SQL, and SQL execution remain separately blocked.
-
-Implemented guard for Trino representative-evidence promotion-review drift:
-the retained representative evidence audit now requires the
-`production_review_breadth_v1` profile to include raw-free handoff-suite,
-compact-readiness, product-surface, and support-gap summary kinds, with
-accepted `ok` input statuses. The audit also rejects product-surface or
-support-gap summary boundary drift that would imply broader closure or Trino
-SQL execution. Future retained evidence promotion work must keep those
-summary-kind, status, and boundary checks aligned with focused tests,
-collector-linkage checks, and the support matrix before support wording or
-release-claim changes.
-
-Implemented guard for cross-engine fact-promotion drift:
-shared/distributed-SQL-family/source-boundary/support-boundary normalized fact
-promotion policy now lives in
-`query_doctor/analyzer/engine_fact_promotion_policy.py`. The support-gap audit
-checks policy coverage for Trino-visible non-engine-specific scopes,
-allowed-engine and scope alignment, raw-free-only policy, disabled product
-surfaces, and explicit promotion gates. Future shared, distributed, source, or
-support-boundary fact promotion must update this policy and focused consumer
-tests before support wording, routing, or product-surface changes.
-
-Implemented first shared helper slice for dev-only readiness/handoff scripts:
-safe handoff artifact path comparison, output-overlap detection, and
-ASCII/sorted JSON artifact writing now live in
-`query_doctor/safety/handoff_artifacts.py`. Trino and Spark handoff scripts
-still own their engine-specific parsing, redaction guards, readiness gates, and
-safe error wording; future script changes should keep moving repeated
-orchestration helpers behind focused shared utilities instead of copying local
-path/output logic.
+Shared handoff-artifact helpers own safe path comparison, output-overlap
+detection, and deterministic JSON writing. Trino and Spark handoff scripts
+still own engine-specific parsing, redaction, readiness gates, and safe error
+wording; keep moving repeated orchestration behind focused helpers when those
+scripts are next touched.
 
 Remaining architecture backlog before broad parallel Trino/Spark feature work:
 
@@ -324,8 +219,9 @@ the stricter public-target policy by default and switches to the configured
 policy only when local/private targets are explicitly opted in.
 Trino HTTP event archive, HTTP query-detail archive, and one-query pruned
 coordinator QueryInfo readers also use the configured-diagnostic policy and
-therefore share the same target validation and no-redirect behavior while
-remaining private-preview paths.
+therefore share the same target validation and no-redirect behavior. Their
+distinct support statuses and product boundaries remain those in the engine
+support gap matrix.
 
 Response reads are parent-side bounded on these paths: Spark, Prometheus, direct
 Impala daemon endpoints, CM text/JSON, Trino HTTP archive/query-detail and
@@ -357,26 +253,12 @@ egress initiated through browser forms or optional URL overrides.
 
 Severity: high for trusted report semantics, medium for future language drift.
 
-Current report validators include English and Russian overclaim detection and
-compare claims against deterministic facts, not against LLM wording. Adversarial
-coverage now rejects indirect unsupported causal wording, soft
-statistics-maintenance recommendation wording, English stats-maintenance
-fix/explanation overclaims, flexible row/cardinality estimate direction wording,
-and a compact EN/RU parity matrix for memory estimate direction, backend data
-skew, primary bottleneck, CM context-only metrics, and CM event context while
-paired safe wording remains allowed. Every supported report language has
-explicit overclaim coverage. Public report-language keys are normalized through
-the shared report-language registry, and unknown languages fail closed at config
-and CLI boundaries instead of silently falling back to another language. This
-closes the material semantic-claim gap where redaction could not help because
-the problem was an unsupported claim rather than raw operational text. Raw
-SQL-like text rejection also covers fenced snippets, line/item-level SQL, and
-inline prose that embeds SQL-like `SELECT`, `WITH`, DML/DDL, or metadata `SHOW`
-statements at the trust gate, not only browser/download display scrubbing.
-
-No remaining guard work is tracked under this finding as of the current audit
-baseline. Keep the adversarial report-validator corpus in focused validation
-whenever report wording, trusted markers, or report safety gates change.
+English and Russian validators compare report claims with deterministic facts,
+normalize supported language keys through one registry, fail closed on unknown
+languages, and reject SQL-like trusted output at the trust gate. The resolved
+semantic-claim coverage record is archived. Keep the adversarial validator
+corpus in focused validation whenever report wording, trusted markers, language
+support, or report safety gates change.
 
 ### 8. Fail-closed trusted-output paths must keep defensive coverage
 
@@ -477,10 +359,6 @@ Required guard work:
 - treat unclosed fenced-SQL extraction and similar lazy DOTALL scans as bounded
   by input caps, and add a focused guard before expanding those patterns.
 
-Implemented guard: web subprocess child stdout/stderr capture is bounded as a
-parent-side safety net, even when child commands are expected to self-cap and
-write user-facing artifacts to files.
-
 ### 11. Pre-push history must be cleaned into reviewable semantic commits
 
 Severity: high for public review readiness, low for content safety when public
@@ -491,12 +369,9 @@ agents finish and merge worktrees into local `main`. That is useful for local
 coordination, but it is not a reviewable public branch shape. A release or
 review branch must not publish a large merge-heavy local history as-is.
 
-Implemented guard: `scripts/check_release_history_shape.py` checks a proposed
-release or review branch against the configured public base ref, requires the
-base to be an ancestor of the release head, rejects excessive commit counts,
-rejects merge commits, and rejects WIP/fixup/draft commit subjects. The public
-release gate runs that guard when `PUBLIC_RELEASE=1` is set, so a merge-heavy
-local integration branch fails before public handoff.
+The public release gate uses `scripts/check_release_history_shape.py` to reject
+a merge-heavy or draft-shaped review branch before public handoff. This does not
+replace the required content and history review.
 
 Before any requested push or public-sharing branch:
 
@@ -509,79 +384,6 @@ Before any requested push or public-sharing branch:
 - do not push local `main` directly to remote `main`; push a prepared review
   branch and keep protected-main behavior intact.
 
-### 12. Packaging metadata should have one version source
-
-Severity: low.
-
-Runtime packaging is intentionally small: no third-party runtime dependencies,
-`query_doctor*` package discovery only, and package data limited to web static
-assets. The legacy `setup.py` shim reads console scripts from `pyproject.toml`,
-and now reads the package version from `pyproject.toml` as well, leaving the
-project table as the canonical version source.
-
-Implemented guard:
-
-- tests assert legacy `setup.py` metadata uses the `pyproject.toml` version and
-  does not carry a literal setup-version keyword;
-- console-script parity tests keep the legacy shim aligned with
-  `pyproject.toml`;
-- keep the legacy editable-install shim only while it is useful for old tooling;
-- keep package metadata and installed-console-script tests in the release gate.
-
-No remaining guard work is tracked under this finding as of the current audit
-baseline.
-
-### 13. Demo fixture and screenshot provenance should be machine-checkable
-
-Severity: low for current demo data, medium if the fixture corpus grows without
-guardrails.
-
-The public demo pack is generated from synthetic case definitions and is tested
-for trusted artifacts, raw-free browser rendering, and local-only behavior. The
-public-release preflight and staged public-safety checks catch many private-data
-markers in changed files, the tracked tree, and history. Committed text
-fixtures under `tests/fixtures/` are now scanned by a dedicated pytest guard
-using the same public-release scanner, so new fixture files must stay within
-the synthetic/example/redacted provenance boundary. README screenshots are now
-listed in `docs/assets/readme-screenshot-provenance.json`, which pins the
-synthetic demo-pack version, capture command, documented route, viewport, alt
-text, README usage, and actual PNG dimensions.
-
-Implemented guard:
-
-- fixture public-safety provenance is checked for committed text fixtures;
-- README screenshot provenance is machine-readable and checked against the
-  English/Russian READMEs, `docs/demo-mode.md`, and the PNG headers.
-
-No remaining guard work is tracked under this finding as of the current audit
-baseline. Keep the manifest and test updated whenever README screenshots,
-demo-pack version, capture routes, or viewport dimensions change.
-
-### 14. Case lifecycle guards must cover transient staging names
-
-Severity: low if regressed.
-
-Generated case artifacts are intentionally ignored, raw-free where public
-surfaces consume them, and kept out of git. Cleanup uses temporary staging and
-refresh directories during artifact replacement, selected-case refresh, and
-CM-timeseries refresh work.
-
-Implemented guard:
-
-- `.gitignore` explicitly ignores `.replace-*`, `.query-refresh-*`, and
-  `.cm-timeseries-refresh-*` staging directories at any tree depth, including
-  non-default local corpus roots;
-- staged public-safety checks reject those staging directories even if someone
-  force-adds them;
-- regression tests pin both `git check-ignore` behavior and staged-path
-  rejection;
-- existing lifecycle tests keep cleanup paths in `finally` blocks and preserve
-  existing final artifacts when replacement or refresh analysis fails.
-
-No remaining guard work is tracked under this finding as of the current audit
-baseline. Keep any new generated staging directory family covered by both
-ignore rules and staged public-safety checks.
-
 ### 15. Browser and trusted-artifact boundaries must stay conservative
 
 Severity: high if regressed.
@@ -591,54 +393,35 @@ metadata, local paths, `case_dir`, process logs, secrets, model names, runtime
 internals, or raw artifact filenames. The isolated owner-only selected-case
 source surface is the narrow raw-SQL browser exception and must keep the
 stricter rules in `docs/safety-contract.md`. Shared or non-local owner-raw
-deployments must resolve per-request viewer identity from an authenticated
-front door such as `viewer_identity_header` behind a trusted proxy; keytab or
-collection owner sets must not authorize raw reveal by themselves. The isolated
-owner-raw source surface must keep its global kill switch and emit only
-reason-coded raw-free audit lines.
+deployments must resolve per-request viewer identity through
+`viewer_identity_header` behind a trusted auth front door that strips inbound
+copies and sets exactly one normalized simple owner value; keytab or collection
+owner sets must not authorize raw reveal by themselves. The isolated owner-raw
+source surface must keep its global kill switch and emit only reason-coded
+raw-free audit lines.
 
 Any change that renders analyzer facts, report content, optimizer content,
 collector errors, or generated artifacts must include focused tests proving the
 new trusted/report surface remains raw-free, or that an isolated owner-raw
 surface stays policy-gated and non-persisted.
 
-Recent audit coverage found the current route and artifact path boundary sound:
-case identifiers are revalidated before path use, server-written case indexes
-choose batch cases, artifact readers use fixed filenames plus trusted markers,
-and resolved paths stay contained under the expected corpus.
+Current batch and Specific Query report exports have traversal, symlink,
+fixed-download-name, trusted-marker, and raw-free rendering coverage. The
+resolved route-audit details are archived. Any new browser artifact route must
+add equivalent coverage before it becomes trusted output.
 
-Implemented guard:
-
-- route-level tests reject encoded and slash path-shaped IDs for both batch
-  case report exports and Specific Query report exports;
-- route-level tests reject symlinked report files outside the case directory
-  for both batch case and Specific Query report exports, even when marker-like
-  metadata is present;
-- fixed-download filenames, markdown `Content-Disposition`, and browser-display
-  model/runtime-name variants are pinned by focused tests.
-
-No remaining guard work is tracked under this finding as of the current audit
-baseline. Any new browser artifact route must add equivalent traversal,
-symlink, fixed-download-name, and raw-free rendering coverage before it becomes
-trusted output.
-
-### 16. Trino contract naming debt must stay closed during preview
+### 16. Trino naming and promotion debt must stay closed
 
 Severity: medium.
 
-The Trino preview path now uses neutral `no_*` limitation facts instead of
-borrowing Impala fact names, and the current `query_list_*` aggregate bucket
-namespace is guarded by a snapshot test. That closes the immediate audit issue
-where unsupported Trino coverage could squat another engine's namespace.
+The Trino-specific naming contract permits `trino_*`, `query_detail_*`,
+`query_list_*`, and neutral `no_*` prefixes for Trino-specific facts.
+`planning_time_ms` remains an explicit distributed-SQL-family fact with
+`allowed_engines={"impala", "trino"}`. The resolved namespace-cleanup history
+is archived; broader promotion and aggregate-bucket debt remain active.
 
-The previous bare Trino metric IDs have been renamed behind the `trino_*`
-prefix. `planning_time_ms` remains unprefixed because it is an explicit
-distributed-SQL-family fact with `allowed_engines={"impala", "trino"}`, not a
-Trino engine-specific fact. Any new Trino engine-specific fact must use a
-`trino_*`, `query_detail_*`, `query_list_*`, or neutral `no_*` prefix.
-
-Before broader Trino support, trusted-report promotion, or any Details surface
-beyond the raw-free materialized local Trino case view:
+Before broader/shared Trino support, LLM report or Query Optimizer job
+promotion, or any Details surface beyond raw-free materialized local cases:
 
 - keep Trino-only facts behind `trino_*`/source-shape prefixes unless a
   separate contract change promotes a specific fact to a family/shared scope
@@ -659,27 +442,28 @@ beyond the raw-free materialized local Trino case view:
   boundary/diagnosis artifacts or a retained handoff-suite manifest before any
   product-surface promotion decision so
   `live_known_query_diagnosis=one_query_pruned_query_info_local_production`,
-  `live_recent_scan=retained_query_list_local_production`, the local production
-  support claim, and the compact-preview plus Recent/One Query ID web registry
-  limits stay pinned;
+  `live_recent_scan=retained_query_list_local_production`, the bounded local
+  production support claim, and the compact-preview plus Recent, One Query ID,
+  materialized Details, deterministic Python Report, and optimizer-guidance
+  registry limits stay pinned;
   manifest mode must require diagnosis artifacts for every entry, and this
   audit must reject metadata-summary boundaries as aggregate coverage evidence,
   not product-surface diagnosis artifacts; keep its static source-import guard
-  enabled so Details, trusted report, optimizer, and other unsupported product
-  modules cannot import Trino preview diagnosis code outside the isolated
-  compact-diagnosis route/page or explicit Recent/One Query ID beta paths;
+  enabled so only the explicit local materialized lanes may consume Trino
+  diagnosis facts while LLM report jobs, Query Optimizer jobs, raw-source
+  rendering, and other unsupported product modules remain blocked;
 - run `scripts/audit_trino_support_gap_matrix.py` before broader support-surface
   decisions so registered Trino fact-family coverage, source-type registry
   coverage, neutral `no_*` gaps, blocked product adapter flags, and
   `trino_support_gap_matrix_audit_v1` evidence stay aligned with the
   support-gap matrix;
 - keep the engine adapter and console-script registry language precise: Trino is
-  registered only for bounded raw-free preview surfaces and the local One Query
-  ID beta surface, including metadata source-contract checking, bounded local
-  metadata CLI summary building, and bounded local metadata summary import, not
-  unsupported production Recent surfaces, trusted report source reads, optimizer
-  jobs, product metadata collection, user SQL execution, query-history crawling,
-  or standalone production Query ID support.
+  registered only for the matrix-listed bounded raw-free import and compact
+  lanes plus local production retained-list Recent, One Query ID, materialized
+  Details, deterministic Python Report, and optimizer guidance. It is not
+  registered for Running scans, broad query-history crawling, product metadata
+  collection, LLM reports, Query Optimizer jobs, generated SQL, SQL execution,
+  or broader/shared production support.
 
 ### 17. Public documentation must not become a local run journal
 

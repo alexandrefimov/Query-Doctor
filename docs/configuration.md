@@ -201,7 +201,10 @@ values must use only letters, digits, `.`, `_`, or `-`.
 Direct `query_doctor.cli.batch_recent` runs can select one of these entries
 with `--config-cluster <id>`. The selected cluster supplies source, metadata,
 runtime-metrics, redaction, and `source_visibility` settings; explicit CLI
-flags still override the selected cluster. For local web runs, omit
+flags still override the selected cluster. When no explicit source flags are
+provided, batch maintenance CLIs use `active_cluster_key` or the only
+`clusters[]` entry as the default source; multi-cluster configs without either
+must pass `--config-cluster`. For local web runs, omit
 `source_owner_user` unless you intentionally need a fixed owner that differs
 from the keytab-derived user.
 
@@ -350,10 +353,11 @@ Minimal local config shape:
 Cluster entries may carry the same Trino keys when different Trino targets need
 separate contracts. The web UI marks configured beta sources as
 `Trino Beta Recent + One Query ID`, `Trino Beta Recent`, or `Trino Beta One
-Query ID`; configured production-mode sources use the same labels without
-`Beta`. The Diagnose Engine control narrows the Source cluster selector to
-Impala-capable sources or Trino-ready sources before workflow selection. Forged
-or stale Trino submits still fail closed before analysis or async job creation.
+Query ID`; configured production-mode sources use the configured source label
+without capability suffixes. The Diagnose Engine control narrows the Source
+cluster selector to Impala-capable sources or Trino-ready sources before
+workflow selection. Forged or stale Trino submits still fail closed before
+analysis or async job creation.
 The web UI must not render coordinator URLs, auth reference paths/values, raw
 QueryInfo, raw query-list payloads, local source-contract paths, or raw SQL.
 
@@ -423,6 +427,15 @@ web metadata collection.
 | `collect_workload_history` / `recent_collect_workload_history` | boolean | Opt in to local workload fingerprint baseline history and regression labels. |
 | `workload_history_path` / `recent_workload_history_path` | string path | Optional local JSONL path for workload history. Defaults to `~/.query-doctor/workload_history.jsonl`. |
 | `workload_history_max_bytes` / `recent_workload_history_max_bytes` | positive integer | Rotate the local workload history file before appending when it exceeds this size. |
+| `recent_history_backend` | string | Optional Recent summary history backend: `disabled`, `sqlite`, or `postgres`. Defaults to `sqlite` when `recent_history_db` is set, otherwise `disabled`. |
+| `recent_history_db` | string path | Optional local SQLite store for raw-free Recent summary history. It stores bounded summary signals, selected/suspicion reason codes, profile collection status, and discover-only planned profile jobs, not raw SQL or profile text. See [Recent History Store](recent-history-store.md) for the SQLite-local and CNPG/Postgres boundary. |
+| `recent_history_postgres_dsn_env` | string | Environment variable name containing the Postgres DSN for `recent_history_backend=postgres`. Defaults to `QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN`. Store the DSN value only in the environment or Secret, not in JSON config. |
+| `recent_history_collector_summary_json` | string path | Optional configured web pointer to an already retained `query_doctor_recent_history_collector_v1` producer summary. Query Inbox projects only allowlisted raw-free status, age, recorded-row, and planned-job counters and never renders the configured path, raw JSON, raw SQL, Query IDs, source keys, local paths, raw errors, or retained free-form text. |
+| `recent_history_operator_readiness_summary_json` | string path | Optional configured web pointer to an already retained `query_doctor_recent_history_operator_readiness_v1` summary. Query Inbox projects only allowlisted raw-free readiness/evidence/reason-code/schema/worker/retention counters and never renders the configured path, raw JSON, raw SQL, profile text, local store paths, or raw artifact names. |
+| `recent_history_summary_retention_days` | positive integer | Optional explicit retention cutoff for raw-free Recent summary rows. The batch CLI prunes rows older than this many days after recording history and reports aggregate delete counts only. |
+| `recent_history_profile_job_retention_days` | positive integer | Optional explicit retention cutoff for terminal raw-free profile job rows. Pending and leased jobs are not pruned. |
+| `recent_history_analysis_cache_retention_days` | positive integer | Optional explicit retention cutoff for raw-free analysis-cache rows. |
+| `recent_history_profile_artifact_retention_days` | positive integer | Optional explicit retention cutoff for raw-free profile-artifact metadata rows. Query Doctor does not store raw profile bytes in the history database. |
 
 In the web Diagnose flow, `Minimum duration (sec)` is intentionally blank by
 default even when `recent_min_duration_sec` exists in local config. An empty web
@@ -438,13 +451,19 @@ setting `web_advanced_settings_enabled=true` and `web_advanced_filters`.
 Worker-count settings such as `recent_parallelism` and `recent_metadata_jobs`
 are intended as local config defaults or explicit request overrides, not normal
 per-scan browser choices.
+For non-local configured web binds, Query Doctor uses conservative defaults
+when these fields are absent: `recent_profile_analysis_limit=50`,
+`recent_parallelism=4`, `recent_metadata_jobs=2`, and
+`recent_metadata_top_limit=10`. Local/localhost web and CLI defaults remain
+unchanged; raise the non-local defaults only with matching pod resources and a
+focused smoke.
 
 ## Manual Profile Inbox
 
 | Field | Type | Scope | Notes |
 | --- | --- | --- | --- |
 | `corpus_dir` | string path | global | Optional output directory for web-collected or web-staged Query ID cases. `query-doctor-web --corpus-dir` overrides this config value. Relative config values resolve from the config file; relative CLI values resolve from the current directory. Defaults to `cases/cm-corpus` under the directory where `query-doctor-web` starts. When it already contains complete `query-doctor-analyze --profile-text` cases, the web UI can start without CM settings or default local config discovery and render those staged exported profiles automatically. |
-| `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path and does not upload raw profile text through the browser. If the file contains an embedded Query ID for a different query, staging fails closed before replacing any existing case. |
+| `manual_profile_dir` | string path | global or cluster | Optional local directory of exported Apache Impala text profiles for Known Query ID analysis. Name each file with the Query ID slug, for example `<query-id-slug>.txt` after replacing the Query ID separator with `_`. The web UI stages matching files through the existing manual-profile analyzer path. If the file contains an embedded Query ID for a different query, staging fails closed before replacing any existing case. |
 
 `manual_profile_dir` is a local-first fallback for one exported profile. It
 does not enable Recent scans, Running scans, Cloudera Manager metrics/events,
@@ -452,6 +471,13 @@ direct impalad collection, metadata collection, report generation, or optimizer
 actions by itself. When it is the only configured source, Known Query ID fails
 closed if the matching profile file is absent instead of falling back to live
 collection.
+
+For local/private sessions without a prepared inbox, the Diagnose page also
+offers an explicit one-profile upload under `One Query ID`. That upload accepts
+one exported Impala text profile, stages it through the same analyzer path under
+`corpus_dir`, and does not render the uploaded profile, filename, local path, or
+temporary upload artifact back into trusted browser surfaces. Public demo mode
+hides the upload form and blocks uploads before reading the request body.
 
 Minimal manual-only web config:
 

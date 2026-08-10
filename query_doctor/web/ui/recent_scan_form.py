@@ -28,6 +28,7 @@ from query_doctor.web.recent_scan_timezone import (
     configured_recent_scan_timezone,
     utc_offset_label,
 )
+from query_doctor.web.ui.query_inbox import query_inbox_scope_filter_query_from_mapping
 
 
 WEB_RECENT_SCAN_DEFAULTS = {
@@ -53,7 +54,7 @@ def render_batch_run_panel(
     query_id: str = "",
     diagnosis_target: str = "recent",
     collapsed: bool = False,
-    heading_title: str = "Diagnose queries",
+    heading_title: str = "Query Inbox",
 ) -> str:
     local_config = read_local_config_values(settings)
     if "recent_parallelism" not in local_config and "recent_cm_jobs" in local_config:
@@ -280,6 +281,7 @@ def render_batch_run_panel(
         f"{render_hidden_cluster_input(value('cluster_key'))}"
         f"{render_hidden_engine_input(selected_engine)}"
         f"{render_hidden_scan_target_input(scan_target)}"
+        f"{render_hidden_query_inbox_scope_inputs(values)}"
         '<div class="batch-form-sections">'
         '<fieldset class="batch-form-section batch-form-section--primary"><legend>Basic scan</legend>'
         f'<div class="batch-form-grid batch-form-grid--simple{owner_grid_class}" aria-label="Basic scan window">'
@@ -631,6 +633,17 @@ def render_hidden_scan_target_input(value: str) -> str:
     )
 
 
+def render_hidden_query_inbox_scope_inputs(values: dict[str, Any] | None) -> str:
+    scope_query = query_inbox_scope_filter_query_from_mapping(values)
+    return "".join(
+        '<input type="hidden" '
+        f'name="{html.escape(name, quote=True)}" '
+        f'value="{html.escape(value, quote=True)}" '
+        "data-inbox-scope-hidden>"
+        for name, value in scope_query.items()
+    )
+
+
 def render_known_query_form(
     settings: Any | None = None,
     *,
@@ -676,6 +689,48 @@ def render_known_query_form(
         f'autocomplete="off" required placeholder="{html.escape(placeholder, quote=True)}">'
         "</div>"
         f'<button class="run-button" type="submit"{disabled_attr}>{button_label}</button>'
+        "</div>"
+        "</form>"
+        + (
+            render_profile_upload_form(
+                settings,
+                cluster_key=cluster_key,
+                query_id=query_id,
+                disabled_attr=disabled_attr,
+            )
+            if selected_engine != "trino"
+            and settings is not None
+            and not getattr(settings, "public_demo", False)
+            else ""
+        )
+    )
+
+
+def render_profile_upload_form(
+    settings: Any | None,
+    *,
+    cluster_key: str,
+    query_id: str,
+    disabled_attr: str = "",
+) -> str:
+    query_value = html.escape(query_id, quote=True)
+    return (
+        '<form id="profile-upload-form" class="run-form profile-upload-form" method="post" '
+        'action="/profile/upload" enctype="multipart/form-data">'
+        f"{render_hidden_cluster_input(cluster_key) if settings is not None else ''}"
+        f"{render_hidden_engine_input('impala')}"
+        '<div class="run-main-row known-query-row profile-upload-row">'
+        '<div class="field">'
+        f"{render_label_with_info('upload_query_id', 'Profile Query ID', 'One explicit Impala Query ID matching the exported text profile. The uploaded profile is staged locally and is not rendered back in trusted browser surfaces.')}"
+        f'<input class="input" id="upload_query_id" name="query_id" type="text" value="{query_value}" '
+        'autocomplete="off" required placeholder="aaaaaaaaaaaaaaaa:0000000000000001">'
+        "</div>"
+        '<div class="field">'
+        f"{render_label_with_info('profile_file', 'Exported profile', 'Exported Impala text profile from the Impala Web UI. JSON, Thrift, and profile-v2 payloads are rejected for this intake.')}"
+        '<input class="input" id="profile_file" name="profile_file" type="file" '
+        'accept=".txt,.profile,.log,.text" required>'
+        "</div>"
+        f'<button class="run-button" type="submit"{disabled_attr}>Upload</button>'
         "</div>"
         "</form>"
     )

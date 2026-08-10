@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from email import policy
+from email.parser import BytesParser
 import subprocess
 import sys
 import uuid
@@ -11,6 +13,7 @@ from typing import BinaryIO, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from query_doctor.web.audit import WebAuditEvent, render_web_audit_log_line
+from query_doctor.cm.client import DEFAULT_MAX_PROFILE_BYTES
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import run_query_id_analysis
@@ -26,6 +29,7 @@ from query_doctor.web.viewer_identity import authenticated_viewer_identity_from_
 
 
 MAX_WEB_POST_BODY_BYTES = 320 * 1024
+PROFILE_UPLOAD_POST_OVERHEAD_BYTES = 64 * 1024
 AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
 RequestIdFactory = Callable[[], str]
 LOCAL_REQUEST_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -92,6 +96,89 @@ def read_bounded_post_form(
             next_step="Reduce the submitted form payload and retry.",
         )
     return parse_qs(raw_body.decode("utf-8", errors="replace"), keep_blank_values=True)
+
+
+def read_bounded_profile_upload_form(
+    body: BinaryIO,
+    content_length_value: str | None,
+    content_type_value: str | None,
+    settings: WebSettings,
+) -> dict[str, list[str]]:
+    allowed_fields = {"query_id", "cluster_key", "engine", "profile_file"}
+    profile_limit = settings.max_profile_bytes or DEFAULT_MAX_PROFILE_BYTES
+    max_bytes = profile_limit + PROFILE_UPLOAD_POST_OVERHEAD_BYTES
+    length = parse_post_content_length(content_length_value)
+    if length > max_bytes:
+        raise WebError(
+            "Uploaded profile exceeds the bounded web upload limit.",
+            title="Uploaded profile is too large",
+            reason_code="web.profile_upload_too_large",
+            stage="Reading profile upload",
+            next_step="Export a smaller text profile or increase max_profile_bytes.",
+        )
+    content_type = (content_type_value or "").strip()
+    if not content_type.lower().startswith("multipart/form-data"):
+        raise WebError(
+            "Profile upload must use multipart form data.",
+            title="Profile upload request is invalid",
+            reason_code="web.profile_upload_content_type_invalid",
+            stage="Reading profile upload",
+            next_step="Submit the profile from the Query Doctor upload form.",
+        )
+    raw_body = body.read(length)
+    message = BytesParser(policy=policy.default).parsebytes(
+        b"Content-Type: "
+        + content_type.encode("ascii", errors="ignore")
+        + b"\r\nMIME-Version: 1.0\r\n\r\n"
+        + raw_body
+    )
+    if not message.is_multipart():
+        raise WebError(
+            "Profile upload form data could not be parsed.",
+            title="Profile upload request is invalid",
+            reason_code="web.profile_upload_multipart_invalid",
+            stage="Reading profile upload",
+            next_step="Submit the profile from the Query Doctor upload form.",
+        )
+    form: dict[str, list[str]] = {}
+    profile_file_seen = False
+    for part in message.iter_parts():
+        if part.get_content_disposition() != "form-data":
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if not name:
+            continue
+        if str(name) not in allowed_fields:
+            raise WebError(
+                "Profile upload form contains an unsupported field.",
+                title="Profile upload request is invalid",
+                reason_code="web.profile_upload_field_invalid",
+                stage="Reading profile upload",
+                next_step="Submit the profile from the Query Doctor upload form.",
+            )
+        payload = part.get_payload(decode=True) or b""
+        if name == "profile_file":
+            if profile_file_seen:
+                raise WebError(
+                    "Profile upload accepts exactly one exported profile file.",
+                    title="Profile upload request is invalid",
+                    reason_code="web.profile_upload_multiple_files",
+                    stage="Reading profile upload",
+                    next_step="Choose one exported Impala text profile and submit again.",
+                )
+            profile_file_seen = True
+            if len(payload) > profile_limit:
+                raise WebError(
+                    "Uploaded profile exceeds the configured profile byte limit.",
+                    title="Uploaded profile is too large",
+                    reason_code="web.profile_upload_too_large",
+                    stage="Reading profile upload",
+                    next_step="Export a smaller text profile or increase max_profile_bytes.",
+                )
+            form.setdefault("profile_text", []).append(payload.decode("utf-8", errors="replace"))
+            continue
+        form.setdefault(str(name), []).append(payload.decode("utf-8", errors="replace"))
+    return form
 
 
 def normalized_request_host(value: str | None) -> str | None:
@@ -347,16 +434,43 @@ def make_handler(
             if not post_route_is_allowed(self.path):
                 self.send_error(404)
                 return
+            request_settings = self.settings_for_request()
+            if request_settings.public_demo:
+                response = route_post_request(
+                    self.path,
+                    {},
+                    request_settings,
+                    store,
+                    analysis_func=analysis_func,
+                    runner=runner,
+                )
+                if response is not None:
+                    self.write_route_response(response)
+                    return
+                self.send_error(404)
+                return
             try:
-                form = read_bounded_post_form(self.rfile, self.headers.get("Content-Length"))
+                if urlsplit(self.path).path == "/profile/upload":
+                    form = read_bounded_profile_upload_form(
+                        self.rfile,
+                        self.headers.get("Content-Length"),
+                        self.headers.get("Content-Type"),
+                        request_settings,
+                    )
+                else:
+                    form = read_bounded_post_form(self.rfile, self.headers.get("Content-Length"))
             except WebError as exc:
-                status = 413 if exc.reason_code == "web.post_body_too_large" else 400
+                status = (
+                    413
+                    if exc.reason_code
+                    in {"web.post_body_too_large", "web.profile_upload_too_large"}
+                    else 400
+                )
                 self.write_html(
                     status,
                     render_page(self.settings_for_request(), active_nav="batch", error=exc),
                 )
                 return
-            request_settings = self.settings_for_request()
             response = route_post_request(
                 self.path,
                 form,

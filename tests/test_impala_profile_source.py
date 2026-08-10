@@ -1,3 +1,4 @@
+import http.client
 import json
 import urllib.error
 
@@ -34,6 +35,17 @@ class FakeResponse:
 
     def read(self, _size: int) -> bytes:
         return self.body
+
+
+class BrokenReadResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, _size: int) -> bytes:
+        raise http.client.IncompleteRead(b"partial")
 
 
 def test_impala_profile_urls_target_explicit_query_on_each_impalad_host():
@@ -142,6 +154,20 @@ def test_build_admission_context_keeps_only_safe_aggregate_pool_facts():
 def test_fetch_impala_admission_context_is_unavailable_for_old_endpoint():
     def fake_opener(_request, timeout):
         raise urllib.error.URLError("not here")
+
+    result = fetch_impala_admission_context(
+        hosts=["impalad-1.example.com"],
+        opener=fake_opener,
+    )
+
+    assert result.context["status"] == "unavailable"
+    assert result.context["reason"] == "request_failed"
+    assert result.attempted_endpoints == 1
+
+
+def test_fetch_impala_admission_context_is_unavailable_for_incomplete_read():
+    def fake_opener(_request, timeout):
+        return BrokenReadResponse()
 
     result = fetch_impala_admission_context(
         hosts=["impalad-1.example.com"],
@@ -285,6 +311,20 @@ def test_fetch_impala_profile_docs_context_is_unavailable_for_old_endpoint():
     assert result.attempted_endpoints == 2
 
 
+def test_fetch_impala_profile_docs_context_is_unavailable_for_incomplete_read():
+    def fake_opener(_request, timeout):
+        return BrokenReadResponse()
+
+    result = fetch_impala_profile_docs_context(
+        hosts=["impalad-1.example.com"],
+        opener=fake_opener,
+    )
+
+    assert result.context["status"] == "unavailable"
+    assert result.context["reason"] == "request_failed"
+    assert result.attempted_endpoints == 2
+
+
 def test_fetch_impala_query_summaries_parses_completed_and_running_queries():
     def fake_opener(request, timeout):
         assert request.full_url in {
@@ -389,6 +429,40 @@ def test_fetch_impala_query_summaries_warns_when_completed_log_is_full():
     assert any("retained log size" in warning for warning in result.warnings)
 
 
+def test_fetch_impala_query_summaries_skips_incomplete_read_endpoint():
+    seen_urls = []
+
+    def fake_opener(request, timeout):
+        seen_urls.append(request.full_url)
+        if request.full_url.endswith("/queries?json"):
+            return BrokenReadResponse()
+        return FakeResponse(
+            json.dumps(
+                {
+                    "completed_queries": [
+                        {
+                            "query_id": "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                            "stmt": "SELECT 1",
+                        }
+                    ],
+                }
+            )
+        )
+
+    result = fetch_impala_query_summaries(
+        hosts=["impalad-1.example.com"],
+        max_query_list_bytes=4096,
+        opener=fake_opener,
+    )
+
+    assert [summary.query_id for summary in result.summaries] == [
+        "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+    ]
+    assert result.attempted_endpoints == 2
+    assert seen_urls[0].endswith("/queries?json")
+    assert seen_urls[1].endswith("/queries?json=true")
+
+
 def test_fetch_impala_profile_text_tries_hosts_until_profile_is_found():
     seen_urls = []
 
@@ -413,6 +487,27 @@ def test_fetch_impala_profile_text_tries_hosts_until_profile_is_found():
     assert result.profile_endpoint_format == "text"
     assert seen_urls[0].startswith("http://impalad-1.example.com:25000/")
     assert seen_urls[2].startswith("http://impalad-2.example.com:25000/")
+
+
+def test_fetch_impala_profile_text_retries_after_incomplete_read():
+    seen_urls = []
+
+    def fake_opener(request, timeout):
+        seen_urls.append(request.full_url)
+        if len(seen_urls) == 1:
+            return BrokenReadResponse()
+        return FakeResponse("Query Runtime Profile\nUser: alice\n")
+
+    result = fetch_impala_profile_text(
+        query_id="abc:def",
+        hosts=["impalad-1.example.com"],
+        max_profile_bytes=1024,
+        opener=fake_opener,
+    )
+
+    assert result.profile_text == "Query Runtime Profile\nUser: alice\n"
+    assert result.attempted_endpoints == 2
+    assert result.profile_endpoint_format == "default"
 
 
 def test_fetch_impala_profile_text_prefers_json_when_enabled_and_falls_back_to_text():
@@ -593,6 +688,18 @@ def test_fetch_impala_daemon_identity_reads_safe_version_and_mode():
     assert identity.build_type == "RELEASE"
     assert identity.server_mode == "coordinator"
     assert identity.local_catalog_mode is True
+
+
+def test_fetch_impala_daemon_identity_ignores_incomplete_read():
+    def fake_opener(_request, timeout):
+        return BrokenReadResponse()
+
+    identity = fetch_impala_daemon_identity(
+        hosts=["impalad-2.example.com"],
+        opener=fake_opener,
+    )
+
+    assert identity is None
 
 
 def test_collect_impala_profile_cli_writes_daemon_identity_metadata(tmp_path):

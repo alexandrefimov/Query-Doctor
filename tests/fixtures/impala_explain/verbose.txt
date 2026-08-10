@@ -1,0 +1,30 @@
+WARNING: The following tables are missing relevant table and/or column statistics.
+Estimated Per-Host Requirements: Memory=1.25GB VCores=3
+
+F02:PLAN FRAGMENT [PARTITION=UNPARTITIONED]
+04:HASH JOIN [INNER JOIN, BROADCAST]
+|  join op: INNER JOIN (BROADCAST)
+|  hosts=1 per-host-mem=128.00MB
+|  tuple-ids=0,1 row-size=64B cardinality=100
+|--05:EXCHANGE [BROADCAST]
+|  hosts=3 per-host-mem=0B
+|  tuple-ids=1 row-size=16B cardinality=10
+
+F01:PLAN FRAGMENT [PARTITION=HASH]
+DATASTREAM SINK [FRAGMENT=F02, EXCHANGE=05, BROADCAST]
+03:HASH JOIN [LEFT OUTER JOIN, PARTITIONED]
+|  join op: LEFT OUTER JOIN (PARTITIONED)
+|  hosts=3 per-host-mem=256.00MB
+|  tuple-ids=0,2 row-size=96B cardinality=1000
+02:SCAN HDFS [synthetic_db.synthetic_fact, PARTITION=RANDOM]
+|  partitions=8/8 files=16 size=1.00GB
+|  table stats: unavailable
+|  column stats: unavailable
+|  predicates: account_id = 42
+|  runtime filters: RF001 -> synthetic_db.synthetic_fact.account_id
+|  hosts=3 per-host-mem=64.00MB
+|  tuple-ids=0 row-size=48B cardinality=1000
+01:SCAN KUDU [synthetic_db.synthetic_dimension]
+   kudu predicates: id IS NOT NULL
+   hosts=3 per-host-mem=16.00MB
+   tuple-ids=2 row-size=32B cardinality=10

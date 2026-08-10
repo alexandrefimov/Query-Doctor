@@ -413,6 +413,8 @@ def cluster_select_options(settings: WebSettings) -> tuple[tuple[str, str], ...]
 
 def cluster_select_label(cluster: WebClusterConfig) -> str:
     label = cluster.label
+    if cluster.trino_support_mode == "production":
+        return label
     trino_label = trino_support_mode_label(cluster)
     if cluster_trino_beta_query_ready(cluster) and cluster_trino_beta_recent_ready(cluster):
         return f"{label} - {trino_label} Recent + One Query ID"

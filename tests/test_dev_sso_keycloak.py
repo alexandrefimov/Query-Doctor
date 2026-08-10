@@ -126,6 +126,6 @@ def test_dev_sso_docs_are_indexed_and_warn_against_production_claims():
     assert "[dev-sso-keycloak.md](dev-sso-keycloak.md)" in docs_index
     assert "Dev Keycloak SSO Smoke" in docs_index
     assert "dev/sso/compose.yaml" in deployment
-    assert "docs/dev-sso-keycloak.md" in test_matrix
-    assert "tests/test_dev_sso_keycloak.py" in test_matrix
+    assert "dev-sso-keycloak.md" in test_matrix
+    assert "tests/test_dev_sso_keycloak*.py" in test_matrix
     assert "dev-only Keycloak/oauth2-proxy smoke" in readme

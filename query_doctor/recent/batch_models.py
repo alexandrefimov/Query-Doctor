@@ -85,6 +85,14 @@ class BatchConfig:
     collect_workload_history: bool = False
     workload_history_path: Path | None = None
     workload_history_max_bytes: int = 5 * 1024 * 1024
+    recent_history_backend: str = "disabled"
+    recent_history_db: Path | None = None
+    recent_history_postgres_dsn_env: str = "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN"
+    recent_history_collector_summary_json: Path | None = None
+    recent_history_summary_retention_days: int | None = None
+    recent_history_profile_job_retention_days: int | None = None
+    recent_history_analysis_cache_retention_days: int | None = None
+    recent_history_profile_artifact_retention_days: int | None = None
     privacy_mode: bool = True
     redact_identifiers: bool = True
     redact_hosts: bool = True
@@ -92,6 +100,7 @@ class BatchConfig:
     source_owner_user: str | None = None
     collectable_owner_users: tuple[str, ...] = ()
     metadata_kerberos_host_fqdn: str | None = None
+    analyzed_profile_reuse_roots: tuple[Path, ...] = ()
 
 
 @dataclass
@@ -158,3 +167,4 @@ class CaseResult:
     cm_collect_seconds: float | None = None
     analysis_seconds: float | None = None
     report_seconds: float | None = None
+    profile_reuse_status: str = "not_requested"

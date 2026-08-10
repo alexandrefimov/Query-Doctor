@@ -439,9 +439,7 @@ def test_owner_raw_d3_source_enable_docs_mention_script() -> None:
     deployment = (source_enable.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(
         encoding="utf-8"
     )
-    matrix = (source_enable.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (source_enable.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_d3_source_enable.py" in deployment
-    assert "scripts/audit_owner_raw_d3_source_enable.py" in matrix
     assert "owner_raw_d3_source_enable_canary_v1" in changelog

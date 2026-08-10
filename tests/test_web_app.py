@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -15,12 +16,13 @@ from query_doctor.web.app import (
     normalized_request_host,
     parse_post_content_length,
     read_bounded_post_form,
+    read_bounded_profile_upload_form,
     request_host_allowed,
     request_origin_allowed,
     settings_for_request_headers,
 )
 from query_doctor.web.models import WebError, WebSettings
-from query_doctor.web.routes import WebRouteResponse, route_get_request
+from query_doctor.web.routes import WebRouteResponse, post_route_is_allowed, route_get_request
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.viewer_identity import (
     VIEWER_IDENTITY_AUTHENTICATED,
@@ -76,6 +78,121 @@ def test_read_bounded_post_form_rejects_over_limit():
 
     assert exc.value.reason_code == "web.post_body_too_large"
     assert exc.value.stage == "Reading web request"
+
+
+def multipart_profile_body(*, boundary: str, profile_text: str) -> bytes:
+    return (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="query_id"\r\n\r\n'
+        "aaaaaaaaaaaaaaaa:0000000000000001\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="profile_file"; filename="secret-profile.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+        f"{profile_text}\r\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+
+
+def test_read_bounded_profile_upload_form_accepts_multipart_profile():
+    boundary = "query-doctor-boundary"
+    body = multipart_profile_body(
+        boundary=boundary,
+        profile_text="Query Runtime Profile\nQuery ID: aaaaaaaaaaaaaaaa:0000000000000001\n",
+    )
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"), max_profile_bytes=4096)
+
+    form = read_bounded_profile_upload_form(
+        io.BytesIO(body),
+        str(len(body)),
+        f"multipart/form-data; boundary={boundary}",
+        settings,
+    )
+
+    assert form["query_id"] == ["aaaaaaaaaaaaaaaa:0000000000000001"]
+    assert "Query Runtime Profile" in form["profile_text"][0]
+    assert "secret-profile.txt" not in str(form)
+
+
+def test_read_bounded_profile_upload_form_rejects_too_large_before_reading_body():
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"), max_profile_bytes=16)
+
+    with pytest.raises(WebError, match="bounded web upload limit") as exc:
+        read_bounded_profile_upload_form(
+            UnreadableBody(b""),
+            str(16 + 64 * 1024 + 1),
+            "multipart/form-data; boundary=x",
+            settings,
+        )
+
+    assert exc.value.reason_code == "web.profile_upload_too_large"
+    assert exc.value.stage == "Reading profile upload"
+
+
+def test_read_bounded_profile_upload_form_rejects_wrong_content_type():
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    with pytest.raises(WebError, match="multipart form data") as exc:
+        read_bounded_profile_upload_form(
+            io.BytesIO(b"profile_file=x"),
+            str(len(b"profile_file=x")),
+            "application/x-www-form-urlencoded",
+            settings,
+        )
+
+    assert exc.value.reason_code == "web.profile_upload_content_type_invalid"
+
+
+def test_read_bounded_profile_upload_form_rejects_direct_profile_text_field():
+    boundary = "query-doctor-boundary"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="query_id"\r\n\r\n'
+        "aaaaaaaaaaaaaaaa:0000000000000001\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="profile_text"\r\n\r\n'
+        "Query Runtime Profile\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    with pytest.raises(WebError, match="unsupported field") as exc:
+        read_bounded_profile_upload_form(
+            io.BytesIO(body),
+            str(len(body)),
+            f"multipart/form-data; boundary={boundary}",
+            settings,
+        )
+
+    assert exc.value.reason_code == "web.profile_upload_field_invalid"
+
+
+def test_read_bounded_profile_upload_form_rejects_multiple_profile_files():
+    boundary = "query-doctor-boundary"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="query_id"\r\n\r\n'
+        "aaaaaaaaaaaaaaaa:0000000000000001\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="profile_file"; filename="one.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+        "Query Runtime Profile\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="profile_file"; filename="two.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+        "Query Runtime Profile\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    with pytest.raises(WebError, match="exactly one") as exc:
+        read_bounded_profile_upload_form(
+            io.BytesIO(body),
+            str(len(body)),
+            f"multipart/form-data; boundary={boundary}",
+            settings,
+        )
+
+    assert exc.value.reason_code == "web.profile_upload_multiple_files"
 
 
 @pytest.mark.parametrize(
@@ -450,6 +567,34 @@ def test_web_handler_rejects_untrusted_post_origin_before_reading_body():
     assert "external.example" not in captured["body"]
 
 
+def test_web_handler_blocks_public_demo_profile_upload_before_reading_body():
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"), public_demo=True)
+    handler = make_handler(settings, analysis_func=lambda *args, **kwargs: None)
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {}
+
+    request.path = "/profile/upload"
+    request.headers = {
+        "Host": "localhost:8765",
+        "Content-Length": "999999",
+        "Content-Type": "multipart/form-data; boundary=x",
+    }
+    request.rfile = UnreadableBody(b"")
+    request.write_route_response = lambda response: captured.update(
+        {"status": response.status, "body": response.body}
+    )
+
+    request.do_POST()
+
+    assert captured["status"] == 403
+    assert "Public demo is read-only" in captured["body"]
+    assert "web.public_demo_read_only" in captured["body"]
+
+
+def test_profile_upload_post_route_is_allowed():
+    assert post_route_is_allowed("/profile/upload") is True
+
+
 def test_web_handler_accepts_local_forwarded_origin():
     settings = WebSettings(config=Path(".query-doctor-cm.local.json"), port=8765)
     handler = make_handler(settings, analysis_func=lambda *args, **kwargs: None)
@@ -588,6 +733,30 @@ def test_static_asset_route_serves_only_allowlisted_files():
     assert route_get_request("/static/./app.css", settings, store) is None
     assert route_get_request("/static/app.css/", settings, store) is None
     assert route_get_request("/static/missing.css", settings, store) is None
+
+
+@pytest.mark.parametrize(("path", "probe"), [("/healthz", "liveness"), ("/readyz", "readiness")])
+def test_health_probe_routes_are_raw_free_json(path, probe):
+    settings = WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = WebJobStore()
+
+    response = route_get_request(path, settings, store)
+
+    assert response is not None
+    assert response.status == 200
+    assert response.content_type == "application/json; charset=utf-8"
+    payload = json.loads(response.body)
+    assert payload == {
+        "probe": probe,
+        "raw_output": False,
+        "service": "query-doctor",
+        "sql_execution": False,
+        "status": "ok",
+    }
+    rendered = response.body
+    assert ".query-doctor" not in rendered
+    assert "SELECT" not in rendered
+    assert "/private/" not in rendered
 
 
 @pytest.mark.parametrize(

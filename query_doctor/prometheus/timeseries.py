@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import math
 import ssl
@@ -269,7 +270,7 @@ class PrometheusClient:
                 payload = response.read(max_response_bytes + 1)
         except urllib.error.HTTPError as exc:
             raise PrometheusClientError(f"HTTP {exc.code} from Prometheus.") from exc
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        except (urllib.error.URLError, OSError, TimeoutError, http.client.HTTPException) as exc:
             raise PrometheusClientError("Prometheus request failed safely.") from exc
         if len(payload) > max_response_bytes:
             raise PrometheusClientError("Prometheus response exceeded maximum allowed bytes.")

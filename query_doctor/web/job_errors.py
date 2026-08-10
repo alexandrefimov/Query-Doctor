@@ -7,10 +7,10 @@ from query_doctor.web.models import WebError
 
 _WORKFLOW_LABELS = {
     "query": "Specific Query analysis",
-    "trino_query": "Trino Beta Query ID diagnosis",
+    "trino_query": "Trino Query ID diagnosis",
     "batch": "Recent scan",
     "running": "Running scan",
-    "trino_recent": "Trino Beta Recent scan",
+    "trino_recent": "Trino Recent scan",
     "batch_report": "Finished-query report generation",
     "batch_llm_report": "Finished-query LLM report generation",
     "query_report": "Specific Query report generation",
@@ -50,7 +50,7 @@ def _safe_job_kind(kind: str) -> str:
 def _next_step_for_kind(kind: str) -> str:
     if kind in {"trino_query", "trino_recent"}:
         return (
-            "Check the selected Trino Beta local source, source contracts, auth reference, "
+            "Check the selected Trino local source, source contracts, auth reference, "
             "and coordinator reachability, then retry."
         )
     if kind in {"batch", "running"}:

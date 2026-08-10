@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Last reviewed: 2026-06-17
+Last reviewed: 2026-07-29
 
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
@@ -10,14 +10,25 @@ implementation boundaries.
 
 ## Fact Boundary
 
-- Python owns facts.
+- Query Doctor's deterministic Python analyzers own diagnostic facts, evidence
+  merging, assessment findings, and causal promotion.
 - The LLM owns wording only.
 - Every diagnostic claim must map to `supported`, `not_observed`, or `unknown`
-  evidence in `analysis_facts.md`.
-- Do not state root cause unless `analysis_facts.md` directly supports that
-  cause.
-- The report writer must not infer facts from raw profile text, SQL, Cloudera
-  Manager JSON, local config, or external knowledge.
+  evidence. Current reports render that evidence through `analysis_facts.md`.
+- Do not state root cause unless Query Doctor's accepted evidence directly
+  supports that cause.
+- The report writer must not infer facts from raw profile or EXPLAIN text, SQL,
+  Cloudera Manager JSON, local config, or external knowledge.
+- Raw EXPLAIN text is a local evidence artifact. Persisted plan facts may contain
+  only bounded allowlisted structural enums, coverage states, counts, and finite
+  nonnegative estimates. They must not retain raw lines, relations, predicates,
+  literals, paths, engine-local identities, or a raw-plan fingerprint, and
+  optimizer intent alone must not support a causal claim.
+- An accepted external EXPLAIN artifact remains unbound to the runtime profile.
+  Case co-location, adjacent SQL or query metadata, and structural operator
+  overlap do not establish statement or execution identity. Both identities
+  must remain `unknown` until a separately verified same-snapshot provenance
+  source exists.
 
 ## Engine Fact Boundary
 
@@ -84,19 +95,27 @@ implementation boundaries.
 
 ## Manual Profile Intake Boundary
 
-- Manual profile intake accepts only one local exported Apache Impala text
-  profile for one Query ID. The CLI may derive that Query ID from an embedded
-  profile header, from a strict Impala Web UI `profile_<query-id-high>_<query-id-low>`
-  download filename, or accept an explicit `--query-id` when the profile header
-  is missing. JSON, Thrift, profile-v2 payloads, browser uploads, broad profile
-  directories, and network collection are outside this boundary.
-- The browser must not upload or render the raw profile. Web `manual_profile_dir`
-  is a server-side local inbox; users place files on disk, then enter the
-  original Query ID in Known Query ID mode. Web `--corpus-dir` may also render
-  already complete manual-profile cases staged by `query-doctor-analyze
-  --profile-text` as a local read-only results table without requiring live CM
-  settings or default local config discovery when no explicit `--config` is
-  provided.
+- Manual profile intake accepts only one exported Apache Impala text profile for
+  one Query ID, either from CLI/local inbox staging or from the explicit
+  local/private web upload form. The CLI may derive that Query ID from an
+  embedded profile header, from a strict Impala Web UI
+  `profile_<query-id-high>_<query-id-low>` download filename, or accept an
+  explicit `--query-id` when the profile header is missing. JSON, Thrift,
+  profile-v2 payloads, broad profile directories, and network collection are
+  outside this boundary.
+- The browser must not render the raw profile, uploaded filename, local path, or
+  temporary upload artifact. The only browser upload entry point is
+  `POST /profile/upload`: it must require multipart form data, accept exactly one
+  profile file, stay bounded by `max_profile_bytes` plus small multipart
+  overhead, force the Impala Known Query path, stage through the same redacted
+  analyzer path, and remove the temporary upload file after staging. Public demo
+  mode must hide the upload form and block uploads before reading the request
+  body. Web `manual_profile_dir` remains a server-side local inbox; users place
+  files on disk, then enter the original Query ID in Known Query ID mode. Web
+  `--corpus-dir` may also render already complete manual-profile cases staged by
+  `query-doctor-analyze --profile-text` as a local read-only results table
+  without requiring live CM settings or default local config discovery when no
+  explicit `--config` is provided.
 - Manual profile staging must run the same redaction and bounded analyzer path
   used for collector-shaped cases before any Details page or trusted report can
   consume the case.

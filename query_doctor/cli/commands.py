@@ -34,6 +34,10 @@ COMMAND_SPECS = MappingProxyType(
             module="query_doctor.cli.cm_events",
             console_script="query-doctor-cm-events",
         ),
+        "deployment_readiness": CommandSpec(
+            module="query_doctor.cli.deployment_readiness",
+            console_script="query-doctor-deployment-readiness",
+        ),
         "collect_impala_context": CommandSpec(
             module="query_doctor.cli.collect_impala_context",
             console_script="query-doctor-collect-impala-context",
@@ -77,6 +81,26 @@ COMMAND_SPECS = MappingProxyType(
         "report": CommandSpec(
             module="query_doctor.cli.report",
             console_script="query-doctor-report",
+        ),
+        "recent_history_postgres_readiness": CommandSpec(
+            module="query_doctor.cli.recent_history_postgres_readiness",
+            console_script="query-doctor-recent-history-postgres-readiness",
+        ),
+        "recent_history_operator_readiness": CommandSpec(
+            module="query_doctor.cli.recent_history_operator_readiness",
+            console_script="query-doctor-recent-history-operator-readiness",
+        ),
+        "recent_history_retention": CommandSpec(
+            module="query_doctor.cli.recent_history_retention",
+            console_script="query-doctor-recent-history-retention",
+        ),
+        "recent_profile_remediation": CommandSpec(
+            module="query_doctor.cli.recent_profile_remediation",
+            console_script="query-doctor-recent-profile-remediation",
+        ),
+        "recent_profile_worker": CommandSpec(
+            module="query_doctor.cli.recent_profile_worker",
+            console_script="query-doctor-recent-profile-worker",
         ),
         "trino_coordinator_query_info_target_check": CommandSpec(
             module="query_doctor.cli.trino_coordinator_query_info_target_check",

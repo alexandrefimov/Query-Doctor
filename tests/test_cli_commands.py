@@ -59,6 +59,27 @@ def test_command_specs_cover_module_and_console_backends():
     assert command_spec("pipeline") == COMMAND_SPECS["pipeline"]
     assert module_name("pipeline") == "query_doctor.cli.pipeline"
     assert console_script_name("pipeline") == "query-doctor-pipeline"
+    assert module_name("deployment_readiness") == "query_doctor.cli.deployment_readiness"
+    assert console_script_name("deployment_readiness") == "query-doctor-deployment-readiness"
+    assert (
+        module_name("recent_history_operator_readiness")
+        == "query_doctor.cli.recent_history_operator_readiness"
+    )
+    assert (
+        console_script_name("recent_history_operator_readiness")
+        == "query-doctor-recent-history-operator-readiness"
+    )
+    assert module_name("recent_history_retention") == "query_doctor.cli.recent_history_retention"
+    assert (
+        console_script_name("recent_history_retention") == "query-doctor-recent-history-retention"
+    )
+    assert (
+        module_name("recent_profile_remediation") == "query_doctor.cli.recent_profile_remediation"
+    )
+    assert (
+        console_script_name("recent_profile_remediation")
+        == "query-doctor-recent-profile-remediation"
+    )
 
 
 @pytest.mark.parametrize(

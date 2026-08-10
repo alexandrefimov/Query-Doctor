@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last updated: 2026-06-22
+Last updated: 2026-07-29
 
 This is the public-safe agent baseline for Query Doctor. It records durable
 product, safety, and engineering context only. Transient continuation notes,
@@ -20,25 +20,19 @@ local exclude-only note files, not in committed documentation.
 - Current engine support, fixture-only, and research statuses are tracked in
   [engine-support-gap-matrix.md](engine-support-gap-matrix.md). Use that matrix
   before changing support wording or second-engine wiring.
-- Trino is implemented only for the bounded raw-free surfaces listed in the
-  matrix. The local production product web surfaces are retained-list Trino Recent over one
-  bounded retained pruned coordinator query-list read plus selected pruned
-  QueryInfo reads, and one explicit Trino Query ID over bounded pruned
-  coordinator QueryInfo; both render raw-free compact diagnosis and may open
-  the raw-free Details view plus deterministic Python Report and optimizer
-  guidance only after server-owned case materialization. Trino Beta remains the
-  legacy local label. A bounded local metadata CLI summary builder exists only
-  for aggregate metadata-coverage summaries after an accepted allowlist; it is
-  not a Recent, Details, report, optimizer, Running, or product metadata
-  surface. Do not expand Trino into Running, query-history crawling, product
-  metadata collection, LLM reports, Query Optimizer jobs, generated SQL, user
-  SQL execution, or broader/shared production support without explicit
-  implementation and validation.
+- Trino is implemented only for the matrix-listed bounded raw-free imports,
+  compact tools, and local production web lanes. Those lanes may materialize
+  raw-free Details, deterministic Python Report, and optimizer guidance; the
+  aggregate-only metadata CLI summary remains outside product metadata
+  collection. Do not expand Trino into Running, broad query-history crawling,
+  product metadata collection, LLM reports, Query Optimizer jobs, generated
+  SQL, user SQL execution, or broader/shared production support without a
+  separately implemented and validated promotion slice.
 - Recent scan is the primary workflow.
 - Query ID diagnosis is secondary for one known query.
 - Query Optimizer is separate for pasted SQL analysis and deterministic
   candidate guidance.
-- Known Query ID analysis may generate the deterministic Python report as part
+- Known Query ID analysis may generate the deterministic Python Report as part
   of its explicit submit job. LLM reports and Query Optimizer outcomes remain
   explicit selected-case actions.
 
@@ -113,7 +107,7 @@ continuation plans belong in local exclude-only notes.
 - Trino is bounded to the raw-free import, compact diagnosis, source-contract,
   retained-handoff, and local production web surfaces listed in the support
   matrix. It is not broad production Trino triage, live query-history collection,
-  LLM report output, Query Optimizer jobs, SQL execution, or Query
+  LLM report output, Query Optimizer jobs, product SQL execution, or Query
   Doctor-generated Trino SQL. Trino Details, Trino Python Report, and Trino
   optimizer guidance are limited to the raw-free materialized local case facts.
 - Spark is bounded to compact History Server intake for one explicit
@@ -140,74 +134,27 @@ continuation plans belong in local exclude-only notes.
   execution, or Query Doctor-generated SQL for a second engine without explicit
   implementation and validation.
 
-## Trino/Spark Parallel Restart Gate
+## Second-Engine Change Gate
 
-The shared `redaction_note_v1` contract is the current baseline for Trino and
-Spark package-style evidence intake, handoff, and readiness work. Future
-package-style engine intake must use the shared validator in
-`query_doctor/analyzer/engine_redaction_note.py`, shared JSON primitives in
-`query_doctor/analyzer/engine_intake_primitives.py`, and shared safe manifest
-reference checks in `query_doctor/safety/manifest_references.py` instead of
-copying local schema checks. Dev-only handoff scripts should use
-`query_doctor/safety/handoff_artifacts.py` for path overlap checks and
-ASCII/sorted JSON artifact writes rather than copying local output helpers.
+The shared `redaction_note_v1` contract is the baseline for package-style Trino
+and Spark intake. Reuse the shared validators, JSON primitives, safe manifest
+references, and handoff artifact helpers named in [code-map.md](code-map.md)
+instead of copying schema or output logic.
 
-The machine-checkable capability graph lives in
-`query_doctor/engines/capabilities.py`. Keep adapter flags, second-engine CLI
-roles, isolated compact web routes, and Trino/Spark dev-only scripts aligned
-with that manifest instead of updating docs, adapters, command specs, web
-routes, or audit scripts as independent lists. Isolated compact browser route
-ownership lives in `query_doctor/web/preview_surfaces.py`; it must stay aligned
-with the capability manifest and remain outside Recent, Details, trusted
-reports, and optimizer workflows.
+Keep the machine-checkable capability manifest, source registries, fact
+promotion policy, route registry, adapters, and support matrix aligned. Their
+current owners live in [code-map.md](code-map.md); do not reproduce the command
+or registry inventory here.
 
-When active parallel Trino and Spark work resumes, start new task worktrees from
-the current local `main`. Older Trino or Spark worktrees must merge current
-`main`, resolve conflicts, and pass the Trino/Spark package-style gate before
-continuing. Do not carry legacy `redaction_note` field shapes forward:
-`manual_review_status`, JSON `sentinel_tests_passed`, and list-style
-sentinel or boundary assertion payloads are stale forms. The
-`sentinel_tests_passed` name remains acceptable only as a CLI or builder
-confirmation flag.
-
-Keep Trino and Spark feature ownership separated. Engine-specific feature
-branches should not silently change the other engine's evidence schema; shared
-helper, schema, manifest-reference, or cross-engine safety changes should land
-as explicit synchronization slices with focused tests and documentation drift
+Trino and Spark changes remain independently owned. A feature slice for one
+engine must not silently change the other's schema or support status. Shared
+helper, schema, manifest-reference, capability, or cross-engine safety changes
+are explicit synchronization slices with focused tests and documentation drift
 checks.
 
-Trino preview source-kind ownership now lives in
-`query_doctor/trino/source_contract_registry.py`. Future Trino source types must
-update that registry, its focused tests, and
-`scripts/audit_trino_support_gap_matrix.py` coverage before any support wording,
-routing, or adapter-flag changes. Cross-engine/source/support-boundary
-normalized fact-promotion ownership lives in
-`query_doctor/analyzer/engine_fact_promotion_policy.py`; future promoted facts
-must update that policy, focused consumer tests, and support-gap audit coverage
-before support wording, routing, or product-surface changes. Before broader
-parallel Trino/Spark feature work, keep the remaining backlog slice separate
-from engine-specific feature branches: shared dev-tool helpers for
-readiness/handoff script orchestration beyond the already-shared handoff
-artifact helpers.
-
-Before editing Trino or Spark surfaces, run
-`python3 scripts/agent_preflight.py --paths <changed-paths>` or rely on the
-same path rules during review. The preflight must point Trino/Spark slices at
-the engine support matrix, `redaction_note_v1`, capability manifest tests, and
-the corresponding static support-boundary audit.
-
-## Agent Read Path
-
-- Always start with [../AGENTS.md](../AGENTS.md) and
-  [agent-quickstart.md](agent-quickstart.md).
-- Use [docs/README.md](README.md) to find the current public documentation
-  source of truth.
-- Use [public-documentation-boundary.md](public-documentation-boundary.md) to
-  decide whether a note belongs in committed docs or local exclude-only notes.
-- Use [code-audit.md](code-audit.md) for open engineering and safety risks.
-- Use [code-map.md](code-map.md) to find behavior ownership.
-- Use [test-matrix.md](test-matrix.md) or `python3 scripts/agent_preflight.py`
-  when validation scope is unclear.
+Before editing either engine, run
+`python3 scripts/agent_preflight.py --paths <planned-paths>` and follow the
+matrix, redaction-contract, capability, and support-boundary routes it selects.
 
 ## Working Rules
 
@@ -215,39 +162,15 @@ Follow [agent-quickstart.md](agent-quickstart.md) as the canonical operational
 contract for worktrees, staging, validation, commits, local `main` merges, and
 completed-worktree cleanup.
 
-Durable invariants:
-
-- Preserve unrelated user changes.
-- Use worktree-first development for each code or documentation slice unless the
-  user explicitly asks to edit the current worktree.
-- Stage only intended files explicitly; do not use `git add .` or `git add -A`.
-- Run focused validation for touched areas and always run `git diff --check`
-  before committing.
-- Keep the public README in the documentation drift check for user-facing
-  workflow, CLI, config, demo, release, packaging, or product-positioning
-  changes.
-- When the branch is complete, committed, validated, and clean, merge it back
-  to local `main` in the same turn unless the user explicitly asks to stop
-  before merge.
-- Do not push, rebase, amend, or force-push unless the user explicitly asks for
-  that operation. Never push directly to remote `main`.
+The durable Git, validation, scope, and documentation invariants remain in
+[../AGENTS.md](../AGENTS.md). This handoff does not duplicate their command
+sequence.
 
 ## Documentation Boundary
 
-Committed docs may include durable contracts, sanitized runbooks, public release
-notes, and path-free aggregate validation summaries. They must not include
-private workstation state or "resume here" instructions.
-
-Use local exclude-only notes for:
-
-- current task branches and branch-specific handoffs;
-- local smoke target names, port-forward commands with real endpoints, and
-  workstation config details;
-- temporary output paths and generated artifact locations;
-- real query IDs, raw profile/metadata references, and private validation
-  evidence;
-- chat-local reminders and next-session plans.
-
-Before public-sharing work, run the staged/changed public-safety checks and the
-public documentation audit, then review the diff for context the scripts cannot
-classify.
+Committed docs contain stable public contracts and sanitized aggregate
+guidance. Current branches, workstation setup, private targets, raw evidence,
+temporary paths, generated outputs, and continuation notes stay in ignored
+local notes. Follow
+[public-documentation-boundary.md](public-documentation-boundary.md) for the
+policy and audit route.

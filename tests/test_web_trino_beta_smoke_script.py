@@ -15,7 +15,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_DIR / "scripts" / "query-doctor-web-trino-beta-smoke"
 QUERY_ID = "20260603_120102_00001_abcde"
 COORDINATOR_URL = "https://trino-coordinator.example.test:8443"
-PRINCIPAL = "sa@LESTA.HADOOP"
+PRINCIPAL = "sa@EXAMPLE.COM"
 
 
 def run_smoke(args, *, home: Path, env: Optional[dict[str, str]] = None):

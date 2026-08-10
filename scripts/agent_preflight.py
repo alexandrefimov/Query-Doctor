@@ -24,11 +24,21 @@ class Rule:
 RULES: tuple[Rule, ...] = (
     Rule(
         name="Docs",
-        patterns=("docs/**", "README.md", "AGENTS.md"),
-        read=("docs/README.md", "docs/codex-handoff.md", "docs/public-documentation-boundary.md"),
-        tests=("python3 scripts/audit_public_docs.py", "git diff --check"),
+        patterns=("*.md", "**/*.md"),
+        read=("docs/README.md",),
+        tests=(
+            "python3 scripts/check_active_docs.py",
+            "python3 scripts/audit_public_docs.py",
+            "python3 scripts/audit_public_distribution_boundary.py",
+            "python3 scripts/check_markdown_links.py",
+            "git diff --check",
+        ),
         changelog="yes, for major documentation baseline or behavior guidance changes",
-        notes=("Keep active docs current and avoid presenting historical notes as contracts.",),
+        notes=(
+            "Read the changed document itself; add task-specific contracts from the "
+            "matched routes instead of preloading every agent baseline.",
+            "Keep active docs current and avoid presenting historical notes as contracts.",
+        ),
     ),
     Rule(
         name="Agent operating docs",
@@ -46,8 +56,9 @@ RULES: tuple[Rule, ...] = (
         tests=(
             "python3 scripts/check_active_docs.py",
             "python3 scripts/audit_public_docs.py",
+            "python3 scripts/audit_public_distribution_boundary.py",
             "python3 scripts/check_markdown_links.py",
-            "python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py tests/test_audit_public_docs.py",
+            "python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_markdown_links.py tests/test_check_staged_public_safety.py tests/test_audit_public_docs.py tests/test_audit_public_distribution_boundary.py",
             "git diff --check",
         ),
         changelog="yes, for major agent-facing documentation baseline changes",
@@ -206,12 +217,58 @@ RULES: tuple[Rule, ...] = (
         notes=("Preserve CLI flags and config semantics unless the task explicitly changes them.",),
     ),
     Rule(
+        name="Config / packaging / deployment",
+        patterns=(
+            "pyproject.toml",
+            "Makefile",
+            ".dockerignore",
+            "Dockerfile*",
+            "requirements*.txt",
+            "deploy/**",
+            ".github/workflows/**",
+            "query_doctor/config/**",
+            "query_doctor/**/config*.py",
+            "scripts/build-image.sh",
+            "scripts/image-smoke.sh",
+            "scripts/helm-chart-smoke.sh",
+            "scripts/kubernetes*.sh",
+            "scripts/audit_kubernetes_deployment.py",
+            "tests/test_config*.py",
+            "tests/test_*config*.py",
+            "tests/test_kubernetes_packaging.py",
+            "tests/test_deployment_readiness.py",
+        ),
+        read=(
+            "docs/development-practices.md",
+            "docs/configuration.md",
+            "deploy/kubernetes/README.md",
+            "deploy/helm/query-doctor/README.md",
+            "docs/safety-contract.md",
+        ),
+        tests=(
+            "python3 -m pytest -q tests/test_config_contract.py tests/test_configuration_docs.py tests/test_config_matrix.py tests/test_kubernetes_packaging.py tests/test_deployment_readiness.py tests/test_web_app.py::test_health_probe_routes_are_raw_free_json",
+        ),
+        changelog="yes, for config, install, packaging, or deployment behavior changes",
+        notes=(
+            "Preserve config compatibility, external-secret references, non-root defaults, "
+            "and raw-free health/readiness output unless the task explicitly changes them.",
+            "Run live or image-building smokes only when the task and environment explicitly "
+            "authorize those side effects.",
+        ),
+    ),
+    Rule(
         name="Agent tooling",
         patterns=(
+            ".gitleaksignore",
             "scripts/agent_preflight.py",
+            "scripts/agent_code_graph.py",
+            "scripts/agent_code_graph_core.py",
+            "scripts/agent_code_graph_extractors.py",
+            "scripts/audit_public_distribution_boundary.py",
             "scripts/audit_public_docs.py",
             "scripts/audit_impala_diagnostic_loop.py",
             "scripts/check_active_docs.py",
+            "scripts/check_markdown_links.py",
             "scripts/check_release_history_shape.py",
             "scripts/check_staged_public_safety.py",
             "scripts/local_gate.sh",
@@ -223,19 +280,25 @@ RULES: tuple[Rule, ...] = (
             "docs/test-matrix.md",
             "docs/code-map.md",
             "tests/fixtures/README.md",
+            "tests/test_agent_code_graph.py",
             "tests/test_agent_preflight.py",
             "tests/test_audit_impala_diagnostic_loop.py",
+            "tests/test_audit_public_distribution_boundary.py",
             "tests/test_audit_public_docs.py",
             "tests/test_check_active_docs.py",
+            "tests/test_check_markdown_links.py",
             "tests/test_check_release_history_shape.py",
             "tests/test_check_staged_public_safety.py",
             "tests/test_worktree_status.py",
         ),
-        read=("docs/codex-handoff.md", "docs/test-matrix.md", "docs/code-map.md"),
+        read=("docs/agent-playbook.md", "docs/test-matrix.md", "docs/code-map.md"),
         tests=(
-            "python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_release_history_shape.py tests/test_check_staged_public_safety.py tests/test_audit_public_docs.py tests/test_worktree_status.py",
+            "python3 -m pytest -q tests/test_agent_code_graph.py tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_markdown_links.py tests/test_check_staged_public_safety.py tests/test_audit_public_docs.py tests/test_audit_public_distribution_boundary.py",
+            "python3 -m pytest -q tests/test_check_release_history_shape.py tests/test_worktree_status.py",
             "python3 scripts/check_active_docs.py",
             "python3 scripts/audit_public_docs.py",
+            "python3 scripts/audit_public_distribution_boundary.py",
+            "python3 scripts/check_markdown_links.py",
             "git diff --check",
         ),
         changelog="yes, for major agent-facing documentation baseline changes",
@@ -351,7 +414,10 @@ def render_report(paths: Sequence[str], rules: Sequence[Rule]) -> str:
 
     if not rules:
         lines.append(
-            "No specific rule matched. Read `docs/codex-handoff.md` and run `git diff --check`."
+            "No specific rule matched. Inspect the touched file, nearby tests, "
+            "`docs/agent-playbook.md`, and `docs/code-map.md`; identify focused validation "
+            "before editing and run `git diff --check`. Treat a missing route for a safety, "
+            "config, packaging, or deployment boundary as validation drift."
         )
         return "\n".join(lines)
 
@@ -382,7 +448,7 @@ def render_report(paths: Sequence[str], rules: Sequence[Rule]) -> str:
     notes = unique_ordered(note for rule in rules for note in rule.notes)
     if notes:
         lines.append("")
-        lines.append("Safety notes:")
+        lines.append("Route notes:")
         lines.extend(f"- {note}" for note in notes)
 
     return "\n".join(lines)

@@ -78,6 +78,7 @@ from query_doctor.web.details_facts import (
     parse_stats_quality_facts,
     parse_table_metadata_context_facts,
 )
+from query_doctor.web.ui import recent_scan_results as recent_scan_results_ui
 from query_doctor.web.ui.recent_scan_results import render_batch_summary
 from query_doctor.web.ui.workload_detail import render_workload_detail_view
 
@@ -140,6 +141,119 @@ def assert_contains_in_order(text: str, fragments: list[str]) -> None:
 
 def render_typed_case_detail(case_id: str, case: dict[str, object]) -> str:
     return render_recent_scan_case_detail_view(present_recent_scan_case_detail(case_id, case))
+
+
+def test_render_batch_summary_presents_scan_summary_once(monkeypatch):
+    summary = {
+        "cases": [
+            recent_scan_contract_case(
+                query_id="render-once",
+                score=10,
+                score_severity="suspicious",
+                duration_sec=12,
+            )
+        ],
+        "selected_count": 1,
+        "summaries_inspected": 1,
+    }
+    original_presenter = recent_scan_results_ui.present_recent_scan_summary
+    call_count = 0
+
+    def counted_presenter(summary_payload, *, workload_outcome_metrics=None):
+        nonlocal call_count
+        call_count += 1
+        return original_presenter(
+            summary_payload,
+            workload_outcome_metrics=workload_outcome_metrics,
+        )
+
+    monkeypatch.setattr(
+        recent_scan_results_ui,
+        "present_recent_scan_summary",
+        counted_presenter,
+    )
+
+    html = recent_scan_results_ui.render_batch_summary(summary, query_group="stats")
+
+    assert call_count == 1
+    assert "No medium/high stats-to-check candidates were found." in html
+
+
+def test_render_batch_summary_paginates_large_result_groups():
+    cases = [
+        recent_scan_contract_case(
+            case_index=index,
+            query_id=f"query-{index:03d}",
+            score=10,
+            duration_sec=index,
+        )
+        for index in range(1, 261)
+    ]
+    summary = {
+        "cases": cases,
+        "selected_count": len(cases),
+        "summaries_inspected": len(cases),
+    }
+
+    first_page = recent_scan_results_ui.render_batch_summary(summary, query_group="all")
+    scoped_first_page = recent_scan_results_ui.render_batch_summary(
+        summary,
+        query_group="all",
+        extra_query={
+            "inbox_source": "cm",
+            "inbox_workflow": "finished",
+            "inbox_window": "60",
+            "path": "/tmp/private",
+        },
+    )
+
+    assert "Rows 1-250 of 260; page 1 of 2" in first_page
+    assert first_page.count('data-href="/batch/case/') == 250
+    assert 'href="/?query_group=all&amp;results_page=2#recent-results"' in first_page
+    assert 'data-href="/batch/case/case-250"' in first_page
+    assert 'data-href="/batch/case/case-251"' not in first_page
+
+    second_page = recent_scan_results_ui.render_batch_summary(
+        summary,
+        query_group="all",
+        results_page=2,
+    )
+
+    assert "Rows 251-260 of 260; page 2 of 2" in second_page
+    assert second_page.count('data-href="/batch/case/') == 10
+    assert 'href="/?query_group=all#recent-results"' in second_page
+    assert 'data-href="/batch/case/case-250"' not in second_page
+    assert 'data-href="/batch/case/case-251"' in second_page
+    assert (
+        recent_scan_results_ui.results_page_href(
+            "all",
+            2,
+            only_with_spills=True,
+            base_path="/running",
+        )
+        == "/running?query_group=all&only_with_spills=on&results_page=2#recent-results"
+    )
+    assert (
+        recent_scan_results_ui.results_page_href(
+            "all",
+            2,
+            only_with_spills=True,
+            base_path="/running",
+            extra_query={"inbox_source": "cm", "inbox_window": "60", "path": "/tmp/private"},
+        )
+        == "/running?query_group=all&inbox_source=cm&inbox_window=60"
+        "&only_with_spills=on&results_page=2#recent-results"
+    )
+    assert (
+        'href="/?query_group=all&inbox_source=cm&inbox_workflow=finished'
+        '&inbox_window=60#recent-results"' in scoped_first_page
+    )
+    assert (
+        'href="/?query_group=all&amp;inbox_source=cm&amp;inbox_workflow=finished'
+        '&amp;inbox_window=60&amp;results_page=2#recent-results"' in scoped_first_page
+    )
+    assert "/tmp/private" not in scoped_first_page
+    assert "path=" not in scoped_first_page
 
 
 def primary_bottleneck_fixture(name: str):
@@ -590,6 +704,24 @@ def test_recent_scan_case_row_view_adds_compact_signal_summary():
     assert_no_forbidden_fragments(view)
 
 
+def test_recent_scan_case_row_view_surfaces_profile_worker_failure_code():
+    view = present_recent_scan_case_row(
+        4,
+        {
+            "case_index": 4,
+            "query_id": "retry",
+            "score": 0,
+            "collection_status": "summary_history",
+            "analysis_status": "profile_retry_pending",
+            "metadata_status": "not_collected",
+            "failure_category": "profile_fetch_http_503",
+        },
+    )
+
+    assert view.signal_summary == "profile processing failure profile_fetch_http_503"
+    assert_no_forbidden_fragments(view)
+
+
 def test_recent_scan_case_row_view_adds_primary_bottleneck_summary():
     view = present_recent_scan_case_row(
         1,
@@ -967,8 +1099,9 @@ def test_recent_scan_results_table_keeps_header_english_and_localizes_finding_bo
 
     assert "<th>Finding</th>" in html
     assert "<th>Сигнал</th>" not in html
-    assert "Основной сигнал:" in html
-    assert "аномалии оценки строк" in html
+    assert "SQL shape (средняя уверенность)" in html
+    assert "Основной сигнал:" not in html
+    assert "аномалии оценки строк" not in html
     assert "Primary:" not in html
     assert "cardinality estimate anomalies" not in html
     assert_no_forbidden_fragments(html)
@@ -3122,7 +3255,7 @@ def test_recent_scan_summary_renderer_uses_presenter_safe_values():
     for fragment in FORBIDDEN_DISPLAY_FRAGMENTS:
         assert fragment not in html
     assert "local path hidden" in html
-    assert "metadata statement hidden" in html
+    assert "metadata statement hidden" not in html
     assert (
         "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Priority</th>"
         "<th>Duration</th><th>Next</th>"
@@ -3534,6 +3667,57 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert "Repeated workload details" not in invalid_filter_html
     assert "Workload follow-up" in invalid_filter_html
     assert_no_forbidden_fragments(invalid_filter_html)
+
+
+def test_recent_scan_workload_groups_accept_broad_case_ids():
+    summary = {
+        "cases": [
+            {
+                "case_index": 1000,
+                "query_id": "case-thousand:id",
+                "score": 20,
+                "score_severity": "suspicious",
+                "duration_sec": 12,
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "workload_group_member_count": 2,
+                "workload_group_duration_sec_p95": 14,
+            },
+            {
+                "case_index": 1176,
+                "query_id": "case-broad:id",
+                "score": 10,
+                "score_severity": "suspicious",
+                "duration_sec": 14,
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "workload_group_member_count": 2,
+                "workload_group_duration_sec_p95": 14,
+            },
+        ],
+        "workload_groups": {
+            "schema_version": 1,
+            "groups": [
+                {
+                    "fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                    "member_count": 2,
+                    "member_case_ids": ["case-1000", "case-1176", "../case-001"],
+                    "aggregates": {
+                        "count": 2,
+                        "duration_sec_p95": 14,
+                        "duration_sec_total": 26,
+                    },
+                }
+            ],
+        },
+    }
+
+    view = present_recent_scan_summary(summary)
+    detail = present_workload_detail(summary, "wf_aaaaaaaaaaaaaaaaaaaaaaaa")
+
+    assert view.workload_groups.groups[0].member_case_ids == ("case-1000", "case-1176")
+    assert detail is not None
+    assert detail.member_case_ids == ("case-1000", "case-1176")
 
 
 def test_recent_scan_summary_derives_workload_groups_from_repeated_safe_rows():
@@ -4306,7 +4490,8 @@ def test_recent_scan_primary_bottleneck_output_is_sanitized():
         },
     )
 
-    assert "Primary: Unknown (Unknown confidence)" in html
+    assert "Primary: Unknown (Unknown confidence)" not in html
+    assert "positive score from detailed analyzer reasons" in html
     assert "Supported analyzer signals need review" in detail_html
 
     for body in (html, detail_html):
@@ -4434,11 +4619,14 @@ def test_recent_scan_summary_filters_query_groups():
     assert "good:id" not in bad_html
     assert "suspicious:id" in suspicious_html
     assert "bad:id" not in suspicious_html
-    assert "bad:id" in workloads_html
-    assert "suspicious:id" in workloads_html
+    assert "bad:id" not in workloads_html
+    assert "suspicious:id" not in workloads_html
     assert "good:id" not in workloads_html
     assert "Repeated workload: 2 similar queries" in workloads_html
-    assert "workload p95 30s; baseline p95 10s; regression strong; n=5" in workloads_html
+    assert 'data-href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in workloads_html
+    assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa">Open Details</a>' in (workloads_html)
+    assert "alice (1/2)" in workloads_html
+    assert "row-level fingerprint only; SQL shape not materialized" in workloads_html
     assert "Frequent short workload: 2 similar queries" in frequent_short_html
     assert "current scan impact about 60s" in frequent_short_html
     assert "suspicious:id" in frequent_short_html
@@ -4459,9 +4647,13 @@ def test_recent_scan_summary_filters_query_groups():
     assert "bad:id" in regressions_html
     assert "suspicious:id" not in regressions_html
     assert (
-        "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Runs</th>"
-        "<th>Duration</th><th>Workload p95</th><th>Regression</th><th>Primary</th>"
+        "<th>Rank</th><th>Workload</th><th>Priority</th><th>p95</th>"
+        "<th>Total impact</th><th>Top owner</th><th>Next</th>"
     ) in workloads_html
+    assert "<th>Runs</th>" not in workloads_html
+    assert "<th>p50</th>" not in workloads_html
+    assert "<th>Pool</th>" not in workloads_html
+    assert "<th>Primary</th>" not in workloads_html
     assert "bad:id" in optimization_html
     assert "ready:id" in optimization_html
     assert "suspicious:id" not in optimization_html
@@ -4489,10 +4681,12 @@ def test_recent_scan_summary_filters_query_groups():
     assert "View" in stats_html
     assert "<summary>More filters</summary>" not in stats_html
     assert "batch-filter-more" not in stats_html
-    assert "Spill filter" in stats_html
+    assert "Only queries with spills" in stats_html
+    assert "Sort" in stats_html
+    assert "Start time" in stats_html
     assert "Optimizer-ready" not in stats_html
     assert "Rewrite opportunities <span>2</span>" in stats_html
-    assert "Repeated workloads <span>2</span>" in stats_html
+    assert "Repeated workloads <span>1</span>" in stats_html
     assert "Frequent short <span>1</span>" in stats_html
     assert "Regressed workloads <span>1</span>" in stats_html
     assert "<span>Rewrite draft-ready: 1</span>" not in stats_html

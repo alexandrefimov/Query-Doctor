@@ -802,6 +802,120 @@ Expected healthy batch smoke behavior:
 - `diagnosis.md` is written only after validation;
 - `diagnosis.partial.md` is not trusted.
 
+## Representative Impala Audit Gates
+
+Use these gates after a bounded batch has already produced a local summary.
+They validate retained or synthetic raw-free evidence; they do not collect from
+Impala, execute SQL, or make a support claim by themselves.
+
+Start with the aggregate strict gate:
+
+```bash
+python3 scripts/audit_impala_diagnostic_loop.py \
+  <batch_summary.json> \
+  --summary-json <raw-free-impala-loop-summary.json>
+```
+
+Add `--require-workload-groups` when representative repeated-workload coverage
+is required, `--action-outcomes <action_outcomes.jsonl>
+--require-action-outcomes` when comparable-rerun feedback is part of the gate,
+and `--require-direct-source-readiness` for representative direct-Impala
+summaries. Use `--use-current-classifier-primary` only for an explicit retained
+summary calibration against the current deterministic classifier.
+
+Use component gates only for the contract being changed:
+
+```bash
+python3 scripts/audit_recent_details.py \
+  <batch_summary.json> \
+  --fail-on-stats-detail-gaps \
+  --fail-on-comparable-rerun-gaps
+
+python3 scripts/audit_profile_evidence_gates.py \
+  <batch_summary.json> \
+  --fail-on-issues
+
+python3 scripts/audit_workload_diagnostics.py \
+  <batch_summary.json> \
+  --fail-on-workload-readiness-gaps \
+  --require-workload-groups
+
+python3 scripts/audit_stats_diagnostics.py \
+  <batch_summary.json> \
+  --fail-on-stats-readiness-gaps
+
+python3 scripts/audit_impala_coverage_gaps.py \
+  <batch_summary.json> \
+  --fail-on-diagnostic-coverage-gaps
+```
+
+Each component gate supports its documented raw-free `--summary-json` output
+when retained machine evidence is needed. Keep retained summaries aggregate and
+path-free: no raw cases, SQL, profiles, Query IDs, workload fingerprints,
+free-form warnings, action-outcome records, local paths, or artifact filenames.
+
+For committed synthetic aggregate contracts, run only the gate that changed:
+
+```bash
+python3 scripts/audit_impala_synthetic_coverage_gate.py
+python3 -m pytest -q tests/test_impala_synthetic_coverage_gate.py
+
+python3 scripts/audit_impala_synthetic_outcome_gate.py
+python3 -m pytest -q tests/test_impala_synthetic_outcome_gate.py
+
+python3 scripts/audit_impala_synthetic_north_star_gate.py
+python3 -m pytest -q tests/test_impala_synthetic_north_star_gate.py
+```
+
+For representative retained loop summaries, run the north-star gate after the
+aggregate strict gate:
+
+```bash
+python3 scripts/audit_impala_north_star_gate.py \
+  <raw-free-impala-loop-summary.json> \
+  --summary-json <raw-free-impala-north-star-summary.json>
+```
+
+For a retained suite, build a local manifest and audit it without reopening raw
+cases:
+
+```bash
+python3 scripts/build_impala_north_star_suite_manifest.py \
+  --redaction-reviewed \
+  --loop-summary-json <raw-free-impala-loop-summary-a.json> \
+  --loop-summary-json <raw-free-impala-loop-summary-b.json> \
+  --out <impala-north-star-suite.json>
+
+python3 scripts/audit_impala_north_star_gate.py \
+  --suite-manifest <impala-north-star-suite.json> \
+  --require-min-inputs <minimum-retained-batch-count> \
+  --summary-json <raw-free-impala-north-star-suite-summary.json>
+```
+
+Focused north-star implementation tests are:
+
+```bash
+python3 -m pytest -q \
+  tests/test_audit_impala_north_star_gate.py \
+  tests/test_build_impala_north_star_suite_manifest_script.py
+```
+
+The retained workload contract carries the safe `action_outcome_gate` values
+into aggregate loop output as `action_outcome_gate_counts` and
+`action_outcome_result_counts`. Comparable reruns recorded only as `unsure`
+remain visible as aggregate feedback but do not satisfy the measured-result
+gate.
+
+Strict coverage rejects unknown-primary reason buckets containing
+`unsafe_reason`. Strict stats readiness rejects actionable candidates whose
+retained text looks like SQL, metadata identifiers, paths, URLs, or secrets.
+Both gates retain only safe aggregate issue, category, closure-label, and
+counter evidence; they never retain the raw-like candidate text.
+
+These gates retain only safe aggregate rates, counters, categories, closure
+labels, and pass/fail states. Missing evidence remains distinct from clean,
+no-action, out-of-scope, or unsafe-reason hygiene states.
+
 ## Smoke Output Checks
 
 After metadata or batch smoke:

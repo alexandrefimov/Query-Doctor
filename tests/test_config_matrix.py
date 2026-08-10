@@ -213,6 +213,39 @@ def test_web_cluster_config_can_override_privacy_for_direct_impala_target(tmp_pa
     assert settings.metadata_redact is False
 
 
+def test_web_config_active_cluster_key_selects_non_first_cluster(tmp_path):
+    from query_doctor.cli import web
+
+    config_path = write_config(
+        tmp_path / "query-doctor-config.json",
+        {
+            "active_cluster_key": "direct-impala",
+            "clusters": [
+                {
+                    "id": "cm",
+                    "label": "Cloudera Manager",
+                    "cm_url": "https://cm.example.com:7183/",
+                    "cluster": "prod_cluster",
+                    "service": "impala",
+                },
+                {
+                    "id": "direct-impala",
+                    "label": "Direct Impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com"],
+                },
+            ],
+        },
+    )
+
+    settings = web.build_web_settings(web.parse_args(["--config", str(config_path)]), cwd=tmp_path)
+
+    assert settings.active_cluster_key == "direct-impala"
+    assert settings.query_profile_source == "impala"
+    assert settings.impala_profile_hosts == ("impalad-1.example.com",)
+    assert settings.cm_url is None
+
+
 def test_recent_batch_can_select_cluster_config_owner_visibility(tmp_path):
     from query_doctor.cli import batch_recent
 

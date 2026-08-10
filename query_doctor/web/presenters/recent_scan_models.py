@@ -77,7 +77,10 @@ class RecentScanCaseRowView:
     score_severity: str
     has_failure: bool
     has_spill: bool
+    start_time: Any = ""
     source_locators: dict[str, tuple["RecentScanSourceLocatorView", ...]] | None = None
+    action_outcome_summary: str = "none"
+    pool: Any = ""
 
 
 @dataclass(frozen=True)

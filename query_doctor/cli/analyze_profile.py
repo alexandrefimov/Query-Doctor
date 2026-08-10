@@ -25,6 +25,7 @@ from query_doctor.analyzer.context_collection import (
 from query_doctor.analyzer.data_movement import build_data_movement_facts
 from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
+from query_doctor.analyzer.impala_explain_loader import load_impala_explain_facts
 from query_doctor.analyzer.memory_pressure import (
     apply_memory_pressure_profile_policy,
     build_memory_pressure_facts,
@@ -345,6 +346,10 @@ def main(argv: list[str] | None = None) -> int:
     analysis["cluster_context"] = collect_cluster_context(digest_path.parent)
     analysis["admission_context"] = collect_admission_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
+    analysis["impala_explain"] = load_impala_explain_facts(
+        digest_path.parent,
+        profile_operators=analysis["operators"],
+    )
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["sql_column_context"] = collect_sql_column_context(
         digest_path.parent,

@@ -1,0 +1,25 @@
+{{- $recentSummaryCollector := .Values.recentSummaryCollector | default dict -}}
+{{- $recentSummaryCollectorEnabled := and (eq .Values.mode "configured") ((get $recentSummaryCollector "enabled") | default false) -}}
+{{- if and .Values.networkPolicy.enabled $recentSummaryCollectorEnabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-recent-summary-collector-egress" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "query-doctor.recentSummaryCollectorLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "query-doctor.recentSummaryCollectorSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  {{- if eq .Values.networkPolicy.egressMode "allowAll" }}
+  egress:
+    - {}
+  {{- else if eq .Values.networkPolicy.egressMode "custom" }}
+  egress:
+    {{- toYaml .Values.networkPolicy.egress | nindent 4 }}
+  {{- else }}
+  egress: []
+  {{- end }}
+{{- end }}

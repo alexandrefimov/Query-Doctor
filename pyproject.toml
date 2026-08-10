@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "query-doctor"
-version = "0.10.0"
-description = "Local-first Big Data query diagnostics for Apache Impala production triage and bounded local Trino lanes."
+version = "0.11.0"
+description = "Local-first Big Data query diagnostics for Apache Impala production triage, bounded local Trino lanes, and containerized web deployment."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
@@ -20,7 +20,10 @@ keywords = [
     "apache-trino",
     "big-data",
     "cloudera-manager",
+    "container",
     "diagnostics",
+    "docker",
+    "kubernetes",
     "lakehouse",
     "query-analysis",
     "sql",
@@ -50,6 +53,9 @@ dev = [
 e2e = [
     "playwright>=1.48",
 ]
+postgres = [
+    "psycopg[binary]>=3.1,<4",
+]
 
 [project.scripts]
 query-doctor-analyze = "query_doctor.cli.analyze_profile:main"
@@ -64,11 +70,17 @@ query-doctor-collect-spark-history = "query_doctor.cli.collect_spark_history:mai
 query-doctor-corpus-smoke = "query_doctor.cli.corpus_smoke:main"
 query-doctor-demo = "query_doctor.cli.demo_data:main"
 query-doctor-demo-preflight = "query_doctor.cli.demo_preflight:main"
+query-doctor-deployment-readiness = "query_doctor.cli.deployment_readiness:main"
 query-doctor-diagnose-spark-compact = "query_doctor.cli.diagnose_spark_compact:main"
 query-doctor-diagnose-trino-compact = "query_doctor.cli.diagnose_trino_compact:main"
 query-doctor-optimize-query = "query_doctor.cli.optimize_query:main"
 query-doctor-pipeline = "query_doctor.cli.pipeline:main"
 query-doctor-report = "query_doctor.cli.report:main"
+query-doctor-recent-history-operator-readiness = "query_doctor.cli.recent_history_operator_readiness:main"
+query-doctor-recent-history-postgres-readiness = "query_doctor.cli.recent_history_postgres_readiness:main"
+query-doctor-recent-history-retention = "query_doctor.cli.recent_history_retention:main"
+query-doctor-recent-profile-remediation = "query_doctor.cli.recent_profile_remediation:main"
+query-doctor-recent-profile-worker = "query_doctor.cli.recent_profile_worker:main"
 query-doctor-self-test = "query_doctor.cli.self_test:main"
 query-doctor-build-spark-evidence-package = "query_doctor.cli.build_spark_evidence_package:main"
 query-doctor-export-spark-evidence-fixtures = "query_doctor.cli.export_spark_evidence_fixtures:main"

@@ -24,6 +24,7 @@ from query_doctor.trino.support_mode import (
     normalize_trino_support_mode,
     trino_support_mode_enabled,
 )
+from query_doctor.recent.batch_config import validate_not_dangerous_output_path
 from query_doctor.web.cluster_selection import build_web_cluster_configs, settings_for_cluster_key
 from query_doctor.web.models import (
     DEFAULT_CORPUS_DIR,
@@ -438,6 +439,23 @@ def configured_corpus_dir(
     return resolve_config_path_value(DEFAULT_CORPUS_DIR, base_dir=cwd)
 
 
+def configured_recent_batch_root(
+    args: argparse.Namespace,
+    config_values: dict[str, object],
+    *,
+    config_path: Path,
+    cwd: Path,
+) -> Path | None:
+    cli_value = getattr(args, "recent_batch_root", None)
+    if cli_value:
+        return resolve_config_path_value(Path(cli_value), base_dir=cwd)
+    config_value = optional_config_path(config_values, "recent_batch_root")
+    if config_value is None:
+        return None
+    config_base_dir = resolve_config_path_value(config_path, base_dir=cwd).parent
+    return resolve_config_path_value(config_value, base_dir=config_base_dir)
+
+
 def configured_optional_config_path(
     config_values: dict[str, object],
     key: str,
@@ -474,6 +492,21 @@ def validate_manual_profile_dir(path: Path) -> None:
             reason_code="web.manual_profile_dir_unavailable",
             stage="Checking web startup source config",
             next_step="Fix manual_profile_dir or choose a CM/direct-Impala source.",
+        ) from exc
+
+
+def validate_recent_batch_root(path: Path | None) -> None:
+    if path is None:
+        return
+    try:
+        validate_not_dangerous_output_path(path / "query-doctor-web-batch-validation")
+    except ValueError as exc:
+        raise WebError(
+            "Configured recent_batch_root must allow dedicated Query Doctor batch output directories under the system temp directory.",
+            title="Recent batch cache root is not safe",
+            reason_code="web.recent_batch_root_invalid",
+            stage="Checking Recent scan cache config",
+            next_step="Use a dedicated Query Doctor temp-backed cache directory.",
         ) from exc
 
 
@@ -902,9 +935,18 @@ def build_web_settings(
             config_path=config_path,
             cwd=cwd,
         ),
+        recent_batch_root=configured_recent_batch_root(
+            args,
+            config_values,
+            config_path=config_path,
+            cwd=cwd,
+        ),
         manual_profile_dir=optional_config_path(config_values, "manual_profile_dir"),
         clusters=clusters,
-        active_cluster_key=clusters[0].key if clusters else None,
+        active_cluster_key=first_string_value(
+            optional_config_string(config_values, "active_cluster_key"),
+            clusters[0].key if clusters else None,
+        ),
         port=first_int_value(
             args.port,
             optional_config_int(config_values, "port"),
@@ -1136,8 +1178,9 @@ def build_web_settings(
         )
         is True,
     )
+    validate_recent_batch_root(settings.recent_batch_root)
     if clusters:
-        return settings_for_cluster_key(settings, clusters[0].key)
+        return settings_for_cluster_key(settings, settings.active_cluster_key)
     return settings
 
 

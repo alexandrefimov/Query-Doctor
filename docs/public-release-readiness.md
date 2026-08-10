@@ -1,6 +1,6 @@
 # Public Release Readiness
 
-Last reviewed: 2026-06-17
+Last reviewed: 2026-07-02
 
 This checklist tracks what Query Doctor needs before tags, announcements, and
 any future repository visibility changes. It is intentionally practical: public
@@ -16,7 +16,8 @@ about unsupported scope.
 - Local release gate passes from a clean checkout: staged public-safety checks,
   active-doc checks, Markdown link checks, release-history shape check, ruff,
   full pytest, `git diff --check`, public-release preflight, and synthetic demo
-  pack smoke.
+  pack smoke. For releases with container changes, the gate also includes
+  Kubernetes manifest conformance and container image smoke.
 - `pre-commit run --all-files` passes before public release handoff, including
   ruff format checks.
 - Git history has been reviewed for secrets, raw production query text, profiles,
@@ -60,6 +61,13 @@ about unsupported scope.
   not public engine support, Recent scans, Details/trusted report output,
   optimizer behavior, engine registration, raw event-log handling, raw
   SQL/plan display, environment/log dumps, or Spark job execution.
+- Public docs state Kubernetes support only as a containerized web deployment
+  starting point: official image, read-only public-demo manifest, configured
+  private web manifest, Helm chart, raw-free deployment and auth-front-door
+  audits, configured metadata and auth release gates, disposable public-demo
+  smoke script, and `/healthz`/`/readyz` probes. Kubernetes support does not add
+  native auth, RBAC, sessions, multi-tenant isolation, an operator/CRD, SQL
+  execution, or broader engine support.
 - Trino local production web demo or release handoff includes a passing local-config
   readiness audit followed by a bounded live smoke when an intentional local
   source is available:
@@ -154,8 +162,11 @@ place:
   release-gate workflow. Query Doctor is published on PyPI as `query-doctor`.
   PyPI and TestPyPI publishing automation uses Trusted Publishing through
   GitHub OIDC; the GitHub `pypi` and `testpypi` environments require maintainer
-  approval and block admin bypass. Pre-commit also enforces ruff check, ruff
-  format, staged public-safety checks, whitespace, and Markdown links.
+  approval and block admin bypass. Container release automation publishes
+  `ghcr.io/alexandrefimov/query-doctor:<version>` from a published GitHub
+  Release after image build and smoke checks. Pre-commit also enforces ruff
+  check, ruff format, staged public-safety checks, whitespace, and Markdown
+  links.
 - The 0.2.0 release passed the local release gate, PR/main CI, manual Release
   Gate workflow, package build/check, installed-wheel smoke, bounded no-LLM
   Known Query ID plus Recent batch smokes with metadata collection enabled,
@@ -189,6 +200,12 @@ place:
   intake, Trino retained handoff/readiness/product-surface gates, Impala
   diagnostic-loop north-star calibration, shared engine support-boundary
   contracts, and the grouped public handoff history.
+- The 0.11.0 release notes are finalized in
+  [release-notes-0.11.0.md](release-notes-0.11.0.md) for containerized web
+  deployment, Kubernetes manifests, Helm chart support, health probes,
+  synthetic Kubernetes self-test, raw-free deployment readiness, deployment
+  auditing, and container CI while preserving the existing engine and safety
+  boundaries.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header,
   Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.
