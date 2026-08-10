@@ -52,32 +52,37 @@ def quickstart_readonly_settings_without_default_config(args, cwd: Path):
     return None
 
 
+def build_validated_web_runtime_settings(args, cwd: Path) -> tuple[object, list[str]]:
+    settings = quickstart_readonly_settings_without_default_config(args, cwd)
+    if settings is None:
+        try:
+            settings = build_web_settings(args, cwd=cwd)
+        except cm_collector.ConfigError:
+            settings = quickstart_readonly_settings_without_default_config(args, cwd)
+            if settings is None:
+                raise
+    public_demo_runtime = prepare_public_demo_runtime(settings)
+    if public_demo_runtime is not None:
+        settings = public_demo_runtime.settings
+    corpus_summary_runtime = prepare_corpus_summary_runtime(settings)
+    if corpus_summary_runtime is not None:
+        settings = corpus_summary_runtime.settings
+    validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
+    validate_owner_raw_nonlocal_bind(settings)
+    validate_public_demo_settings(settings)
+    startup_warnings = validate_web_startup_config(
+        settings.config,
+        cwd=cwd,
+        require_cm=settings.batch_summary is None and settings.corpus_summary is None,
+    )
+    return settings, startup_warnings
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         cwd = Path.cwd()
-        settings = quickstart_readonly_settings_without_default_config(args, cwd)
-        if settings is None:
-            try:
-                settings = build_web_settings(args, cwd=cwd)
-            except cm_collector.ConfigError:
-                settings = quickstart_readonly_settings_without_default_config(args, cwd)
-                if settings is None:
-                    raise
-        public_demo_runtime = prepare_public_demo_runtime(settings)
-        if public_demo_runtime is not None:
-            settings = public_demo_runtime.settings
-        corpus_summary_runtime = prepare_corpus_summary_runtime(settings)
-        if corpus_summary_runtime is not None:
-            settings = corpus_summary_runtime.settings
-        validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
-        validate_owner_raw_nonlocal_bind(settings)
-        validate_public_demo_settings(settings)
-        startup_warnings = validate_web_startup_config(
-            settings.config,
-            cwd=cwd,
-            require_cm=settings.batch_summary is None and settings.corpus_summary is None,
-        )
+        settings, startup_warnings = build_validated_web_runtime_settings(args, cwd)
     except WebError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2

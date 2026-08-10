@@ -33,7 +33,7 @@ def test_trino_web_beta_live_smoke_prints_safe_json(
         trino_coordinator_url=COORDINATOR_URL,
         trino_query_info_source_contract=tmp_path / "query-info.json",
         trino_query_list_source_contract=tmp_path / "query-list.json",
-        trino_kerberos_principal="sa@LESTA.HADOOP",
+        trino_kerberos_principal="sa@EXAMPLE.COM",
         trino_krb5_ccname="FILE:/tmp/krb5cc_qd_trino",
     )
 
@@ -87,7 +87,7 @@ def test_trino_web_beta_live_smoke_prints_safe_json(
         assert QUERY_ID not in text
         assert COORDINATOR_URL not in text
         assert str(tmp_path) not in text
-        assert "LESTA" not in text
+        assert "sa@EXAMPLE.COM" not in text
         assert "krb5cc" not in text
 
 

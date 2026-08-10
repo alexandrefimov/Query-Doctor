@@ -1,0 +1,6 @@
+apiVersion: v2
+name: query-doctor
+description: Query Doctor web UI deployment with safe public-demo and configured private modes.
+type: application
+version: 0.11.0
+appVersion: "0.11.0"

@@ -1,0 +1,296 @@
+mode: publicDemo
+
+namespace:
+  create: false
+
+image:
+  repository: ghcr.io/alexandrefimov/query-doctor
+  tag: "0.11.0"
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+selfTestJob:
+  enabled: true
+  timeoutSeconds: 120
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  annotations: {}
+  podAnnotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: query-doctor.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+config:
+  existingConfigMap: ""
+  create: false
+  name: ""
+  key: query-doctor-config.json
+  mountPath: /etc/query-doctor
+  inlineJson: ""
+
+credentials:
+  existingSecret: ""
+
+recentHistory:
+  postgres:
+    enabled: false
+    # With cnpg enabled and generated credentials, use <cnpg-cluster-name>-app.
+    existingSecret: ""
+    # CNPG generated application Secrets expose the connection URI as `uri`.
+    dsnKey: dsn
+    dsnEnvName: QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN
+    readiness:
+      enabled: true
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    retention:
+      enabled: false
+      schedule: "0 3 * * *"
+      suspend: false
+      concurrencyPolicy: Forbid
+      startingDeadlineSeconds: 600
+      activeDeadlineSeconds: 1800
+      backoffLimit: 0
+      successfulJobsHistoryLimit: 1
+      failedJobsHistoryLimit: 3
+      summaryRetentionDays: null
+      profileJobRetentionDays: null
+      analysisCacheRetentionDays: null
+      profileArtifactRetentionDays: null
+      annotations: {}
+      podAnnotations: {}
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    profileRemediation:
+      enabled: false
+      schedule: "*/15 * * * *"
+      suspend: false
+      concurrencyPolicy: Forbid
+      startingDeadlineSeconds: 300
+      activeDeadlineSeconds: 600
+      backoffLimit: 0
+      successfulJobsHistoryLimit: 1
+      failedJobsHistoryLimit: 3
+      maxJobs: 50
+      engine: ""
+      sourceKind: ""
+      sourceKey: ""
+      annotations: {}
+      podAnnotations: {}
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    cnpg:
+      enabled: false
+      name: ""
+      instances: 1
+      database: query_doctor
+      owner: query_doctor
+      # Leave empty to let CNPG create its standard application Secret.
+      existingOwnerSecret: ""
+      imageName: ""
+      storage:
+        size: 20Gi
+      resources: {}
+  operatorReadiness:
+    enabled: false
+    schedule: "*/5 * * * *"
+    suspend: false
+    concurrencyPolicy: Forbid
+    startingDeadlineSeconds: 300
+    activeDeadlineSeconds: 600
+    backoffLimit: 0
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+    summaryDir: /var/lib/query-doctor/recent-history/operator-readiness
+    postgresReadinessSummaryJson: /var/lib/query-doctor/recent-history/operator-readiness/postgres-readiness-summary.json
+    profileWorkerSummaryJson: /var/lib/query-doctor/recent-history/operator-readiness/profile-worker-summary.json
+    collectorSummaryJson: ""
+    retentionSummaryJson: ""
+    profileRemediationSummaryJson: ""
+    outputSummaryJson: /var/lib/query-doctor/recent-history/operator-readiness/operator-readiness-summary.json
+    annotations: {}
+    podAnnotations: {}
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+recentSummaryCollector:
+  enabled: false
+  schedule: "*/10 * * * *"
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  activeDeadlineSeconds: 900
+  backoffLimit: 0
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  out: /tmp/query-doctor-recent-collector
+  summaryJson: /var/lib/query-doctor/recent-history/collector-summary.json
+  progressJsonl: /var/lib/query-doctor/recent-history/collector-progress.jsonl
+  annotations: {}
+  podAnnotations: {}
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+recentProfileWorker:
+  enabled: false
+  schedule: "*/5 * * * *"
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  activeDeadlineSeconds: 1800
+  backoffLimit: 0
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  maxJobs: 1
+  leaseSeconds: 900
+  maxAttempts: 3
+  leaseOwner: recent-profile-worker
+  out: /tmp/query-doctor-profile-worker
+  annotations: {}
+  podAnnotations: {}
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  extraArgs: []
+
+kerberos:
+  enabled: false
+  existingSecret: ""
+  principalKey: principal
+  keytabKey: query-doctor.keytab
+  krb5ConfKey: krb5.conf
+  cachePath: /tmp/query-doctor-krb5/krb5cc_query_doctor
+  renewer:
+    enabled: true
+    refreshIntervalSeconds: 1800
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+persistence:
+  enabled: false
+  existingClaim: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClassName: ""
+  mountPath: /var/lib/query-doctor
+  recentBatchMountPath: /tmp/query-doctor-web-batches
+
+web:
+  host: 0.0.0.0
+  port: 8765
+  allowNonlocalWebBind: true
+  noLlm: true
+  extraArgs: []
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 15
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+networkPolicy:
+  enabled: true
+  egressMode: denyAll
+  egress: []

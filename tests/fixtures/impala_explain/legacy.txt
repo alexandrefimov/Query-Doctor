@@ -1,0 +1,25 @@
+Estimated Per-Host Mem: 1127658681
+Estimated Per-Host VCores: 2
+
+PLAN FRAGMENT 1
+  PARTITION: RANDOM
+  2:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  cardinality: 25
+  |  per-host memory: 2.00GB
+  |----3:EXCHANGE
+  |       cardinality: unavailable
+  0:SCAN HDFS
+     table=synthetic_db.legacy_left #partitions=1/4 size=33B
+     cardinality: 25
+     per-host memory: 32.00MB
+
+PLAN FRAGMENT 2
+  PARTITION: UNPARTITIONED
+  STREAM DATA SINK
+    EXCHANGE ID: 3
+    UNPARTITIONED
+  1:SCAN HDFS
+     table=synthetic_db.legacy_right #partitions=1/1 size=960.00KB
+     cardinality: 10
+     per-host memory: -1.00 B

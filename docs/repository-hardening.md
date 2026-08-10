@@ -1,6 +1,6 @@
 # Repository And Pipeline Hardening
 
-Last updated: 2026-06-01
+Last updated: 2026-07-16
 
 This public document summarizes repository security and release automation at a
 durable level. Detailed maintainer checklists, temporary branch notes, private
@@ -30,6 +30,8 @@ release scratch work, and per-run CI investigation logs belong in local exclude-
 - Keep normal CI tokens read-only unless a specific release job requires a
   narrower permission.
 - Keep publishing and release-tag updates behind human-reviewed workflows.
+- Keep private-registry credentials environment-only, never in process
+  arguments or retained digest metadata.
 - Prefer GitHub-owned or verified Actions. Revisit pinning and action policy
   whenever third-party Actions are introduced.
 - Treat generated artifacts, local configs, private output roots, and local

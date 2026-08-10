@@ -28,7 +28,7 @@ def render_action_outcomes_page() -> str:
             '<div class="outcomes-empty-state">'
             "<h2>No feedback recorded yet</h2>"
             "<p>Use Record rerun outcome on a Details recommendation after checking whether the suggested action was applied and helped.</p>"
-            '<a class="button primary" href="/">Open Diagnose</a>'
+            '<a class="button primary" href="/">Open Query Inbox</a>'
             "</div>"
             "</section>"
         )

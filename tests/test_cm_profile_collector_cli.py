@@ -1,3 +1,4 @@
+import http.client
 import json
 import subprocess
 from pathlib import Path
@@ -67,6 +68,17 @@ class FakeResponse:
         if size is None or size < 0:
             return self.payload
         return self.payload[:size]
+
+
+class BrokenReadResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, size=-1):
+        raise http.client.IncompleteRead(b"partial")
 
 
 def test_help_works_without_credentials(capsys):
@@ -4664,6 +4676,30 @@ def test_cm_http_client_get_text_rejects_response_above_limit_without_payload_le
     assert "SELECT" not in message
     assert "secret_value" not in message
     assert "sensitive_table" not in message
+
+
+def test_cm_http_client_get_text_sanitizes_incomplete_read():
+    module = load_collector_module()
+
+    def fake_opener(request, timeout=None, context=None):
+        return BrokenReadResponse()
+
+    client = module.CMHttpClient(
+        module.CMHttpConfig(
+            cm_url="https://cm.example.com:7183",
+            token="secret-token",
+        ),
+        opener=fake_opener,
+    )
+
+    with pytest.raises(module.CMHttpError) as exc:
+        client.get_text("/api/v1/test")
+
+    message = str(exc.value)
+    assert "CM request failed safely." in message
+    assert "IncompleteRead" not in message
+    assert "partial" not in message
+    assert "secret-token" not in message
 
 
 def test_cm_http_client_http_error_sanitizes_status_context():

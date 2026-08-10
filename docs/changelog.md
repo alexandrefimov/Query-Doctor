@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-25
+Last updated: 2026-08-10
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -9,9 +9,10 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For 0.10.0 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
-0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+For 0.11.0 release notes suitable for GitHub Release, package-index, and
+container-image handoff, see [release-notes-0.11.0.md](release-notes-0.11.0.md).
+Historical 0.10.0, 0.9.0, 0.8.0, 0.7.0, 0.6.0, 0.5.0, 0.4.3, 0.4.2, and 0.4.1
+release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 [release-notes-0.9.0.md](release-notes-0.9.0.md),
 [release-notes-0.8.0.md](release-notes-0.8.0.md),
 [release-notes-0.7.0.md](release-notes-0.7.0.md),
@@ -23,6 +24,573 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
 
 ## Unreleased
 
+- The public distribution boundary now rejects platform-specific controller
+  metadata across public documentation, source, deployment assets, packaging,
+  tests, and release tooling. Its public-release mode scans every commit's
+  metadata and UTF-8 text blobs after the configured public base using a
+  required private fingerprint file outside the checkout; no marker-derived
+  hashes or lengths are committed publicly. The upstream Helm chart remains
+  platform-neutral and keeps typed generic user-provided pod labels and
+  annotations while rejecting selector-owned label overrides; downstream
+  platform overlays own controller labels, rollout metadata, and runtime-bundle
+  wiring.
+- Reworked the pasted-SQL Query Optimizer first screen so its one-statement
+  scope, bounded local parsing and referenced-table metadata behavior, and
+  no-execution/no-echo safety boundary are visible before input. The larger
+  monospaced editor and adjacent action guidance remain legible from mobile
+  through desktop without changing POST behavior, trust validation, or engine
+  support.
+- Agent code-graph explanations can now emit graph-ranked repository context at
+  `fold`, `preview`, or `full` detail under one explicit source-line budget. An
+  optional local JSONL ledger stores only file hashes and emitted line ranges,
+  skips unchanged ranges on later calls, and invalidates them after edits. The
+  graph can also build an on-demand Python symbol index for `--symbol` queries,
+  rank exact classes, functions, methods, and failing tests first, and start
+  preview output at the matched symbol instead of the beginning of its file.
+  Ordinary file-level calls do not build the symbol index, unsupported languages
+  keep the existing file fallback, and the explain, changed-scope, merge-risk,
+  and summary interfaces remain compatible.
+- Query Inbox results are now centered on row choice. Needs-attention,
+  worth-reviewing, and all-analyzed rows show one short deterministic
+  classification instead of inline primary and score-reason evidence. Repeated
+  workloads now use seven columns for workload summary, priority, p95, total
+  impact, top owner, and the Details path; runs remain in the summary while
+  p50, pool, bottleneck, and supporting evidence stay in Workload Details. The
+  change preserves URL filters, sorting, row navigation, empty-state recovery,
+  raw-free rendering, and selected-case safety boundaries.
+- Helm-managed CloudNativePG history can now use the controller-generated
+  application Secret directly. Leaving `cnpg.existingOwnerSecret` empty lets
+  CNPG generate `<cluster-name>-app`; Query Doctor references its `uri` key
+  without duplicating the password into a separate DSN Secret. External owner
+  and DSN Secrets remain supported, and the chart still renders no Secret
+  objects or inline database values.
+- Helm configured deployments can now keep the long-lived web Kerberos cache
+  current with a bounded `kerberos-ticket-renewer` sidecar after the existing
+  initContainer obtains the initial ticket. The sidecar reacquires credentials
+  from the referenced external Secret, shares only the cache with the web
+  container, suppresses raw Kerberos command output, and emits generic refresh
+  status. Finite Recent summary collector and profile worker CronJobs retain
+  their one-ticket-per-Job init flow so they can terminate normally. This does
+  not add browser authentication, render Secret values, or expose the keytab to
+  the web container.
+- Kubernetes release validation now includes opt-in staging gates for one
+  Kerberos cache refresh and one installed Online History
+  collector/worker/operator-readiness cycle. They require the installed
+  Deployment and CronJobs to use the same candidate image, compare only cache
+  timestamps and raw-free UI markers, print no ticket contents, Job logs, SQL,
+  profiles, or retained page contents, and remove only their temporary Jobs.
+- Query Doctor now parses one already-provided Impala EXPLAIN artifact through a
+  case-contained, byte/line/node/fragment-bounded loader and a pure parser. The
+  analyzer adds only allowlisted raw-free optimizer-intent, estimate, coverage,
+  limitation, and conservative structural-link facts to its result; existing
+  JSON-output workflows serialize them in `analysis.json`. Raw plan text,
+  relation/predicate/literal content, paths, and engine-local identities are not
+  retained. Missing, ambiguous, unsafe, oversized, empty, or partially mapped
+  inputs degrade without failing profile analysis. The facts do not affect
+  scoring, recommendations, primary diagnosis, reports, browser surfaces,
+  `engine_fact_boundary_v1` or engine selection, and Query
+  Doctor still does not execute SQL or generate EXPLAIN. The parser now also
+  accepts bounded modern fragment host/instance syntax, `PLAN-ROOT SINK`, a
+  leading UTF-8 BOM, operator-specific bare partition attributes, current
+  `HDFS partitions` scan detail, and the structural portion of modern stored
+  statistics blocks. Synthetic coverage now spans minimal-, standard-,
+  extended-, and verbose-like plan detail plus current fragment resource
+  headers. Stored relation/column names and non-projected resource or pipeline
+  detail are discarded; only existing aggregate scan estimates and
+  table/column statistics availability states are retained. Opaque expression
+  sections, malformed tuple detail, unexpected stored-statistics content, and
+  malformed or overlong structural boundaries fail closed instead of injecting
+  later typed estimates or reusing stale fragment context. Correlation now
+  distinguishes an unbound external artifact from no accepted plan source while
+  keeping statement and execution identity unknown.
+ - Agent documentation now keeps focused test selection in `test-matrix.md` and
+  routes long live-system and retained-evidence sequences to their canonical
+  Kubernetes, owner-raw, Trino, Spark, and Impala runbooks. Deployment Markdown
+  under `deploy/` is now included in the public-doc and local-link audits, and
+  local Markdown fragments are checked against generated or explicit anchors.
+  Resolved code-audit guard history moved to a public archived snapshot while
+  active risks and current Trino promotion boundaries remain in the active
+  audit. These documentation and guardrail changes do not broaden engine
+  support, owner-raw access, SQL execution, or raw-data exposure.
+- Agent guidance now follows a focused instruction chain: root `AGENTS.md`
+  keeps non-negotiable safety/support/Git invariants and source routing,
+  `agent-quickstart.md` owns the operational sequence, and the compact
+  `agent-playbook.md` describes only change-type deltas. Documentation preflight
+  no longer loads the full Codex handoff for every Markdown edit or unmatched
+  path; config, packaging, and deployment paths now have an explicit focused
+  route before the guarded unmatched fallback. Active-doc, public-doc, link,
+  focused agent-tooling, and whitespace checks remain routed explicitly.
+  Mutable Trino/Spark capability inventories stay in the engine support matrix
+  and code map, and the durable handoff no longer carries worktree restart or
+  backlog continuation notes. This is an agent-context and semantic-drift
+  cleanup; it does not relax SQL, raw-data, owner-raw, engine-support,
+  validation, or Git safety boundaries.
+- Cloudera Manager, direct Impala daemon, and optional Prometheus HTTP readers
+  now treat incomplete response reads as sanitized transport failures. Direct
+  Impala optional `/profile_docs` and `/admission?json` probes, daemon identity
+  lookup, query-list/profile fallback paths, and Prometheus runtime metric
+  summaries degrade through existing unavailable or retry states instead of
+  surfacing raw tracebacks; this does not change support scope, SQL execution,
+  or raw-output behavior.
+- Query Inbox can now read configured Recent history storage as a bounded
+  read-only Online History view. It renders retained raw-free summary rows
+  without raw SQL, profile text, local store paths, or raw artifact names, keeps
+  rows without materialized case artifacts read-only, and uses discover-only web
+  refreshes for history-backed configured scans so the path updates retained
+  summaries and profile-job planning without synchronous profile analysis,
+  metadata SQL collection, LLM reports, optimizer jobs, generated SQL, or SQL
+  execution.
+- Online History now projects current Recent profile worker lifecycle state
+  from the history store into raw-free row status and coverage counts. Pending,
+  processing, retry-pending, analyzed, and failed worker states remain visible
+  in the Query Inbox status banner as aggregate profile-loop, separated
+  profile-state, normalized error-code, retained-row, and Details-ready metrics
+  without exposing raw profile bytes or enabling Details before the analysis
+  cache is materialized. Retry-pending and failed rows also surface the
+  normalized profile-worker error code when one is retained, without exposing
+  raw transport errors, subprocess output, profile bytes, local paths, or raw
+  artifact names. The status banner now also derives safe next-step labels
+  from retained states and aggregate counters for retry, failed, waiting, and
+  materialized backlog states without trusting retained free-form text.
+  Rediscovered summaries do not reset a progressed worker state back to
+  not-collected.
+- Online History now distinguishes retained summary count, displayed row cap,
+  and real analyzed-profile count in the Recent results coverage line. The
+  bounded 500-row inbox projection is labeled as shown rows instead of analyzed
+  cases, Details-ready counts can use aggregate materialization evidence beyond
+  the displayed page, and direct history-store backlog health can surface
+  raw-free pending/retry/leased/failed profile-worker counts even when the
+  operator-readiness CronJob summary is not configured.
+- Batch maintenance CLIs, including `query-doctor-recent-profile-worker`, can
+  now use `active_cluster_key` or the only `clusters[]` entry as the default
+  source when no explicit source flags are provided. Multi-cluster configs
+  without a default still fail with an explicit safe configuration error instead
+  of falling through to missing Cloudera Manager settings.
+- `query-doctor-recent-profile-worker` no longer applies the Recent scan
+  `--triage-profile-limit <= --cm-inspect-limit` validation to maintenance
+  runs, so retained profile jobs can be processed from configs whose analysis
+  budget is higher than the summary discovery page size.
+- Online History now shows Recent summary collector freshness from the latest
+  retained planning timestamp. The Query Inbox banner can flag a stale
+  discover-only producer separately from profile-worker backlog health and
+  derives a safe collector next step without exposing Query IDs, source keys,
+  local paths, raw collector payloads, or retained free-form text. Configured
+  web installs can now also point `recent_history_collector_summary_json` at a
+  retained `query_doctor_recent_history_collector_v1` summary so the same
+  banner shows the producer's last allowlisted status, age, recorded-row, and
+  planned-job counters; invalid or unsafe summaries degrade to
+  blocked/unavailable status without rendering paths, raw JSON, raw errors, or
+  retained free-form text. Batch Recent also mirrors the same allowlisted
+  collector summary fields into the optional `--progress-jsonl` stream for
+  recorded, disabled, warning, and failed producer states without emitting raw
+  SQL, Query IDs, local paths, raw errors, or retained free-form text. Helm
+  configured installs now wire the scheduled `recentSummaryCollector` CronJob
+  to retain that progress JSONL stream on the case PVC under
+  `recentSummaryCollector.progressJsonl`; chart validation keeps the progress
+  path under `persistence.mountPath` and separate from `summaryJson`.
+- Online History can now open a raw-free Details snapshot for analyzed rows
+  that have a ready `recent_analysis_cache` payload linked through available
+  `fingerprint_only` profile-artifact metadata. Rows without that materialized
+  cache remain read-only. The snapshot includes only allowlisted score,
+  recommendation, aggregate metadata coverage, and processing timing fields;
+  it does not expose profile bytes, profile fingerprints, storage keys, local
+  paths, LLM reports, optimizer jobs, generated SQL, or SQL execution.
+- Recent profile worker completion now requires both an accepted raw-free
+  analysis cache record and accepted `fingerprint_only` profile-artifact
+  metadata before the retained summary is marked analyzed. Incomplete or unsafe
+  materialization outcomes fail the worker job with a normalized error code
+  instead of making Online History show an analyzed row without a Details-ready
+  snapshot.
+- Added `query-doctor-recent-profile-remediation` as a dry-run-first
+  maintenance CLI for bounded recovery of terminal failed profile jobs. The
+  command can explicitly `--apply` a limited failed-job requeue after an
+  operator fixes collection or materialization settings, resets selected jobs
+  to pending with a fresh attempt budget, and emits only aggregate counts,
+  issue codes, mode, and next-step text without exposing Query IDs, retained
+  error values, source filter values, DSNs, local paths, raw SQL, profile text,
+  or raw artifact names.
+- `query-doctor-recent-history-operator-readiness` can now accept an optional
+  retained `query_doctor_recent_profile_remediation_v1` summary and project its
+  dry-run/apply counts into the raw-free operator handoff. Query Inbox Online
+  History shows only allowlisted remediation mode/counts and a recomputed safe
+  next step; it does not trust retained free-form remediation text and does not
+  run remediation from the browser or readiness audit.
+- `query-doctor-recent-history-operator-readiness` can now accept an optional
+  retained `query_doctor_recent_history_collector_v1` summary and include the
+  scheduled collector producer status, freshness, and aggregate counters in
+  the raw-free operator handoff. Not-ready collector states block the handoff
+  while still projecting safe producer state; missing optional collector
+  summaries remain non-blocking.
+- Helm configured installs can now render a disabled-by-default
+  `recentHistory.postgres.profileRemediation` CronJob that writes a raw-free
+  dry-run-only `query-doctor-recent-profile-remediation` summary to the case
+  PVC for operator readiness. The chart passes `--dry-run`, does not render an
+  apply/requeue remediation job, and mounts only the Postgres DSN Secret and
+  case PVC for that producer.
+- Helm configured installs can now render a disabled-by-default
+  `recentSummaryCollector` CronJob that runs
+  `query-doctor-batch-recent --discover-only` against Postgres Recent history.
+  It plans retained summary rows and profile jobs and writes a raw-free
+  collector run summary to the case PVC without collecting profiles, running
+  metadata SQL, LLM reports, optimizer jobs, or operator-readiness audits.
+- Query Inbox Online History can now project a configured retained
+  `query_doctor_recent_history_operator_readiness_v1` summary into the status
+  banner. The web path shows only allowlisted readiness, evidence, reason-code
+  labels, schema, worker, worker-materialization, worker next-step,
+  profile-backlog, retention, and profile-remediation counters, while invalid,
+  wrong-kind, or unsafe summaries degrade to safe blocked/unavailable status
+  without exposing the configured path, raw JSON, raw SQL, profile text, local
+  store paths, retained free-form remediation text, or raw artifact names. The
+  worker and remediation next-step values are derived from safe counters
+  instead of retained free-form text.
+- Recent profile worker summaries now include aggregate profile-backlog health
+  counts for pending, retry-pending, leased, stale leased, and terminal failed
+  jobs in the configured source scope. Operator readiness requires that
+  raw-free health block before accepting a worker summary, and Online History
+  projects only those allowlisted counts plus a recomputed backlog next step
+  without exposing Query IDs, lease owners, source filter values, retained
+  error values, local paths, raw SQL, or profile artifacts.
+- Helm configured example values now enable the default Online history lane
+  with PVC-backed SQLite storage, 5000-row Recent profile planning, and bounded
+  raw-free retention defaults so configured Kubernetes installs do not fall
+  back to the old 50-query history-refresh view or unbounded local history
+  growth.
+- Recent profile-artifact metadata now has an explicit `fingerprint_only`
+  storage lifecycle contract. Legacy `local` metadata labels normalize to that
+  contract, path-like keys are rejected, and storage kinds that would retain
+  profile bytes, local paths, object names, or external artifact references are
+  rejected until a bounded delete implementation exists.
+- Added `query-doctor-recent-history-operator-readiness` for retained raw-free
+  Recent history operator evidence. The command validates already written
+  Postgres readiness and profile-worker summary JSON files, plus an optional
+  retention summary, rejects unsafe retained fields or values, emits one
+  path-free handoff summary with accepted raw-free operation counters for
+  schema readiness, profile-worker jobs and materialized records, and retention
+  deletes, and does not contact Postgres, Kubernetes, query engines, or profile
+  collectors.
+- The Helm chart can now render an optional configured-mode
+  `recentHistory.operatorReadiness` CronJob after Recent history Postgres,
+  Postgres readiness, and the Recent profile worker are enabled. The chart
+  retains the upstream Postgres readiness, profile-worker, and optional
+  retention summaries on the case PVC, then runs the operator-readiness audit
+  over only those raw-free summaries; the audit CronJob does not mount Query
+  Doctor config, collection credentials, the Postgres DSN Secret, Kerberos
+  material, or source endpoint configuration.
+- `query-doctor-recent-profile-worker` now removes its worker-owned temporary
+  `profile-worker-cases/job-*` directory after each processed job while keeping
+  Recent history storage raw-free. It still does not store raw profile bytes in
+  the history database.
+- Added `query-doctor-recent-history-retention` and optional Helm
+  `recentHistory.postgres.retention` wiring for scheduled raw-free Recent
+  history pruning. The maintenance command prunes only configured old summary,
+  terminal profile-job, analysis-cache, and profile-artifact metadata rows,
+  returns aggregate delete counts, and does not contact query engines, discover
+  queries, collect profiles, run metadata SQL, run LLM reports, run optimizer
+  jobs, mount collection credentials, or delete external artifact objects.
+- Helm configured deployments that enable Recent history Postgres now run the
+  raw-free `query-doctor-recent-history-postgres-readiness --json
+  --fail-on-warning` check as a web pod initContainer by default. The check
+  verifies only Secret/env DSN handoff and schema initialization, does not
+  print DSNs, hostnames, credentials, paths, Query IDs, or raw payloads, and
+  does not contact query engines or run profile collection. Operators can
+  disable it with `recentHistory.postgres.readiness.enabled=false` only when an
+  equivalent platform gate is managed outside the chart.
+- The Helm chart can now render an optional configured-mode
+  `recentProfileWorker` CronJob after Recent history Postgres is enabled. The
+  CronJob runs `query-doctor-recent-profile-worker` with raw-free JSON output,
+  metadata collection off, top reports disabled, source-filtered Postgres job
+  claims, and the same external Secret/config/PVC/Kerberos wiring as the web
+  pod. It does not run LLM reports, optimizer jobs, generated SQL, SQL
+  execution, metadata SQL collection, browser raw-source rendering, or raw
+  profile storage in the database.
+- Agent code graph tooling now records safe aggregate usage by default in
+  shared local state outside task worktrees, so adoption metrics survive
+  worktree cleanup. Agents can review aggregate counts with `--usage-summary`
+  or opt out for one run with `--no-record-usage`; the JSONL records still
+  contain only counts and runtime, not changed file paths or graph output.
+- Agent code graph usage summaries now include daily activity and a local
+  `main` reflog proxy for merge-risk runs before merge events, giving agents a
+  safer adoption signal without exposing branch names, changed paths, or raw
+  graph output.
+- Agent code graph tooling now includes `--merge-risk` to show pre-merge exact
+  file overlaps and area overlaps against `main` and sibling worktrees before
+  agents try to merge task branches.
+- Web UI now treats Query Inbox as the default first screen. When a safe
+  `batch_summary` or materialized case set is already available, the results
+  table renders before the collapsed New scan controls; empty sessions still
+  open directly to the bounded scan form. The first screen now also shows a
+  raw-free Inbox status strip for empty, ready, running, partial, and stale
+  summary states. Stale is computed only from parseable safe summary freshness
+  fields, not local paths or artifact mtimes. When materialized results exist,
+  the status strip includes safe source/window/time-range/query-type scope chips
+  from the materialized summary and allowlisted result presets for the existing URL
+  filters, including attention, workload, stats, rewrite-opportunity, all-cases,
+  and spill-evidence views. Query Inbox also exposes allowlisted URL scope
+  filters for source, workflow, window, UTC time range, and query type; if those
+  filters do not match the current materialized snapshot, the page shows a safe
+  filtered state and New scan controls instead of showing mismatched rows. That
+  New scan form is prefilled from selected safe
+  source/window/time-range/workflow/query-type URL filters when they map to
+  supported scan controls, so the selected safe source, running/finished
+  workflow, numeric lookback, exact finished-query range, and short query type
+  identifier can be materialized without manual re-entry. Result presets,
+  result toolbar links, spill filtering, and pagination preserve those safe
+  scope filters without echoing arbitrary query
+  parameters. The collapsed New scan form also inherits safe
+  source/window/time-range/workflow/query-type refresh defaults from the same
+  materialized scope so operators can rerun the shown snapshot shape without
+  restoring those parameters by hand. New scan submit and job redirects now
+  keep only the same allowlisted safe scope filters, so a running job page does
+  not fall back to a stale mismatched snapshot while the new scope materializes.
+  Window, UTC time-range, and query type scope filters now also include inline
+  controls that update only the allowlisted `inbox_window`, `inbox_from`,
+  `inbox_to`, and `inbox_query_type` URL filters. Result toolbars and Query
+  Inbox presets also include allowlisted view-only owner/pool tag,
+  opaque owner/pool value, lifecycle/readiness/action filters for owner-tagged
+  rows, pool-tagged rows, concrete safe owner/pool values, clean analysis,
+  status follow-up, metadata availability, validated reports, optimizer
+  guidance readiness, and recorded action outcomes. Concrete owner/pool value
+  filters use server-generated opaque URL tokens recomputed from the current
+  materialized rows rather than raw owner or pool values. Owner/pool value
+  chips now show safe row counts, and empty result tables name the matching
+  active value chip when the token is present in the current snapshot. Active
+  result filters now also expose explicit Clear filters links in Query Inbox,
+  the Results toolbar, and matching empty result tables; those links preserve
+  safe materialized scope and spill state while removing only view-only result
+  filters. Empty result tables now also offer safe one-click actions to remove
+  spill filtering or switch to All analyzed while preserving the same allowlisted
+  scope/result filters. Query Inbox result group presets now show safe row or
+  workload-group counts recalculated from the current active result filters and
+  spill state, matching the Results toolbar counts before the operator opens a
+  group. The Results toolbar now also exposes allowlisted URL-driven sorting for
+  default group rank, priority, duration, safe start time, and impact; sorting
+  reorders only already materialized raw-free rows or workload groups and is
+  preserved by result links and pagination. Query Inbox now adds shareable view
+  presets for common analyst paths such as needs-attention-by-duration,
+  spill-impact, rewrite-priority, and owner/pool-priority; those links compose
+  only existing allowlisted scope, result-filter, spill, and sort URL state and
+  do not start scans, reports, optimizer jobs, generated SQL, or SQL execution.
+  Zero-count presets are visually muted while remaining available, and the
+  Results toolbar now shows a short active-filter summary for spill, owner/pool,
+  lifecycle/readiness, report, optimizer, and outcome filters. Query Inbox also
+  surfaces active safe scope/result filters as status-strip chips, and the
+  Results toolbar shows a compact filtered row/group count when result filters
+  or spill filtering narrow the selected view. The Results toolbar also shows
+  a compact view-state summary and shareable URL label built only from the same
+  allowlisted group, scope, filter, spill, and sort state. Those
+  filters narrow only already materialized raw-free rows and workload groups,
+  preserve state through result links, spill filtering, and pagination, and
+  are not submitted as New scan scope. Running scans drop exact time-range
+  scope before job redirect because Running remains a live snapshot.
+  Scope chips, refresh defaults, and job scope redirects never include raw user
+  or pool names, source hostnames, local paths, raw artifact names, or query IDs.
+  This does not auto-run collection, LLM reports, optimizer jobs, generated
+  SQL, or SQL execution.
+- Query Inbox now keeps the top status strip focused on inbox state, safe
+  counts, and current materialized scope while moving its safe scope filters,
+  view presets, result filters, and New scan link into a compact Filters and
+  views disclosure. The Results toolbar remains visible by default, so
+  materialized rows appear earlier in the first viewport without changing raw
+  data boundaries, URL allowlists, scan behavior, report generation, optimizer
+  jobs, generated SQL, or SQL execution. Public README screenshots were
+  refreshed from the synthetic demo pack for the updated first-screen layout.
+- 0.11.0 adds a supported containerized web deployment path. The new Docker
+  image runs `query-doctor-web` as a fixed non-root UID/GID, defaults to the
+  safe read-only `--public-demo` mode, exposes port 8765, and carries a
+  liveness healthcheck against `/healthz`.
+- Kubernetes deployment assets now live under `deploy/kubernetes/`. The
+  `public-demo.yaml` manifest runs the synthetic demo without credentials and
+  denies pod egress; `configured-web.yaml` is a private operator template with
+  mounted config, externally created credentials Secret reference, PVC-backed
+  case storage, security contexts, and liveness/readiness probes.
+- The upstream Helm chart now lives under `deploy/helm/query-doctor`. It
+  renders safe public-demo and configured private web modes, ships a values
+  schema, supports generic user-provided pod labels and annotations, and is
+  covered by a render/audit/kubeconform smoke script.
+- Configured Kubernetes web deployments now use and audit a Recent-ready web
+  pod resource baseline of `250m`/`512Mi` requests and `2`/`2Gi` limits, so
+  the supported configured path no longer inherits the smaller public-demo
+  memory profile.
+- Non-local configured web binds now default to a conservative Recent scan
+  shape unless private config overrides it: profile analysis limit `50`,
+  overall Recent parallelism `4`, metadata parallelism `2`, and metadata top
+  limit `10`, reducing Kubernetes OOM risk for shared configured installs.
+- Finished-query web Recent scans now reuse already analyzed profiles from
+  prior local web batch outputs when the Query ID matches, the previous case
+  completed successfully, and the scan remains in the same safe redacted shape.
+  The reuse path copies artifacts into the new batch output, records aggregate
+  reuse counters in `batch_summary.json`, skips duplicate collection/analysis,
+  and requires an explicit profile reuse contract in the prior summary before
+  reusing artifacts.
+- Configured Kubernetes and Helm installs can now persist the web Recent
+  analyzed-profile reuse cache across pod restarts by setting
+  `recent_batch_root` to the dedicated temp-backed case-PVC cache mount. The
+  web startup, chart validation, and batch CLI keep the batch root temp-backed
+  and dedicated to `query-doctor-*` outputs.
+- Web Results coverage now shows the aggregate reused-profile count for Recent
+  runs that reused analyzed artifacts. Re-submitting the same finished Recent
+  scan while it is still running now redirects to the existing job instead of
+  launching duplicate profile collection and analysis.
+- Recent batch runs can now opt in to a local SQLite `recent_history_db` that
+  stores raw-free summary history for every discovered candidate, including
+  bounded summary signals, selected/suspicion reason codes, and profile status
+  without retaining raw SQL or profile text. Discover-only history runs also
+  plan pending profile jobs for suspicious or selected summaries under the
+  existing Recent profile budget. Batch summaries record only aggregate
+  history-store status, summary count, and planned-job count, not the SQLite
+  path.
+- Recent history storage now has a backend-neutral contract with SQLite as the
+  dependency-free local adapter and optional Postgres as the configured
+  production storage target for raw-free `recent_query_summary`. Postgres mode
+  reads its DSN from a Secret/env-provided variable, requires the optional
+  `postgres` package extra or image build arg, and keeps batch summaries
+  path-free and aggregate-only. The Helm chart can now wire that DSN from an
+  existing Secret key in configured mode without rendering Secret objects or
+  inline values.
+- Recent history storage now includes raw-free `recent_profile_job`,
+  `recent_analysis_cache`, and `recent_profile_artifact` metadata schemas plus
+  a deterministic profile-budget planner that ranks already retained summary
+  records into pending profile jobs by suspicion score, selected-candidate
+  status, and duration. Discover-only Recent runs now enqueue those jobs for
+  the shared worker.
+- Profile-budget storage now supports atomic claim semantics for pending or
+  expired `recent_profile_job` rows. SQLite uses a local transaction lock for
+  the dependency-free adapter, and Postgres uses `FOR UPDATE SKIP LOCKED` for
+  CNPG workers. Claims can be filtered by engine/source/source key, normalize
+  the lease owner, increment attempts, and return only raw-free job records.
+- Profile-budget storage now supports owner-guarded lease renewal, completion,
+  retryable failure, and terminal failure transitions for leased profile jobs.
+  Retryable failures clear the lease and return the job to `pending`; terminal
+  failures move it to `failed`; completion clears lease and error state. Stored
+  failure reasons are safe error codes only, not raw exception messages.
+- `query-doctor-recent-profile-worker` now processes queued Recent profile jobs
+  from SQLite or Postgres/CNPG. It claims only jobs for the configured source,
+  collects bounded profiles through existing Impala Recent collectors, runs
+  deterministic analysis with metadata mode off, and writes raw-free
+  analysis-cache plus profile-artifact metadata. It does not run LLM reports,
+  Query Optimizer jobs, generated SQL, metadata SQL collection, browser raw
+  source rendering, or raw profile storage in the history database.
+- Recent analysis cache storage now has SQLite and Postgres upsert/load APIs
+  keyed by engine/source, Query ID, profile fingerprint, and analyzer contract.
+  Cached payloads are sanitized as raw-free JSON and scrub dangerous raw-key
+  fields such as raw SQL, profile text, metadata, paths, artifact names, model
+  names, and secrets before storage.
+- Recent history storage now includes a raw-free `recent_profile_artifact`
+  metadata table for selected profile artifacts. It stores compatibility keys,
+  status, size, and an opaque storage key only; it rejects path-like storage
+  keys and does not store raw profile bytes, local paths, or artifact
+  filenames.
+- Recent history storage now has an explicit retention-pruning API for SQLite
+  and Postgres. It can delete old summary rows, terminal profile jobs,
+  analysis-cache records, and profile-artifact metadata by cutoff timestamp,
+  returns aggregate counts only, and intentionally leaves pending or leased
+  profile jobs untouched. Batch Recent can opt in through positive
+  `recent_history_*_retention_days` config fields or matching CLI flags;
+  retention output remains aggregate-only.
+- The Helm chart can now optionally render a configured-mode CloudNativePG
+  `Cluster` for the Recent history Postgres backend. It remains disabled by
+  default, requires configured mode plus `recentHistory.postgres.enabled`, and
+  keeps CNPG owner credentials and the Query Doctor DSN in existing Secrets
+  instead of rendering Secret objects or inline database values.
+- `query-doctor-recent-history-postgres-readiness` now checks the configured
+  Recent history Postgres DSN env and schema initialization from the target
+  runtime environment. Its JSON/text output is raw-free and reports only status,
+  check ids, issue codes, and aggregate booleans.
+- Container images now include Kerberos client tools and the isolated
+  `impala-shell` runtime used by configured Impala metadata refresh, while
+  keeping credentials, keytabs, ticket caches, and metadata settings outside
+  the image.
+- The image smoke now imports the native `sasl` module from the isolated
+  `impala-shell` runtime, catching missing runtime shared libraries before a
+  Kubernetes metadata refresh reaches production.
+- Added a bounded configured Kubernetes metadata smoke that verifies the live
+  web pod's Kerberos cache and metadata runtime, submits one Recent scan with
+  `metadata_top_limit=1`, requires collected or partial metadata with table
+  context, and reports only aggregate metadata status and table-context
+  counters. The smoke marks its service scan as non-publishing so release gates
+  do not replace the latest analyst-visible UI batch result.
+- The Helm chart now has an optional configured-mode Kerberos initContainer
+  flow that references an existing Secret, refreshes a ticket cache under
+  `/tmp/query-doctor-krb5/`, and mounts only the cache plus optional
+  `krb5.conf` into the web container.
+- The configured Helm example now leaves chart-owned ingress disabled so shared
+  deployments do not accidentally publish the configured web Service directly;
+  platform-owned SSO/auth front doors such as oauth2-proxy/Keycloak should route
+  to the chart Service instead.
+- Added a Kubernetes auth-front-door runbook and
+  `scripts/audit_kubernetes_auth_front_door.py` so configured deployments can
+  check oauth2-proxy/Keycloak-style Ingress, expected issuer/client, expected
+  PKCE method, compact cookie-session hardening for large AD group claims,
+  upstream, Secret reference, token/basic-auth-forwarding, NetworkPolicy
+  front-door isolation, and deployment-readiness wiring without printing
+  hostnames, issuer URLs, redirect URLs, client IDs, Secret names, paths, users,
+  label values, or case identifiers.
+- Added `scripts/kubernetes_auth_front_door_smoke.py` for a raw-free live
+  unauthenticated ingress smoke. It follows the external redirect chain, checks
+  the OIDC authorization request, `/oauth2/callback` redirect URI, PKCE `S256`,
+  optional expected issuer/client values, and token-like response header/cookie
+  names without printing hostnames, redirect URLs, client IDs, state, code
+  challenge, cookies, tokens, or users.
+- Added `scripts/kubernetes-configured-release-gate.sh` as the configured
+  Kubernetes handoff wrapper. It composes the metadata smoke, external auth
+  redirect smoke, and raw-free auth-front-door resource audit without embedding
+  deployment-specific URLs, client IDs, labels, retained resource dumps, or
+  readiness payloads in public source.
+- Kubernetes packaging now includes a synthetic self-test Job and Helm test
+  hook that run only `query-doctor-self-test` without config, credentials,
+  PVCs, live engine access, optimizer jobs, metadata collection, or SQL. It is
+  an install confidence check, not an arbitrary command runner.
+- Web deployments now expose raw-free deployment readiness at `/deployment`
+  and `/deployment/readiness.json`, with a matching
+  `query-doctor-deployment-readiness` CLI for pre-start checks. The summary
+  reports only safe mode, bind-scope, source-type counts, probe, and boundary
+  status labels; it does not print config paths, endpoints, users, header
+  names, model names, or runtime internals.
+- The web server now exposes raw-free JSON `/healthz` and `/readyz` endpoints
+  for container and Kubernetes probes. The payload intentionally reports only
+  service/probe status plus raw-output and SQL-execution false flags.
+- Local/private web sessions can now upload one exported Impala text profile
+  from `One Query ID`. The new `/profile/upload` route is multipart-only,
+  bounded by `max_profile_bytes`, accepts exactly one file, rejects unsupported
+  profile payload shapes through the same manual-profile analyzer path, removes
+  the temporary upload file after staging, generates the deterministic Python
+  report, and keeps raw profile text, filenames, paths, and temporary artifacts
+  out of trusted browser surfaces. Public demo mode hides the form and blocks
+  uploads before reading the request body.
+- Added `scripts/audit_kubernetes_deployment.py` for raw-free static manifest
+  checks, `scripts/kubernetes-public-demo-smoke.sh` for intentional disposable
+  live-cluster public-demo smoke, and `scripts/kubernetes-self-test-smoke.sh`
+  for disposable Helm self-test validation with separate Job log capture.
+- Container CI now builds and smokes the image on pull requests and publishes
+  `ghcr.io/alexandrefimov/query-doctor:<version>` plus `latest` from published
+  GitHub Releases. Release docs now require kubeconform and container image
+  smoke alongside the Python package release gates.
+- Public README, Russian README, docs index, public-release readiness, release
+  checklist, test matrix, package metadata, and release notes now describe
+  Kubernetes support as a containerized web deployment starting point only. It
+  does not add native auth, RBAC, sessions, multi-tenant isolation, an
+  operator/CRD, SQL execution, or broader engine support.
+- Recent scan summary presentation now consumes a materialized case index
+  projection before falling back to legacy `cases`, giving the Query Inbox path
+  a path-free, allowlisted row contract without changing `batch_summary.json`
+  storage or source support claims.
+- Roadmap, architecture, and customer-readiness docs now define the
+  Recent-first Query Inbox direction: materialized raw-free cases are the
+  target main production-triage path, while one-profile intake remains the
+  shortest first-value path and online materialization remains bounded,
+  read-only, local, and unable to auto-run LLM reports, optimizer jobs,
+  generated SQL, SQL execution, broad query-history crawling, or
+  shared-deployment identity logic.
+- Recent scan Results now reuses the already-built safe summary view while
+  rendering notices and context, avoiding repeated full presenter passes over
+  large scan batches and reducing page-switch latency for broad Recent scans.
+- Recent scan Results tables now paginate large result groups server-side,
+  keeping broad `All analyzed`, `Worth reviewing`, and `Rewrite opportunities`
+  views responsive without hiding the remaining rows.
+- Recent scan Repeated workloads now renders one row per workload fingerprint
+  group instead of one row per member query. The table links directly to
+  Workload Details and introduced group-level runs, p50, p95, total impact,
+  owner, pool, bottleneck, and severity aggregates for follow-up presentation.
 - Public and agent documentation positioning now consistently describes Query
   Doctor as Impala full production triage with bounded local Trino production
   lanes. Active architecture, roadmap, release-readiness, engine-reference,
@@ -31,9 +599,6 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
   query-history crawling, product metadata collection, LLM reports, Query
   Optimizer jobs, generated SQL, SQL execution, and Spark production support
   out of scope.
-- README, package metadata, and 0.10.0 release notes now present Trino as
-  official bounded local production support for the current raw-free lanes,
-  while preserving Apache Impala as the full production triage engine.
 - 0.10.0 release notes now summarize the bounded local Trino production
   claim, Impala-first support boundary, public demo safety boundary, and
   release validation focus without changing historical 0.9.0 notes.
@@ -47,6 +612,9 @@ handoff, see [release-notes-0.10.0.md](release-notes-0.10.0.md). Historical
 - The Diagnose Engine control no longer shows secondary support subtitles under
   the Impala and Trino choices. Unconfigured or production-mode Trino now uses
   the plain `Trino` label, while legacy beta sources still show `Trino Beta`.
+- Production-mode Trino source options now use the configured Source cluster
+  label without beta or capability suffixes; legacy beta sources keep the
+  explicit beta capability suffix.
 - Trino Recent no longer inherits Impala-only `recent_user`, `recent_pool`, or
   `query_type` defaults from local config. Those fields stay hidden in the
   Trino Recent form, while explicitly submitted unsupported filters still fail

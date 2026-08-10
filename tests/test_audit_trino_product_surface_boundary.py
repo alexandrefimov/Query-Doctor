@@ -1176,6 +1176,31 @@ def test_trino_product_surface_audit_source_boundary_allows_preview_registry_imp
     assert result.product_source_allowed_trino_import_count == 3
 
 
+def test_trino_product_surface_audit_source_boundary_allows_readiness_support_mode_import(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "secret-deployment-readiness.py"
+    source.write_text(
+        "from query_doctor.trino.support_mode import trino_support_mode_enabled\n",
+        encoding="utf-8",
+    )
+    result = audit_trino_product_surface_boundary.TrinoProductSurfaceAuditResult()
+
+    audit_trino_product_surface_boundary.audit_product_surface_source_boundaries(
+        result,
+        targets=(
+            audit_trino_product_surface_boundary.ProductSurfaceSourceTarget(
+                module_name="query_doctor.web.deployment_readiness",
+                path=source,
+            ),
+        ),
+    )
+
+    assert result.issue_counts == {}
+    assert result.product_source_module_checked_count == 1
+    assert result.product_source_allowed_trino_import_count == 1
+
+
 def test_trino_product_surface_audit_source_boundary_allows_read_only_trino_demo_imports(
     tmp_path: Path,
 ) -> None:

@@ -1,9 +1,10 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-06-15
+Last reviewed: 2026-07-29
 
-Query Doctor keeps fact extraction deterministic. LLMs may write report wording
-only from facts that Python has already extracted and validated. The global
+Query Doctor keeps fact extraction and assessment deterministic. LLMs may write
+report wording only from facts that deterministic analyzers have extracted and
+Query Doctor has validated. The global
 `language` config controls Help, Details static UI copy, and newly generated
 trusted reports; English is the default and Russian uses the same
 language-specific prompt, normalizer, and validator boundary.
@@ -16,6 +17,14 @@ separate read-only SQL analysis workflow. Native Impala AI profile-analysis work
 tracked upstream should be treated as a compatibility direction and a signal to
 prepare real cross-engine diagnostic contracts, not a reason to duplicate a
 one-profile AI tab.
+
+The standalone production-triage target is a Recent-first Query Inbox over
+materialized raw-free cases. Operators should be able to open the UI, choose a
+configured source and time range, filter the ranked cases, and then drill into
+Details without manually starting a one-query workflow first. That inbox target
+still uses the same explicit bounded collection, deterministic analyzer, and
+trusted-output boundaries described below; it is not a broad query-history
+crawler, shared service, SQL executor, or automatic report/optimizer runner.
 
 ## Current Architecture
 
@@ -33,10 +42,10 @@ flowchart TD
 
     subgraph Local["Local Query Doctor runtime boundary"]
         Collector[Explicit bounded collectors]
-        CaseStore[Ignored local case output]
+        CaseStore[Ignored local case output and materialized cases]
         Analyzer[Deterministic analyzer]
         Facts[Analyzer-owned facts]
-        Ranking[Ranking and action candidates]
+        Ranking[Ranking, inbox index, and action candidates]
         Details[Safe Details view models]
         WebUI[Local web UI]
     end
@@ -90,7 +99,8 @@ flowchart TD
     QueryFindings --> WebUI
 ```
 
-This diagram is the current product boundary. Future source-provider and engine
+This diagram is the current standalone/local product boundary. Future
+source-provider and engine
 work remains roadmap-only until contracts, fixtures, safety tests, and public
 docs exist; the diagram should not be read as a generic provider plugin system
 or automatic LLM execution path.
@@ -162,6 +172,39 @@ Current support is intentionally narrow:
   guidance. Broader live Trino coordinator collection, Running scans,
   query-history crawling, product metadata collection, LLM reports, Query
   Optimizer jobs, generated Trino SQL, and SQL execution remain unsupported.
+
+## Query Inbox Target Boundary
+
+The Query Inbox direction changes the default product emphasis, not the trust
+contract. The intended loop is:
+
+```text
+bounded source read
+  -> local materialized case
+  -> deterministic analyzer facts
+  -> raw-free summary index and workload digest
+  -> ranked/filterable inbox
+  -> Details and explicit selected-case actions
+```
+
+Online materialization is allowed only as an operator-configured local loop or
+explicit scan job that runs the same bounded source contracts as the current
+workflows. It may refresh safe indexes, last-run status, freshness, coverage,
+limitation, and failure-category summaries. It must not automatically run LLM
+reports, Query Optimizer jobs, generated SQL, SQL execution, metadata crawls,
+broad query-history crawling, raw source reveal, or shared-deployment identity
+logic.
+
+The browser contract for the inbox is a safe materialized summary, not the raw
+collector output. Case references, source provenance, freshness states, workload
+fingerprints, ranking fields, and action-readiness fields must remain raw-free
+and path-free. Details, deterministic Python Report, and optimizer guidance may
+consume materialized facts only through their existing validation boundaries.
+The current browser implementation exposes explicit empty, ready, running,
+partial, and stale Inbox states from safe summary counts, server-owned job
+status, and parseable safe freshness fields such as `to_time` and
+`recent_window_minutes`. Missing or unparseable freshness remains unknown; stale
+must not be inferred from local paths, raw artifacts, or artifact mtimes.
 
 ## Source-Provider Architecture
 
@@ -275,10 +318,10 @@ newer Cloudera Manager versions, broader non-Cloudera provider behavior, and
 prepared event/log sources as future source-provider work, not as automatic
 support.
 
-The same boundary applies to every workflow: collectors and parsers prepare
-bounded inputs, Python-owned analyzers create facts, LLMs phrase those facts
-only after an explicit action, and validators decide what can be rendered or
-stored as trusted output.
+The same boundary applies to every current workflow: collectors and parsers
+prepare bounded inputs, Python-owned analyzers create diagnostic facts, LLMs
+phrase those facts only after an explicit action, and validators decide what
+can be rendered or stored as trusted output.
 
 ## Analyzer Flow
 
@@ -480,13 +523,13 @@ The details-page optimizer:
 
 The local UI:
 
-- exposes Diagnose, details pages, Help, and explicit selected-case LLM action
+- exposes Query Inbox, details pages, Help, and explicit selected-case LLM action
   workflows;
 - is implemented as server-rendered Python HTML with shared CSS and small
   vanilla JavaScript helpers; there is no JavaScript build pipeline or SPA
   framework in the current baseline;
 - uses Recent Scan as the flagship production triage workflow, with Recent
-  queries as the default Diagnose mode; it discovers Cloudera Manager summaries
+  queries as the default Query Inbox mode; it discovers Cloudera Manager summaries
   for Finished queries by default or direct Impala daemon query lists when
   configured, then collects bounded selected profiles, ranks deterministically,
   and leaves report/optimizer generation explicit per case;
@@ -494,7 +537,7 @@ The local UI:
   runtime metrics as runtime context for selected cases;
 - uses the same result shape for Running now scans, with lower-confidence live
   evidence;
-- analyzes one known Query ID in the Known Query ID Diagnose mode, prepares the
+- analyzes one known Query ID in the Known Query ID Query Inbox mode, prepares the
   deterministic Python report in that explicit submit job, and appends results
   to its table. It does not auto-run LLM reports or optimizer jobs. This path
   can collect via Cloudera Manager or direct Impala daemon profile endpoints,

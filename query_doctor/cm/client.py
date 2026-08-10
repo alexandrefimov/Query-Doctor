@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import math
 import re
@@ -143,6 +144,8 @@ class CMHttpClient:
             raise self.sanitized_error(f"HTTP {exc.code} from CM: {exc}") from exc
         except urllib.error.URLError as exc:
             raise self.sanitized_error(f"CM request failed: {exc}") from exc
+        except http.client.HTTPException as exc:
+            raise self.sanitized_error("CM request failed safely.") from exc
         except OSError as exc:
             raise self.sanitized_error(f"CM request failed: {exc}") from exc
         return payload.decode("utf-8", errors="replace")

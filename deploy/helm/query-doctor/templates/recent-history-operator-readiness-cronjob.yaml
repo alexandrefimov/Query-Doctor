@@ -1,0 +1,89 @@
+{{- $recentHistory := .Values.recentHistory | default dict -}}
+{{- $operatorReadiness := (get $recentHistory "operatorReadiness") | default dict -}}
+{{- $operatorReadinessEnabled := and (eq .Values.mode "configured") ((get $operatorReadiness "enabled") | default false) -}}
+{{- if $operatorReadinessEnabled }}
+{{- $summaryDir := (get $operatorReadiness "summaryDir") | default "/var/lib/query-doctor/recent-history/operator-readiness" -}}
+{{- $postgresSummary := (get $operatorReadiness "postgresReadinessSummaryJson") | default "/var/lib/query-doctor/recent-history/operator-readiness/postgres-readiness-summary.json" -}}
+{{- $workerSummary := (get $operatorReadiness "profileWorkerSummaryJson") | default "/var/lib/query-doctor/recent-history/operator-readiness/profile-worker-summary.json" -}}
+{{- $collectorSummary := (get $operatorReadiness "collectorSummaryJson") | default "" -}}
+{{- $retentionSummary := (get $operatorReadiness "retentionSummaryJson") | default "" -}}
+{{- $remediationSummary := (get $operatorReadiness "profileRemediationSummaryJson") | default "" -}}
+{{- $outputSummary := (get $operatorReadiness "outputSummaryJson") | default "/var/lib/query-doctor/recent-history/operator-readiness/operator-readiness-summary.json" -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ printf "%s-recent-history-operator-readiness" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "query-doctor.recentHistoryOperatorReadinessLabels" . | nindent 4 }}
+  {{- with .Values.recentHistory.operatorReadiness.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.recentHistory.operatorReadiness.schedule | quote }}
+  suspend: {{ .Values.recentHistory.operatorReadiness.suspend }}
+  concurrencyPolicy: {{ .Values.recentHistory.operatorReadiness.concurrencyPolicy | quote }}
+  startingDeadlineSeconds: {{ .Values.recentHistory.operatorReadiness.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.recentHistory.operatorReadiness.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.recentHistory.operatorReadiness.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.recentHistory.operatorReadiness.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.recentHistory.operatorReadiness.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "query-doctor.recentHistoryOperatorReadinessSelectorLabels" . | nindent 12 }}
+          {{- with .Values.recentHistory.operatorReadiness.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          serviceAccountName: {{ include "query-doctor.serviceAccountName" . | quote }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+            fsGroup: 10001
+            fsGroupChangePolicy: OnRootMismatch
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: recent-history-operator-readiness
+              image: {{ include "query-doctor.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+              args:
+                - |
+                  mkdir -p {{ $summaryDir | quote }}
+                  exec query-doctor-recent-history-operator-readiness \
+                    --json \
+                    --fail-on-warning \
+                    --postgres-readiness-summary-json {{ $postgresSummary | quote }} \
+                    --profile-worker-summary-json {{ $workerSummary | quote }} \
+                    {{- if $collectorSummary }}
+                    --collector-summary-json {{ $collectorSummary | quote }} \
+                    {{- end }}
+                    {{- if $retentionSummary }}
+                    --retention-summary-json {{ $retentionSummary | quote }} \
+                    {{- end }}
+                    {{- if $remediationSummary }}
+                    --profile-remediation-summary-json {{ $remediationSummary | quote }} \
+                    {{- end }}
+                    --summary-json {{ $outputSummary | quote }}
+              resources:
+                {{- toYaml .Values.recentHistory.operatorReadiness.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              volumeMounts:
+                - name: cases
+                  mountPath: {{ .Values.persistence.mountPath | quote }}
+          volumes:
+            - name: cases
+              persistentVolumeClaim:
+                claimName: {{ include "query-doctor.claimName" . | quote }}
+{{- end }}

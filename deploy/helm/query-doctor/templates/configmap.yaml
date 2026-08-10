@@ -1,0 +1,11 @@
+{{- if and (eq .Values.mode "configured") .Values.config.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "query-doctor.configMapName" . | quote }}
+  labels:
+    {{- include "query-doctor.labels" . | nindent 4 }}
+data:
+  {{ .Values.config.key }}: |
+{{ .Values.config.inlineJson | nindent 4 }}
+{{- end }}

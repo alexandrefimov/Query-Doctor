@@ -17,7 +17,7 @@ from query_doctor.web.job_workers import run_specific_query_report_job
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
 from query_doctor.web.models import WebSettings
 from query_doctor.web.owner_raw_source import OwnerRawSourceView
-from query_doctor.web.query_analysis import run_query_id_analysis
+from query_doctor.web.query_analysis import run_query_id_analysis, run_uploaded_profile_analysis
 from query_doctor.web.routes import route_get_request
 from query_doctor.web.specific_query_pages import (
     render_specific_query_detail_for_request,
@@ -254,6 +254,77 @@ def test_manual_profile_inbox_known_query_details_leak_canary(tmp_path):
             ]
         ),
         extra_forbidden_fragments=(profile_slug, inbox_profile.name, raw_profile.name),
+    )
+
+
+def test_uploaded_profile_known_query_details_leak_canary(tmp_path):
+    raw_profile = write_raw_canary_profile(tmp_path)
+    raw_profile_text = raw_profile.read_text(encoding="utf-8")
+    settings = WebSettings(
+        config=tmp_path / "cm-config.json",
+        repo_dir=REPO_ROOT,
+        corpus_dir=tmp_path / "cm-corpus",
+        no_llm=True,
+        timeout_sec=90,
+    )
+    store = WebJobStore()
+    progress_stages: list[int] = []
+
+    result = run_uploaded_profile_analysis(
+        QUERY_ID,
+        raw_profile_text,
+        settings,
+        progress=progress_stages.append,
+    )
+    case_dir = expected_case_dir_for_query(QUERY_ID, settings)
+    assert result.query_id == QUERY_ID
+    assert result.case["query_id"] == QUERY_ID
+    assert "case_dir" not in result.case
+    assert "case_index" not in result.case
+    assert case_dir.is_dir()
+    assert progress_stages == [0, 1, 2, 3, 4, 5]
+    assert (case_dir / PYTHON_REPORT_NAME).is_file()
+    assert (case_dir / "diagnosis_python.validated.json").is_file()
+    assert not any(settings.corpus_dir.glob(".profile-upload-*"))
+
+    analysis_job = store.create(QUERY_ID, "uploaded_profile")
+    store.complete(analysis_job.job_id, result)
+    analysis_status_json = render_job_status_json(store.get(analysis_job.job_id))
+
+    detail_status, detail_html = render_specific_query_detail_for_request(
+        settings,
+        QUERY_ID,
+        store,
+        job=store.get(analysis_job.job_id),
+    )
+    assert detail_status == 200
+    detail_route = route_get_request(
+        f"/query/details/{quote(QUERY_ID, safe='')}",
+        settings,
+        store,
+    )
+    assert detail_route is not None
+    assert detail_route.status == 200
+
+    assert_generated_case_sinks_clean(
+        case_dir,
+        required_paths=CASE_SINK_POLICIES.keys(),
+    )
+    assert_text_sinks_clean(
+        [
+            TextSink(
+                "Uploaded profile job status JSON", analysis_status_json, SinkPolicy("public")
+            ),
+            TextSink("Uploaded profile Details HTML", detail_html, SinkPolicy("public")),
+            TextSink(
+                "Uploaded profile Details route HTML", detail_route.body, SinkPolicy("public")
+            ),
+        ]
+    )
+    assert_browser_visible_text_is_generic_raw_free(
+        tmp_path,
+        "\n".join([analysis_status_json, detail_html, detail_route.body]),
+        extra_forbidden_fragments=(raw_profile.name, "uploaded-profile.txt"),
     )
 
 

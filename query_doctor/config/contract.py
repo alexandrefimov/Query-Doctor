@@ -55,6 +55,7 @@ HOST_LABEL_RE = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 KERBEROS_HOST_FQDN_RE = re.compile(rf"(?=^.{{1,253}}\Z){HOST_LABEL_RE}(?:\.{HOST_LABEL_RE})*\Z")
 
 ALLOWED_CONFIG_KEYS = {
+    "active_cluster_key",
     "ca_bundle",
     "cluster",
     "cluster_type",
@@ -129,8 +130,18 @@ ALLOWED_CONFIG_KEYS = {
     "query_type",
     "recent_include_failed",
     "recent_include_running",
+    "recent_history_backend",
+    "recent_history_analysis_cache_retention_days",
+    "recent_history_collector_summary_json",
+    "recent_history_db",
+    "recent_history_operator_readiness_summary_json",
+    "recent_history_profile_artifact_retention_days",
+    "recent_history_profile_job_retention_days",
+    "recent_history_postgres_dsn_env",
+    "recent_history_summary_retention_days",
     "recent_collect_cm_timeseries",
     "recent_collect_workload_history",
+    "recent_batch_root",
     "recent_limit",
     "recent_max_duration_sec",
     "recent_min_duration_sec",
@@ -439,6 +450,10 @@ def normalize_config_value(key: str, value: object) -> object:
             "recent_cm_jobs",
             "recent_cm_events_max_events",
             "recent_cm_summary_limit",
+            "recent_history_summary_retention_days",
+            "recent_history_profile_job_retention_days",
+            "recent_history_analysis_cache_retention_days",
+            "recent_history_profile_artifact_retention_days",
             "recent_metadata_jobs",
             "recent_profile_analysis_limit",
             "recent_max_duration_sec",
@@ -470,6 +485,24 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError("Config field web_advanced_filters must be a list of strings.")
         if key == "recent_scan_timezone":
             raise ConfigError("Config field recent_scan_timezone must be a non-empty string.")
+        if key == "recent_batch_root":
+            raise ConfigError("Config field recent_batch_root must be a non-empty string.")
+        if key == "recent_history_db":
+            raise ConfigError("Config field recent_history_db must be a non-empty string.")
+        if key == "recent_history_collector_summary_json":
+            raise ConfigError(
+                "Config field recent_history_collector_summary_json must be a non-empty string."
+            )
+        if key == "recent_history_operator_readiness_summary_json":
+            raise ConfigError(
+                "Config field recent_history_operator_readiness_summary_json must be a non-empty string."
+            )
+        if key == "recent_history_backend":
+            raise ConfigError("Config field recent_history_backend must be a non-empty string.")
+        if key == "recent_history_postgres_dsn_env":
+            raise ConfigError(
+                "Config field recent_history_postgres_dsn_env must be a non-empty string."
+            )
         if key == "language":
             raise ConfigError("Config field language must be a non-empty string.")
         if key == "manual_profile_dir":
@@ -487,6 +520,7 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError("Config field krb5ccname must not contain control characters.")
         return normalized
     if key in {
+        "active_cluster_key",
         "ca_bundle",
         "cluster",
         "cm_metrics_profile",
@@ -509,6 +543,12 @@ def normalize_config_value(key: str, value: object) -> object:
         "query_type",
         "recent_output_json",
         "recent_order",
+        "recent_batch_root",
+        "recent_history_backend",
+        "recent_history_collector_summary_json",
+        "recent_history_db",
+        "recent_history_operator_readiness_summary_json",
+        "recent_history_postgres_dsn_env",
         "recent_pool",
         "recent_scan_timezone",
         "recent_user",
@@ -629,6 +669,10 @@ def normalize_config_value(key: str, value: object) -> object:
         "recent_cm_jobs",
         "recent_cm_events_max_events",
         "recent_cm_summary_limit",
+        "recent_history_summary_retention_days",
+        "recent_history_profile_job_retention_days",
+        "recent_history_analysis_cache_retention_days",
+        "recent_history_profile_artifact_retention_days",
         "recent_metadata_jobs",
         "recent_profile_analysis_limit",
         "recent_select",

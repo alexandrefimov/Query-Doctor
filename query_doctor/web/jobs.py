@@ -92,7 +92,7 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "Analysis job was not found.",
             default_title="Job was not found",
             default_reason_code="job.not_found",
-            default_next_step="Start a new analysis job from the Diagnose page.",
+            default_next_step="Start a new analysis job from the Query Inbox page.",
         )
         error_info = web_error_info_payload(info)
         payload = {
@@ -182,7 +182,12 @@ class WebJobStore:
             self._store_job_locked(job)
             return job.snapshot()
 
-    def create_batch(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
+    def create_batch(
+        self,
+        form_values: dict[str, object] | None = None,
+        *,
+        batch_root: Path | None = None,
+    ) -> WebJobSnapshot:
         stage = BATCH_STAGES[0]
         job_id = uuid.uuid4().hex
         job = WebJob(
@@ -194,13 +199,56 @@ class WebJobStore:
             progress=stage[2],
             kind="batch",
             batch_form_values=dict(form_values) if form_values is not None else None,
-            batch_progress_path=batch_progress_path(job_id),
+            batch_progress_path=batch_progress_path(job_id, root=batch_root),
         )
         with self._lock:
             self._store_job_locked(job)
             return job.snapshot()
 
-    def create_running_batch(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
+    def running_batch_with_form_values(
+        self,
+        form_values: dict[str, object] | None = None,
+        *,
+        kind: str = "batch",
+    ) -> WebJobSnapshot | None:
+        with self._lock:
+            self._prune_locked()
+            job = self._running_job_with_form_values_locked(kind, form_values)
+            return job.snapshot() if job is not None else None
+
+    def create_or_reuse_batch(
+        self,
+        form_values: dict[str, object] | None = None,
+        *,
+        batch_root: Path | None = None,
+    ) -> tuple[WebJobSnapshot, bool]:
+        with self._lock:
+            self._prune_locked()
+            existing = self._running_job_with_form_values_locked("batch", form_values)
+            if existing is not None:
+                return existing.snapshot(), True
+            stage = BATCH_STAGES[0]
+            job_id = uuid.uuid4().hex
+            job = WebJob(
+                job_id=job_id,
+                query_id="recent scan",
+                report_mode="batch",
+                status="running",
+                stage_label=stage[1],
+                progress=stage[2],
+                kind="batch",
+                batch_form_values=dict(form_values) if form_values is not None else None,
+                batch_progress_path=batch_progress_path(job_id, root=batch_root),
+            )
+            self._store_job_locked(job)
+            return job.snapshot(), False
+
+    def create_running_batch(
+        self,
+        form_values: dict[str, object] | None = None,
+        *,
+        batch_root: Path | None = None,
+    ) -> WebJobSnapshot:
         stage = BATCH_STAGES[0]
         job_id = uuid.uuid4().hex
         job = WebJob(
@@ -212,7 +260,7 @@ class WebJobStore:
             progress=stage[2],
             kind="running",
             batch_form_values=dict(form_values) if form_values is not None else None,
-            batch_progress_path=batch_progress_path(job_id),
+            batch_progress_path=batch_progress_path(job_id, root=batch_root),
         )
         with self._lock:
             self._store_job_locked(job)
@@ -233,6 +281,28 @@ class WebJobStore:
         with self._lock:
             self._store_job_locked(job)
             return job.snapshot()
+
+    def create_or_reuse_trino_recent(
+        self, form_values: dict[str, object] | None = None
+    ) -> tuple[WebJobSnapshot, bool]:
+        with self._lock:
+            self._prune_locked()
+            existing = self._running_job_with_form_values_locked("trino_recent", form_values)
+            if existing is not None:
+                return existing.snapshot(), True
+            stage = TRINO_RECENT_STAGES[0]
+            job = WebJob(
+                job_id=uuid.uuid4().hex,
+                query_id="trino recent scan",
+                report_mode="trino_recent",
+                status="running",
+                stage_label=stage[1],
+                progress=stage[2],
+                kind="trino_recent",
+                batch_form_values=dict(form_values) if form_values is not None else None,
+            )
+            self._store_job_locked(job)
+            return job.snapshot(), False
 
     def create_batch_report(
         self, case_id: str, *, source: str = "batch", report_variant: str = "python"
@@ -558,6 +628,19 @@ class WebJobStore:
         job.updated_at = now
         self._jobs[job.job_id] = job
 
+    def _running_job_with_form_values_locked(
+        self,
+        kind: str,
+        form_values: dict[str, object] | None,
+    ) -> WebJob | None:
+        normalized = dict(form_values) if form_values is not None else None
+        for job in self._jobs.values():
+            if job.kind != kind or job.status != "running":
+                continue
+            if job.batch_form_values == normalized:
+                return job
+        return None
+
     def _prune_locked(self, now: float | None = None) -> None:
         current = self._now() if now is None else now
         if self._terminal_job_ttl_sec >= 0:
@@ -596,7 +679,7 @@ def default_job_error_reason_code(kind: str) -> str:
 def default_job_error_next_step(kind: str) -> str:
     if kind in {"trino_query", "trino_recent"}:
         return (
-            "Check the selected Trino Beta local source, source contracts, auth reference, "
+            "Check the selected Trino local source, source contracts, auth reference, "
             "and coordinator reachability, then retry."
         )
     if kind in {"batch", "running"}:

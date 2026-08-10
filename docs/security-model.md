@@ -1,6 +1,6 @@
 # Security Model
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-07-11
 
 Language: English | [Russian](i18n/ru/security-model.md)
 
@@ -12,13 +12,14 @@ mandatory implementation contract lives in [safety-contract.md](safety-contract.
 Query Doctor is a local-first diagnostic tool. The core safety rule is:
 
 ```text
-Python owns facts. LLM owns wording only.
+Query Doctor owns diagnostic trust and causal promotion. LLM owns wording only.
 ```
 
-Deterministic Python analyzers extract facts from bounded local inputs. LLM
-output is treated as untrusted until it passes normalization, sanitization, and
-deterministic validation. A rejected report or optimizer draft is a valid safety
-outcome.
+Deterministic Python analyzers produce observations from bounded inputs. Query
+Doctor validates and merges accepted evidence and owns assessment findings and
+causal promotion. LLM output is treated as untrusted until it passes
+normalization, sanitization, and deterministic validation. A rejected report
+or optimizer draft is a valid safety outcome.
 
 ## Local-First Operation
 

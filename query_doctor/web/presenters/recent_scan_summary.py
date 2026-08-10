@@ -280,6 +280,13 @@ def recent_scan_signal_summary(case: dict[str, Any]) -> str:
         signals.append(f"host-tail {safe_display_text(tail)}")
     if signals:
         return "; ".join(signals)
+    profile_failure_category = safe_display_text(case.get("failure_category"))
+    if (
+        profile_failure_category
+        and case.get("collection_status") == "summary_history"
+        and case.get("analysis_status") in {"failed", "profile_retry_pending"}
+    ):
+        return f"profile processing failure {profile_failure_category}"
     if numeric_value(case.get("score")) <= 0:
         return "no positive analyzer signals"
     return "positive score from detailed analyzer reasons"

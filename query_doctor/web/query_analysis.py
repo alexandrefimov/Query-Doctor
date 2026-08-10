@@ -334,6 +334,91 @@ def run_query_id_analysis(
     return WebQueryAnalysisResult(query_id=validated_query_id, case=summary_case)
 
 
+def run_uploaded_profile_analysis(
+    query_id: str,
+    profile_text: str,
+    settings: WebSettings,
+    *,
+    runner: Runner = subprocess.run,
+    progress: ProgressFunc | None = None,
+    cancel_check: CancelCheck | None = None,
+) -> WebQueryAnalysisResult:
+    update_progress(progress, 0)
+    validated_query_id = validate_query_id(query_id)
+    if not profile_text.strip():
+        raise WebError(
+            "Uploaded profile text is empty.",
+            title="Uploaded profile is empty",
+            reason_code="web.profile_upload_empty",
+            stage="Checking profile upload",
+            next_step="Choose one exported Impala text profile and submit again.",
+        )
+    if profile_text.lstrip().startswith(("{", "[")):
+        raise WebError(
+            "Uploaded profile must be an exported Impala text profile.",
+            title="Uploaded profile format is unsupported",
+            reason_code="web.profile_upload_format_unsupported",
+            stage="Checking profile upload",
+            next_step="Export the text profile from Impala Web UI and submit that file.",
+        )
+
+    subprocess_env = effective_subprocess_env(settings)
+    expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
+    upload_root = corpus_dir / f".profile-upload-{uuid.uuid4().hex}"
+    upload_path = upload_root / "uploaded-profile.txt"
+    report_generated = False
+
+    def generate_python_report(case_dir: Path) -> None:
+        nonlocal report_generated
+        update_progress(progress, 3)
+        generate_validated_report_artifact(
+            case_dir,
+            settings,
+            runner,
+            label="Query Doctor uploaded profile Python report generation",
+            report_variant=REPORT_VARIANT_PYTHON,
+            cancel_check=cancel_check,
+        )
+        report_generated = True
+        if cancel_check is not None and cancel_check():
+            raise WebError("Analysis was stopped by the user.")
+
+    try:
+        upload_root.mkdir(parents=True, exist_ok=False)
+        upload_path.write_text(profile_text, encoding="utf-8", errors="replace")
+        update_progress(progress, 1)
+        case_dir = analyze_manual_profile_from_directory(
+            validated_query_id,
+            upload_path,
+            expected_case_dir,
+            settings.redact_identifiers,
+            settings,
+            runner,
+            subprocess_env,
+            progress=progress,
+            cancel_check=cancel_check,
+            post_analyze=generate_python_report,
+        )
+    finally:
+        if upload_root.exists():
+            remove_path(upload_root)
+
+    if cancel_check is not None and cancel_check():
+        raise WebError("Analysis was stopped by the user.")
+    if not report_generated:
+        generate_python_report(case_dir)
+    update_progress(progress, 4)
+    summary_case = build_query_id_summary_case(
+        validated_query_id,
+        case_dir,
+        collection_status="ok",
+        analysis_status="ok",
+    )
+    update_progress(progress, 5)
+    return WebQueryAnalysisResult(query_id=validated_query_id, case=summary_case)
+
+
 def update_progress(progress: ProgressFunc | None, stage_index: int) -> None:
     if progress is not None:
         progress(stage_index)

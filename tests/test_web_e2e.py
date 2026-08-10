@@ -62,8 +62,9 @@ def open_recent_results(page) -> None:
 
 
 def ensure_query_groups_visible(page) -> None:
-    assert page.locator(".batch-query-groups").is_visible()
-    assert page.get_by_text("Stats to check").is_visible()
+    query_groups = page.locator(".batch-query-groups")
+    assert query_groups.is_visible()
+    assert query_groups.locator(".batch-filter-link", has_text="Stats to check").is_visible()
 
 
 def assert_error_card_contains(
@@ -664,8 +665,17 @@ def test_e2e_optimizer_scope_guidance_is_secondary(tmp_path, page):
     with run_test_server(e2e_settings(tmp_path)) as base_url:
         page.goto(f"{base_url}/optimizer")
 
-        assert page.locator("#optimizer_sql").is_visible()
+        sql_input = page.locator("#optimizer_sql")
+        assert sql_input.is_visible()
+        assert sql_input.evaluate("(node) => node.getBoundingClientRect().height") >= 220
         assert page.locator(".optimizer-panel .scope-line").count() == 0
+        boundary_summary = page.locator(".optimizer-boundary-summary")
+        assert boundary_summary.is_visible()
+        assert boundary_summary.locator(".optimizer-boundary-item").count() == 3
+        assert boundary_summary.get_by_text("Never executed or echoed after submit").is_visible()
+        assert (
+            page.locator(".optimizer-submit-row").get_by_role("button", name="Analyze").is_visible()
+        )
         scope_details = page.locator(".optimizer-scope-details")
         metadata_scope = scope_details.locator("li", has_text="Metadata:")
         assert scope_details.is_visible()
@@ -729,9 +739,10 @@ def test_e2e_result_filters_preserve_group_and_open_details(tmp_path, page):
         assert active_filter.is_visible()
         assert page.locator("tr", has_text="stats:e2e").is_visible()
 
-        page.locator("a.batch-spill-toggle").click()
+        spill_toggle = page.locator('a.batch-spill-toggle[aria-label="Only queries with spills"]')
+        spill_toggle.click()
         page.wait_for_url("**/?query_group=stats&only_with_spills=on#recent-results")
-        assert page.locator(".batch-spill-toggle--active").is_visible()
+        assert "batch-spill-toggle--active" in spill_toggle.get_attribute("class")
         assert active_filter.is_visible()
         assert page.locator("tr", has_text="stats:e2e").is_visible()
         assert not page.locator("tr", has_text="bad:e2e").is_visible()

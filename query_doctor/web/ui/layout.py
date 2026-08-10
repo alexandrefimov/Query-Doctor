@@ -66,10 +66,12 @@ def render_top_nav(active: str) -> str:
     batch_class = (
         "nav-link nav-link--active" if active in {"batch", "running", "query"} else "nav-link"
     )
+    deployment_class = "nav-link nav-link--active" if active == "deployment" else "nav-link"
     help_class = "nav-link nav-link--active" if active == "help" else "nav-link"
     return (
         '<nav class="top-nav" aria-label="Main navigation">'
-        f'<a class="{batch_class}" href="/">Diagnose</a>'
+        f'<a class="{batch_class}" href="/">Query Inbox</a>'
+        f'<a class="{deployment_class}" href="/deployment">Deploy</a>'
         f'<a class="{help_class}" href="/help">Help</a>'
         "</nav>"
     )

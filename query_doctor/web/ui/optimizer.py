@@ -34,18 +34,27 @@ def render_optimizer_panel() -> str:
         '<section class="panel optimizer-panel" aria-label="Query Optimizer">'
         '<div class="section-heading"><div>'
         '<h1 class="section-title">Query Optimizer</h1>'
-        '<div class="section-kicker">Paste one Impala SELECT/WITH statement for read-only review.</div>'
+        '<div class="section-kicker">Paste one Impala SELECT/WITH statement for deterministic, read-only review.</div>'
         "</div></div>"
+        '<div class="optimizer-boundary-summary" id="optimizer_boundary_summary" '
+        'aria-label="Query Optimizer scope and safety">'
+        '<span class="optimizer-boundary-item"><strong>Scope</strong>'
+        "<span>One Impala SELECT/WITH statement</span></span>"
+        '<span class="optimizer-boundary-item"><strong>Processing</strong>'
+        "<span>Local parse; bounded metadata for referenced tables</span></span>"
+        '<span class="optimizer-boundary-item"><strong>Safety</strong>'
+        "<span>Never executed or echoed after submit</span></span>"
+        "</div>"
         '<form class="optimizer-form" method="post" action="/optimizer">'
-        '<div class="field">'
+        '<div class="field optimizer-query-field">'
         '<label for="optimizer_sql">SQL query</label>'
         '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" '
-        'aria-describedby="optimizer_sql_help" required></textarea>'
-        '<p class="helper optimizer-field-help" id="optimizer_sql_help">'
-        "One SELECT or WITH statement only. Query Doctor clears this field after submit and never executes the SQL."
-        "</p>"
+        'aria-describedby="optimizer_sql_help" rows="10" spellcheck="false" required></textarea>'
         "</div>"
-        '<div class="optimizer-actions-row">'
+        '<div class="optimizer-submit-row">'
+        '<p class="helper optimizer-field-help" id="optimizer_sql_help">'
+        "Exactly one read-only SELECT or WITH statement. The field is cleared after submit."
+        "</p>"
         '<button class="run-button" type="submit">Analyze</button>'
         "</div>"
         f"{render_optimizer_scope_details()}"

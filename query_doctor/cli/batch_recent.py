@@ -41,6 +41,7 @@ from query_doctor.recent.batch_config import (
     MAX_TRIAGE_PROFILE_LIMIT,
     METADATA_MODE_CHOICES,
     ORDER_CHOICES,
+    RECENT_HISTORY_BACKEND_CHOICES,
     SAFE_OUTPUT_PREFIX,
     build_batch_config,
     display_float,
@@ -126,6 +127,13 @@ from query_doctor.recent.case_processing import (
     run_subprocess,
     run_top_reports,
 )
+from query_doctor.recent.collector_summary import (
+    collector_issue_codes,
+    collector_observed_at,
+    collector_status,
+    collector_summary_payload,
+    write_collector_summary,
+)
 from query_doctor.recent.discovery import (
     build_recent_filters,
     classify_duration_filter_mode,
@@ -156,6 +164,14 @@ from query_doctor.recent.metadata_refresh import (
     rank_cases_for_metadata,
     select_metadata_refresh_candidates,
     suspicious_can_be_promoted_by_metadata,
+)
+from query_doctor.recent.case_reuse import reuse_analyzed_cases
+from query_doctor.recent.history_store import (
+    RecentHistoryRetentionResult,
+    enqueue_recent_profile_jobs,
+    persist_recent_history,
+    prune_recent_history,
+    recent_history_retention_enabled,
 )
 
 REPO_DIR = Path(__file__).resolve().parents[2]
@@ -595,6 +611,70 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         help="Rotate workload history before appending when this byte limit is exceeded.",
     )
+    parser.add_argument(
+        "--recent-history-db",
+        help=(
+            "Optional local SQLite database for raw-free Recent summary history. "
+            "Stores bounded summary signals and suspicion reasons, not raw SQL or profile text."
+        ),
+    )
+    parser.add_argument(
+        "--recent-history-backend",
+        choices=RECENT_HISTORY_BACKEND_CHOICES,
+        help=(
+            "Recent summary history backend. Defaults to sqlite when --recent-history-db is set, "
+            "otherwise disabled. postgres reads its DSN from an environment variable."
+        ),
+    )
+    parser.add_argument(
+        "--recent-history-postgres-dsn-env",
+        help=(
+            "Environment variable name containing the Postgres DSN for recent_history_backend=postgres. "
+            "The DSN value itself must not be stored in Query Doctor JSON config."
+        ),
+    )
+    parser.add_argument(
+        "--recent-history-collector-summary-json",
+        type=Path,
+        help=(
+            "Optional raw-free summary JSON for this Recent summary collector run. "
+            "Contains aggregate counts and status only, not query IDs, raw SQL, paths, or provider output."
+        ),
+    )
+    parser.add_argument(
+        "--recent-history-summary-retention-days",
+        type=positive_int,
+        help="Prune raw-free Recent summary rows older than this many days after recording history.",
+    )
+    parser.add_argument(
+        "--recent-history-profile-job-retention-days",
+        type=positive_int,
+        help=(
+            "Prune terminal raw-free Recent profile job rows older than this many days. "
+            "Pending and leased jobs are retained."
+        ),
+    )
+    parser.add_argument(
+        "--recent-history-analysis-cache-retention-days",
+        type=positive_int,
+        help="Prune raw-free Recent analysis-cache rows older than this many days.",
+    )
+    parser.add_argument(
+        "--recent-history-profile-artifact-retention-days",
+        type=positive_int,
+        help="Prune raw-free Recent profile-artifact metadata rows older than this many days.",
+    )
+    parser.add_argument(
+        "--reuse-analyzed-profiles-from",
+        action="append",
+        dest="analyzed_profile_reuse_roots",
+        default=[],
+        help=(
+            "Search direct child query-doctor-* batch outputs under this local root and reuse "
+            "already analyzed cases with matching Query IDs. Intended for repeated safe web "
+            "Recent scans on a trusted local cache root."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -629,6 +709,11 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     discovery_started: float | None = None
     discovery_seconds: float | None = None
     discovery_failed = False
+    recent_history_recorded_count = 0
+    recent_profile_jobs_planned_count = 0
+    recent_history_status = "not_configured"
+    recent_history_retention_result = RecentHistoryRetentionResult()
+    recent_history_retention_status = "not_configured"
     cluster_context: dict[str, object] | None = None
     try:
         discovery_started = time.monotonic()
@@ -637,6 +722,48 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         discovery_seconds = elapsed_seconds(discovery_started)
         print(f"[batch] discovery: {format_seconds(discovery_seconds)}")
         warnings.extend(discovery.warnings)
+        history_count, history_warning = persist_recent_history(
+            discovery.candidates,
+            config=config,
+            env=env,
+        )
+        recent_history_recorded_count = history_count
+        recent_history_status = (
+            "disabled" if config.recent_history_backend == "disabled" else "recorded"
+        )
+        if history_warning:
+            recent_history_status = "warning"
+            warnings.append(history_warning)
+        if config.discover_only:
+            profile_job_count, profile_job_warning = enqueue_recent_profile_jobs(
+                discovery.candidates,
+                config=config,
+                env=env,
+            )
+            recent_profile_jobs_planned_count = profile_job_count
+            if profile_job_warning:
+                recent_history_status = "warning"
+                warnings.append(profile_job_warning)
+        prune_result, prune_warning = prune_recent_history(config=config, env=env)
+        recent_history_retention_result = prune_result
+        if recent_history_retention_enabled(config):
+            recent_history_retention_status = "pruned"
+            if prune_warning:
+                recent_history_retention_status = "warning"
+                warnings.append(prune_warning)
+        if config.recent_history_backend != "disabled":
+            progress.emit(
+                stage="recent_history",
+                status="done" if recent_history_status != "warning" else "warning",
+                summaries_recorded=history_count,
+                profile_jobs_planned=recent_profile_jobs_planned_count,
+            )
+        if recent_history_retention_enabled(config):
+            progress.emit(
+                stage="recent_history_retention",
+                status="done" if prune_warning is None else "warning",
+                **recent_history_retention_result.safe_payload(),
+            )
         selected = [candidate for candidate in discovery.candidates if candidate.selected]
         progress.emit(
             stage="discovery",
@@ -693,6 +820,9 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             print(f"[batch] CM jobs: {config.cm_jobs}")
             print(f"[batch] analyzer jobs: {config.jobs}")
             print(f"[batch] metadata jobs: {config.metadata_jobs}")
+            reused_case_count = reuse_analyzed_cases(config, case_results, progress=progress)
+            if reused_case_count:
+                print(f"[batch] reused analyzed profiles: {reused_case_count}")
             progress.emit(
                 stage="case_processing",
                 status="started",
@@ -746,7 +876,80 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
                 path=config.workload_history_path,
                 max_bytes=config.workload_history_max_bytes,
             )
+        if config.recent_history_backend != "disabled":
+            summary["recent_history"] = {
+                "schema_version": 1,
+                "enabled": True,
+                "backend": config.recent_history_backend,
+                "status": recent_history_status,
+                "summaries_recorded": recent_history_recorded_count,
+                "profile_jobs_planned": recent_profile_jobs_planned_count,
+            }
+            if recent_history_retention_enabled(config):
+                summary["recent_history"]["retention"] = {
+                    "enabled": True,
+                    "status": recent_history_retention_status,
+                    **recent_history_retention_result.safe_payload(),
+                }
         write_batch_outputs(config.out, summary)
+        if config.recent_history_collector_summary_json is not None:
+            selected = [candidate for candidate in discovery.candidates if candidate.selected]
+            summaries_inspected = (
+                discovery.summaries_inspected
+                if discovery.summaries_inspected is not None
+                else len(discovery.candidates)
+            )
+            collector_run_status = collector_status(
+                discovery_failed=bool(summary.get("discovery_failed")),
+                recent_history_status=recent_history_status,
+                recent_history_backend=config.recent_history_backend,
+                candidates_discovered=len(discovery.candidates),
+                summaries_recorded=recent_history_recorded_count,
+                profile_jobs_planned=recent_profile_jobs_planned_count,
+            )
+            collector_payload = collector_summary_payload(
+                status=collector_run_status,
+                observed_at_iso=collector_observed_at(),
+                discover_only=config.discover_only,
+                recent_history_backend=config.recent_history_backend,
+                summaries_inspected=summaries_inspected,
+                candidates_discovered=len(discovery.candidates),
+                selected_count=len(selected),
+                summaries_recorded=recent_history_recorded_count,
+                profile_jobs_planned=recent_profile_jobs_planned_count,
+                issue_codes=collector_issue_codes(
+                    status=collector_run_status,
+                    recent_history_status=recent_history_status,
+                ),
+            )
+            try:
+                write_collector_summary(
+                    config.recent_history_collector_summary_json,
+                    collector_payload,
+                )
+            except OSError:
+                progress.emit(stage="recent_history_collector_summary", status="failed")
+                print(
+                    "[batch] ERROR: could not write Recent history collector summary JSON",
+                    file=sys.stderr,
+                )
+                return 2
+            progress.emit(
+                stage="recent_history_collector_summary",
+                summary_kind=collector_payload["summary_kind"],
+                status=collector_payload["status"],
+                observed_at_iso=collector_payload["observed_at_iso"],
+                discover_only=collector_payload["discover_only"],
+                history_backend=collector_payload["history_backend"],
+                summaries_inspected=collector_payload["summaries_inspected"],
+                candidates_discovered=collector_payload["candidates_discovered"],
+                selected_count=collector_payload["selected_count"],
+                summaries_recorded=collector_payload["summaries_recorded"],
+                profile_jobs_planned=collector_payload["profile_jobs_planned"],
+                issue_codes=collector_payload["issue_codes"],
+                raw_output=collector_payload["raw_output"],
+                sensitive_value_echo=collector_payload["sensitive_value_echo"],
+            )
         progress.emit(stage="summary", status="done", seconds=elapsed_seconds(summary_started))
         if summary.get("discovery_failed"):
             progress.emit(

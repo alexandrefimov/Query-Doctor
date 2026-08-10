@@ -18,9 +18,13 @@ from query_doctor.web.models import (
 from query_doctor.report.llm_client import DEFAULT_LLM_PROVIDER, LLM_PROVIDER_CHOICES
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def build_parser(
+    *,
+    description: str | None = None,
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the localhost-only Query Doctor web UI for recent scans, explicit CM query ids, and pasted SQL."
+        description=description
+        or "Run the localhost-only Query Doctor web UI for recent scans, explicit CM query ids, and pasted SQL."
     )
     parser.add_argument(
         "--config",
@@ -124,6 +128,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--recent-batch-root",
+        help=(
+            "Directory that will contain generated query-doctor-web-batch-* Recent scan outputs. "
+            "Defaults to /tmp."
+        ),
+    )
+    parser.add_argument(
         "--batch-summary",
         help=(
             "Optional local batch_summary.json to render read-only at / and /batch. "
@@ -185,4 +196,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Pass --metadata-redact to web metadata collection.",
     )
-    return parser.parse_args(argv)
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_parser().parse_args(argv)

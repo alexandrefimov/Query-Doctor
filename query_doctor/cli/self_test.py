@@ -29,6 +29,7 @@ INSTALLED_CORE_COMMANDS = (
     "query-doctor-self-test",
     "query-doctor-analyze",
     "query-doctor-web",
+    "query-doctor-deployment-readiness",
     "query-doctor-demo",
     "query-doctor-report",
     "query-doctor-corpus-smoke",

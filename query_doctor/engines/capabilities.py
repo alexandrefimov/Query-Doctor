@@ -18,6 +18,7 @@ SurfaceClass = Literal[
     "product_cli",
     "product_web",
     "preview_cli",
+    "isolated_validation_artifact",
     "isolated_preview_web",
     "dev_gate",
     "dev_wrapper",

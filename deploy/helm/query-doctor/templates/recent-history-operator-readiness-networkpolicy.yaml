@@ -1,0 +1,26 @@
+{{- $recentHistory := .Values.recentHistory | default dict -}}
+{{- $operatorReadiness := (get $recentHistory "operatorReadiness") | default dict -}}
+{{- $operatorReadinessEnabled := and (eq .Values.mode "configured") ((get $operatorReadiness "enabled") | default false) -}}
+{{- if and .Values.networkPolicy.enabled $operatorReadinessEnabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-recent-history-operator-readiness-egress" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "query-doctor.recentHistoryOperatorReadinessLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "query-doctor.recentHistoryOperatorReadinessSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  {{- if eq .Values.networkPolicy.egressMode "allowAll" }}
+  egress:
+    - {}
+  {{- else if eq .Values.networkPolicy.egressMode "custom" }}
+  egress:
+    {{- toYaml .Values.networkPolicy.egress | nindent 4 }}
+  {{- else }}
+  egress: []
+  {{- end }}
+{{- end }}

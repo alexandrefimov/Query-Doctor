@@ -390,7 +390,7 @@ def test_route_get_specific_query_and_job_errors_are_structured_and_raw_free(tmp
             404,
             "job.not_found",
             "Checking analysis job",
-            "Start a new analysis job from the Diagnose page.",
+            "Start a new analysis job from the Query Inbox page.",
         ),
     ]
 

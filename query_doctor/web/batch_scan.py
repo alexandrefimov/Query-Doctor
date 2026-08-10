@@ -50,7 +50,9 @@ from query_doctor.web.models import (
     WebSettings,
     batch_output_dir,
     batch_progress_path,
+    batch_reuse_root,
 )
+from query_doctor.web.query_inbox_time_range import command_query_inbox_time_range
 from query_doctor.web.recent_scan_timezone import configured_recent_scan_timezone
 from query_doctor.web.trino_beta_query import ENGINE_TRINO, normalize_query_engine
 from query_doctor.web.trino_recent import validate_trino_recent_config_for_settings
@@ -64,6 +66,8 @@ BATCH_ORDER_VALUES = {
     "status-priority",
 }
 WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT = 5000
+WEB_SHARED_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT = 50
+WEB_SHARED_BATCH_METADATA_TOP_LIMIT_DEFAULT = 10
 BATCH_METADATA_TOP_LIMIT_MAX = 200
 BATCH_CM_TIMESERIES_TOP_LIMIT_MAX = 200
 BATCH_CM_EVENTS_MAX_EVENTS_MAX = 200
@@ -71,6 +75,10 @@ BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
 BATCH_CM_JOBS_MAX = 100
 BATCH_METADATA_JOBS_MAX = 5
+WEB_RECENT_PARALLELISM_DEFAULT = 50
+WEB_SHARED_RECENT_PARALLELISM_DEFAULT = 4
+WEB_RECENT_METADATA_JOBS_DEFAULT = 5
+WEB_SHARED_RECENT_METADATA_JOBS_DEFAULT = 2
 WEB_RUNNING_SCAN_WINDOW_MINUTES = 120
 WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT = 500
 WEB_RECENT_SCAN_WINDOW_MINUTES_DEFAULT = 60
@@ -81,6 +89,7 @@ RECENT_SCAN_TIMEZONE = ZoneInfo(DEFAULT_RECENT_SCAN_TIMEZONE)
 RECENT_SCAN_LOOKBACK_DAYS = 2
 RECENT_SCAN_BUCKET_HOURS = 1
 QUERY_TYPE_FILTER_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
+FALSE_FORM_VALUES = {"0", "false", "no", "off"}
 
 
 def default_recent_scan_bucket(
@@ -164,7 +173,9 @@ def parse_batch_run_config(
     *,
     settings: WebSettings | None = None,
     default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
-    default_parallelism: int = 50,
+    default_parallelism: int = WEB_RECENT_PARALLELISM_DEFAULT,
+    default_metadata_jobs: int = WEB_RECENT_METADATA_JOBS_DEFAULT,
+    default_triage_profile_limit: int = WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT,
 ) -> BatchRunConfig:
     cluster_key = (
         selected_cluster_key_from_mapping(form, settings)
@@ -175,6 +186,7 @@ def parse_batch_run_config(
         settings_for_cluster_key(settings, cluster_key) if settings is not None else None
     )
     local_config = _local_config_values(settings)
+    discover_only = recent_history_online_scan_enabled(local_config)
     requested_engine = normalize_query_engine(first_form_value(form, "engine"))
     scan_preset = normalize_scan_preset(first_form_value(form, "scan_preset"))
     scan_timezone = configured_recent_scan_timezone(selected_settings, local_config)
@@ -189,6 +201,13 @@ def parse_batch_run_config(
             fallback=WEB_RECENT_SCAN_WINDOW_MINUTES_DEFAULT,
         ),
     )
+    inbox_from_time, inbox_to_time = command_query_inbox_time_range(
+        first_form_value(form, "inbox_from"),
+        first_form_value(form, "inbox_to"),
+    )
+    if requested_engine != ENGINE_TRINO and inbox_from_time and inbox_to_time:
+        from_time = inbox_from_time
+        to_time = inbox_to_time
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit = parse_positive_form_int(
         form,
@@ -196,14 +215,16 @@ def parse_batch_run_config(
         default=_config_int(
             local_config,
             "recent_profile_analysis_limit",
-            fallback=WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT,
+            fallback=WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT
+            if discover_only
+            else default_triage_profile_limit,
         ),
         maximum=BATCH_CM_INSPECT_LIMIT_MAX,
     )
     metadata_top_limit = parse_non_negative_form_int(
         form,
         "metadata_top_limit",
-        default=default_metadata_top_limit,
+        default=0 if discover_only else default_metadata_top_limit,
         maximum=BATCH_METADATA_TOP_LIMIT_MAX,
     )
     min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
@@ -251,7 +272,7 @@ def parse_batch_run_config(
     metadata_jobs = parse_positive_form_int(
         form,
         "metadata_jobs",
-        default=_config_int(local_config, "recent_metadata_jobs", fallback=5),
+        default=_config_int(local_config, "recent_metadata_jobs", fallback=default_metadata_jobs),
         maximum=BATCH_METADATA_JOBS_MAX,
     )
     filter_config = {} if requested_engine == ENGINE_TRINO else local_config
@@ -269,7 +290,7 @@ def parse_batch_run_config(
     collect_cm_events = _config_bool(
         local_config,
         "recent_collect_cm_events",
-        fallback=True,
+        fallback=not discover_only,
     )
     cm_events_max_events = parse_positive_form_int(
         form,
@@ -285,8 +306,12 @@ def parse_batch_run_config(
         local_config,
         "recent_collect_cm_timeseries",
         "collect_cm_timeseries",
-        fallback=True,
+        fallback=not discover_only,
     )
+    if discover_only:
+        metadata_top_limit = 0
+        collect_cm_events = False
+        collect_cm_timeseries = False
     cm_metrics_profile = (
         selected_settings.cm_metrics_profile
         if selected_settings is not None
@@ -302,6 +327,7 @@ def parse_batch_run_config(
         ),
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
+    publish_latest_summary = parse_publish_latest_summary(form)
     return BatchRunConfig(
         engine=requested_engine,
         scan_preset=scan_preset,
@@ -326,11 +352,13 @@ def parse_batch_run_config(
         query_type=query_type,
         include_failed=True,
         include_running=False,
+        discover_only=discover_only,
         collect_cm_events=collect_cm_events,
         cm_events_max_events=cm_events_max_events,
         collect_cm_timeseries=collect_cm_timeseries,
         cm_metrics_profile=cm_metrics_profile,
         cm_timeseries_top_limit=cm_timeseries_top_limit,
+        publish_latest_summary=publish_latest_summary,
     )
 
 
@@ -339,7 +367,8 @@ def parse_running_run_config(
     *,
     settings: WebSettings | None = None,
     default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
-    default_parallelism: int = 50,
+    default_parallelism: int = WEB_RECENT_PARALLELISM_DEFAULT,
+    default_metadata_jobs: int = WEB_RECENT_METADATA_JOBS_DEFAULT,
 ) -> BatchRunConfig:
     cluster_key = (
         selected_cluster_key_from_mapping(form, settings)
@@ -374,7 +403,7 @@ def parse_running_run_config(
     metadata_jobs = parse_positive_form_int(
         form,
         "metadata_jobs",
-        default=_config_int(local_config, "recent_metadata_jobs", fallback=5),
+        default=_config_int(local_config, "recent_metadata_jobs", fallback=default_metadata_jobs),
         maximum=BATCH_METADATA_JOBS_MAX,
     )
     cm_events_max_events = parse_positive_form_int(
@@ -403,6 +432,7 @@ def parse_running_run_config(
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
     query_type = parse_query_type_filter(form, local_config)
+    publish_latest_summary = parse_publish_latest_summary(form)
     return BatchRunConfig(
         engine=normalize_query_engine(first_form_value(form, "engine")),
         recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
@@ -438,6 +468,7 @@ def parse_running_run_config(
         collect_cm_timeseries=True,
         cm_metrics_profile=cm_metrics_profile,
         cm_timeseries_top_limit=cm_timeseries_top_limit,
+        publish_latest_summary=publish_latest_summary,
     )
 
 
@@ -498,6 +529,13 @@ def parse_query_type_filter(form: dict[str, list[str]], config_values: dict[str,
     return normalized
 
 
+def parse_publish_latest_summary(form: dict[str, list[str]]) -> bool:
+    raw_value = first_form_value(form, "publish_latest_summary")
+    if not raw_value:
+        return True
+    return raw_value.strip().lower() not in FALSE_FORM_VALUES
+
+
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
@@ -523,6 +561,13 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "pool",
         "query_type",
         "engine",
+        "publish_latest_summary",
+        "inbox_source",
+        "inbox_workflow",
+        "inbox_window",
+        "inbox_query_type",
+        "inbox_from",
+        "inbox_to",
     ):
         values[name] = first_form_value(form, name)
     if not values.get("parallelism"):
@@ -537,6 +582,8 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "scan_date": config.scan_date,
         "scan_hour": str(config.scan_hour),
         "recent_window_minutes": str(config.recent_window_minutes),
+        "from_time": config.from_time or "",
+        "to_time": config.to_time or "",
         "cluster_key": config.cluster_key,
         "metadata_top_limit": str(config.metadata_top_limit),
         "triage_profile_limit": str(config.triage_profile_limit),
@@ -558,6 +605,8 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "pool": config.pool,
         "query_type": config.query_type,
         "engine": config.engine,
+        "publish_latest_summary": "1" if config.publish_latest_summary else "0",
+        "discover_only": "1" if config.discover_only else "0",
     }
 
 
@@ -641,8 +690,9 @@ def build_batch_command(
     if config.engine == ENGINE_TRINO:
         raise WebError("Trino Recent uses the local web Trino job and has no Impala batch command.")
     source_owner_users = effective_source_owner_users(config, settings)
-    out_dir = batch_output_dir(job_id)
-    progress_path = batch_progress_path(job_id)
+    recent_batch_root = batch_reuse_root(settings)
+    out_dir = batch_output_dir(job_id, root=recent_batch_root)
+    progress_path = batch_progress_path(job_id, root=recent_batch_root)
     metadata_enabled = config.metadata_top_limit > 0
     metadata_mode = "on" if metadata_enabled else "off"
     if config.only_running:
@@ -678,6 +728,8 @@ def build_batch_command(
         "--progress-jsonl",
         str(progress_path),
     ]
+    if not config.only_running and settings.source_visibility == SOURCE_VISIBILITY_SAFE:
+        cmd.extend(["--reuse-analyzed-profiles-from", str(recent_batch_root)])
     direct_impala_source = settings.query_profile_source == "impala"
     if direct_impala_source:
         append_web_impala_profile_args(cmd, settings)
@@ -709,6 +761,8 @@ def build_batch_command(
         cmd.append("--include-running")
     if config.only_running:
         cmd.append("--only-running")
+    if config.discover_only:
+        cmd.append("--discover-only")
     if config.collect_cm_events and not direct_impala_source:
         cmd.extend(
             ["--collect-cm-events", "--cm-events-max-events", str(config.cm_events_max_events)]
@@ -728,3 +782,10 @@ def build_batch_command(
     if config.jobs > BATCH_FULL_JOBS_MAX:
         cmd.append("--allow-high-jobs")
     return cmd, out_dir
+
+
+def recent_history_online_scan_enabled(config_values: dict[str, object]) -> bool:
+    backend = str(config_values.get("recent_history_backend") or "").strip().lower()
+    if backend == "disabled":
+        return False
+    return backend in {"sqlite", "postgres"} or bool(config_values.get("recent_history_db"))

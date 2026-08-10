@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import tempfile
 import time
@@ -61,6 +62,9 @@ ORDER_CHOICES = (
     "status-priority",
 )
 METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
+RECENT_HISTORY_BACKEND_CHOICES = ("disabled", "sqlite", "postgres")
+DEFAULT_RECENT_HISTORY_POSTGRES_DSN_ENV = "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN"
+ENV_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
 SAFE_OUTPUT_PREFIX = "query-doctor-"
 SYSTEM_OUTPUT_ROOTS = (
     "/etc",
@@ -118,6 +122,7 @@ def build_batch_config(
     env: dict[str, str],
     cwd: Path,
     repo_root: Path,
+    validate_scan_selection_limits: bool = True,
 ) -> BatchConfig:
     use_repo_default = not any(
         (
@@ -153,7 +158,11 @@ def build_batch_config(
         # implicit local config in the current working directory.
         config_values = {}
         effective_config_path = None
-    config_values = apply_config_cluster(config_values, getattr(args, "config_cluster", None))
+    config_values = apply_config_cluster(
+        config_values,
+        getattr(args, "config_cluster", None),
+        auto_select=use_repo_default,
+    )
     query_profile_source = (
         first_string(
             getattr(args, "query_profile_source", None),
@@ -337,7 +346,7 @@ def build_batch_config(
         raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
     if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
         raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
-    if triage_profile_limit > cm_inspect_limit:
+    if validate_scan_selection_limits and triage_profile_limit > cm_inspect_limit:
         raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
     if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
         raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
@@ -394,6 +403,77 @@ def build_batch_config(
         config_values.get("workload_history_max_bytes"),
         default=DEFAULT_WORKLOAD_HISTORY_MAX_BYTES,
     )
+    recent_history_db = expand_optional_path(
+        first_string(
+            getattr(args, "recent_history_db", None),
+            config_values.get("recent_history_db"),
+        ),
+        cwd=cwd,
+    )
+    recent_history_backend = normalize_recent_history_backend(
+        first_string(
+            getattr(args, "recent_history_backend", None),
+            config_values.get("recent_history_backend"),
+        ),
+        recent_history_db=recent_history_db,
+    )
+    recent_history_postgres_dsn_env = validate_env_var_name(
+        first_string(
+            getattr(args, "recent_history_postgres_dsn_env", None),
+            config_values.get("recent_history_postgres_dsn_env"),
+            DEFAULT_RECENT_HISTORY_POSTGRES_DSN_ENV,
+        )
+        or DEFAULT_RECENT_HISTORY_POSTGRES_DSN_ENV,
+        name="recent_history_postgres_dsn_env",
+    )
+    recent_history_collector_summary_json = expand_optional_path(
+        first_string(
+            getattr(args, "recent_history_collector_summary_json", None),
+            config_values.get("recent_history_collector_summary_json"),
+        ),
+        cwd=cwd,
+    )
+    if recent_history_backend == "sqlite" and recent_history_db is None:
+        raise ValueError("recent_history_backend=sqlite requires --recent-history-db.")
+    recent_history_summary_retention_days = validate_optional_positive_int(
+        first_int(
+            getattr(args, "recent_history_summary_retention_days", None),
+            config_values.get("recent_history_summary_retention_days"),
+            default=None,
+        ),
+        name="recent_history_summary_retention_days",
+    )
+    recent_history_profile_job_retention_days = validate_optional_positive_int(
+        first_int(
+            getattr(args, "recent_history_profile_job_retention_days", None),
+            config_values.get("recent_history_profile_job_retention_days"),
+            default=None,
+        ),
+        name="recent_history_profile_job_retention_days",
+    )
+    recent_history_analysis_cache_retention_days = validate_optional_positive_int(
+        first_int(
+            getattr(args, "recent_history_analysis_cache_retention_days", None),
+            config_values.get("recent_history_analysis_cache_retention_days"),
+            default=None,
+        ),
+        name="recent_history_analysis_cache_retention_days",
+    )
+    recent_history_profile_artifact_retention_days = validate_optional_positive_int(
+        first_int(
+            getattr(args, "recent_history_profile_artifact_retention_days", None),
+            config_values.get("recent_history_profile_artifact_retention_days"),
+            default=None,
+        ),
+        name="recent_history_profile_artifact_retention_days",
+    )
+    if recent_history_backend == "disabled" and (
+        recent_history_summary_retention_days
+        or recent_history_profile_job_retention_days
+        or recent_history_analysis_cache_retention_days
+        or recent_history_profile_artifact_retention_days
+    ):
+        raise ValueError("recent history retention requires recent_history_backend.")
 
     out_value = first_string(args.out, config_values.get("out"))
     if not out_value:
@@ -407,6 +487,11 @@ def build_batch_config(
         progress_jsonl = Path(args.progress_jsonl).expanduser()
         if not progress_jsonl.is_absolute():
             progress_jsonl = (cwd / progress_jsonl).resolve()
+    analyzed_profile_reuse_roots: list[Path] = []
+    for value in getattr(args, "analyzed_profile_reuse_roots", None) or ():
+        path = expand_optional_path(value, cwd=cwd)
+        if path is not None:
+            analyzed_profile_reuse_roots.append(path)
 
     ca_bundle = expand_optional_path_string(
         first_string(args.ca_bundle, env.get("CM_CA_BUNDLE"), config_values.get("ca_bundle"))
@@ -581,34 +666,82 @@ def build_batch_config(
         workload_history_max_bytes=int(
             workload_history_max_bytes or DEFAULT_WORKLOAD_HISTORY_MAX_BYTES
         ),
+        recent_history_backend=recent_history_backend,
+        recent_history_db=recent_history_db,
+        recent_history_postgres_dsn_env=recent_history_postgres_dsn_env,
+        recent_history_collector_summary_json=recent_history_collector_summary_json,
+        recent_history_summary_retention_days=recent_history_summary_retention_days,
+        recent_history_profile_job_retention_days=recent_history_profile_job_retention_days,
+        recent_history_analysis_cache_retention_days=recent_history_analysis_cache_retention_days,
+        recent_history_profile_artifact_retention_days=recent_history_profile_artifact_retention_days,
         privacy_mode=privacy_mode,
         redact_identifiers=redact_identifiers,
         redact_hosts=redact_hosts,
         source_visibility=source_visibility,
         source_owner_user=source_owner_user,
         collectable_owner_users=collectable_owner_user_values,
+        analyzed_profile_reuse_roots=tuple(analyzed_profile_reuse_roots),
     )
 
 
 def apply_config_cluster(
     config_values: dict[str, object],
     cluster_id: str | None,
+    *,
+    auto_select: bool = True,
 ) -> dict[str, object]:
-    requested = (cluster_id or "").strip()
-    if not requested:
-        return config_values
+    requested = first_string(cluster_id)
     clusters = config_values.get("clusters")
+    if not requested:
+        if not auto_select:
+            return config_values
+        selected = default_config_cluster(config_values)
+        if selected is None:
+            return config_values
+        merged = {key: value for key, value in config_values.items() if key != "clusters"}
+        merged.update(cluster_config_overrides(selected))
+        return merged
     if not isinstance(clusters, list):
         raise ValueError("--config-cluster requires local config clusters[].")
-    for cluster in clusters:
-        if not isinstance(cluster, dict):
-            continue
-        if str(cluster.get("id") or "") != requested:
-            continue
+    cluster = find_config_cluster(clusters, requested)
+    if cluster is not None:
         merged = {key: value for key, value in config_values.items() if key != "clusters"}
         merged.update(cluster_config_overrides(cluster))
         return merged
     raise ValueError(f"--config-cluster {requested!r} was not found in local config clusters[].")
+
+
+def default_config_cluster(config_values: dict[str, object]) -> dict[str, object] | None:
+    clusters = config_values.get("clusters")
+    if not isinstance(clusters, list) or not clusters:
+        return None
+    active_cluster_key = first_string(config_values.get("active_cluster_key"))
+    if active_cluster_key:
+        selected = find_config_cluster(clusters, active_cluster_key)
+        if selected is None:
+            raise ValueError("active_cluster_key was not found in local config clusters[].")
+        return selected
+    if len(clusters) == 1:
+        cluster = clusters[0]
+        if not isinstance(cluster, dict):
+            raise ValueError("local config clusters[] entries must be objects.")
+        return cluster
+    raise ValueError(
+        "local config clusters[] has multiple entries; pass --config-cluster "
+        "or set active_cluster_key."
+    )
+
+
+def find_config_cluster(
+    clusters: list[object],
+    cluster_id: str,
+) -> dict[str, object] | None:
+    for cluster in clusters:
+        if not isinstance(cluster, dict):
+            continue
+        if str(cluster.get("id") or "") == cluster_id:
+            return cluster
+    return None
 
 
 def cluster_config_overrides(cluster: dict[str, object]) -> dict[str, object]:
@@ -638,6 +771,24 @@ def validate_cm_jobs_config(cm_jobs: int) -> None:
 def validate_metadata_jobs_config(metadata_jobs: int) -> None:
     if metadata_jobs > MAX_METADATA_JOBS:
         raise ValueError(f"--metadata-jobs must be <= {MAX_METADATA_JOBS}")
+
+
+def normalize_recent_history_backend(value: str | None, *, recent_history_db: Path | None) -> str:
+    if value is None:
+        return "sqlite" if recent_history_db is not None else "disabled"
+    normalized = value.strip().lower()
+    if normalized not in RECENT_HISTORY_BACKEND_CHOICES:
+        raise ValueError(
+            "--recent-history-backend must be one of: " + ", ".join(RECENT_HISTORY_BACKEND_CHOICES)
+        )
+    return normalized
+
+
+def validate_env_var_name(value: str, *, name: str) -> str:
+    normalized = value.strip()
+    if not ENV_NAME_RE.fullmatch(normalized):
+        raise ValueError(f"{name} must be an uppercase environment variable name.")
+    return normalized
 
 
 def first_string(*values: object) -> str | None:
@@ -685,6 +836,14 @@ def first_int(*values: object, default: int | None) -> int | None:
             continue
         return int(value)
     return default
+
+
+def validate_optional_positive_int(value: int | None, *, name: str) -> int | None:
+    if value is None:
+        return None
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer.")
+    return value
 
 
 def first_float(*values: object, default: float | None) -> float | None:

@@ -43,7 +43,7 @@ def outcome_record(
 
 def test_action_outcome_record_is_raw_free_and_loadable(tmp_path):
     record = action_outcome_record_from_case(
-        case_id="case-001",
+        case_id="case-1176",
         case={
             "query_id": "abc:def",
             "workload_fingerprint": "wf_1234567890abcdef12345678",
@@ -61,10 +61,11 @@ def test_action_outcome_record_is_raw_free_and_loadable(tmp_path):
     text = path.read_text(encoding="utf-8")
     assert "abc:def" not in text
     assert "/Users/example" not in text
-    assert "case-001" in text
+    assert "case-1176" in text
 
     loaded = load_action_outcomes(path=path)
     assert len(loaded) == 1
+    assert loaded[0].case_id_local == "case-1176"
     assert loaded[0].recommendation_id == "stats_refresh_review.v1"
     assert loaded[0].applied == "yes"
     assert loaded[0].outcome == "improved"
@@ -299,6 +300,6 @@ def test_action_outcomes_page_uses_compact_empty_state(tmp_path, monkeypatch):
     assert "0 recorded" in html
     assert "No feedback recorded yet" in html
     assert 'class="outcomes-empty-state"' in html
-    assert 'href="/">Open Diagnose</a>' in html
+    assert 'href="/">Open Query Inbox</a>' in html
     assert "No recommendation metrics yet." not in html
     assert "No action outcomes recorded yet." not in html

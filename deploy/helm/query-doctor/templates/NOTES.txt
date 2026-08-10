@@ -1,0 +1,16 @@
+Query Doctor {{ .Chart.AppVersion }} has been rendered for release {{ .Release.Name }}.
+
+Web UI:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "query-doctor.fullname" . }} 8765:80
+  curl -fsS http://127.0.0.1:8765/healthz
+  curl -fsS http://127.0.0.1:8765/readyz
+  curl -fsS http://127.0.0.1:8765/deployment/readiness.json
+
+Synthetic self-test:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  kubectl -n {{ .Release.Namespace }} logs job/{{ printf "%s-self-test" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" }}
+
+Boundary:
+  Kubernetes support is a web deployment starting point plus a synthetic
+  self-test. Query Doctor does not add native auth, RBAC, arbitrary command
+  running, SQL execution, or broader engine support inside the chart.

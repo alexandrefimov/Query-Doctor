@@ -141,6 +141,25 @@ def runtime_metrics_provider(config: BatchConfig) -> str:
     return "none"
 
 
+PROFILE_REUSE_CONTRACT_VERSION = "recent_analyzed_profile_reuse_v1"
+
+
+def profile_reuse_contract(config: BatchConfig) -> dict[str, object]:
+    return {
+        "version": PROFILE_REUSE_CONTRACT_VERSION,
+        "case_artifact_contract": "profile_digest_analysis_json_v1",
+        "query_profile_source": config.query_profile_source,
+        "source_visibility": config.source_visibility,
+        "privacy_mode": bool(config.privacy_mode),
+        "redact_identifiers": bool(config.redact_identifiers),
+        "redact_hosts": bool(config.redact_hosts),
+        "metadata_top_limit": config.metadata_top_limit,
+        "collect_cm_timeseries": bool(config.collect_cm_timeseries),
+        "collect_prometheus_timeseries": bool(config.collect_prometheus_timeseries),
+        "runtime_metrics_provider": runtime_metrics_provider(config),
+    }
+
+
 def build_summary(
     config: BatchConfig,
     discovery: DiscoveryResult,
@@ -165,6 +184,7 @@ def build_summary(
     primary_distribution = case_primary_bottleneck_distribution(cases)
     primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
     scoring_distribution = scoring_evidence_source_distribution(cases)
+    profile_reuse = profile_reuse_distribution(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
     for case in cases:
@@ -230,6 +250,9 @@ def build_summary(
         "case_primary_bottleneck_distribution": primary_distribution,
         "case_primary_unknown_breakdown": primary_unknown_breakdown,
         "scoring_evidence_source_distribution": scoring_distribution,
+        "profile_reuse": profile_reuse,
+        "profile_reuse_contract": profile_reuse_contract(config),
+        "profile_reused_case_count": profile_reuse["reused_cases"],
         "optimizer_rewriteability_distribution": rewriteability_distribution,
         "optimizer_funnel": optimizer_funnel_summary,
         "collectable_metadata_table_count_distribution": collectable_metadata_distribution,
@@ -384,6 +407,21 @@ def scoring_evidence_source_distribution(cases: list[CaseResult]) -> dict[str, o
         "fallback_cases": fallback_cases,
         "fallback_rate": ratio(fallback_cases, total),
         "fallback_reason_counts": dict(sorted(fallback_reason_counts.items())),
+    }
+
+
+def profile_reuse_distribution(cases: list[CaseResult]) -> dict[str, object]:
+    status_counts = Counter(
+        safe_counter_label(case.profile_reuse_status, default="not_requested") for case in cases
+    )
+    total = len(cases)
+    reused = status_counts.get("reused", 0)
+    return {
+        "total_cases": total,
+        "reused_cases": reused,
+        "not_reused_cases": max(0, total - reused),
+        "status_counts": dict(sorted(status_counts.items())),
+        "reuse_rate": ratio(reused, total),
     }
 
 
@@ -905,6 +943,7 @@ def _case_to_summary_base(
         "sql_verb": case.sql_verb,
         "collection_status": case.collection_status,
         "analysis_status": case.analysis_status,
+        "profile_reuse_status": case.profile_reuse_status,
         "metadata_status": case.metadata_status,
         "table_stats_status": case.table_stats_status,
         "referenced_table_count": case.referenced_table_count,
@@ -1172,6 +1211,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- triage profile limit: {summary['triage_profile_limit']}",
         f"- metadata top limit: {summary['metadata_top_limit']}",
         f"- runtime metrics provider: {summary.get('runtime_metrics_provider') or 'none'}",
+        f"- reused analyzed profiles: {summary.get('profile_reused_case_count', 0)}",
         f"- collect runtime metrics: {bool(summary.get('collect_cm_timeseries') or summary.get('collect_prometheus_timeseries'))}",
         f"- runtime metrics top limit: {summary['cm_timeseries_top_limit']}",
         f"- search depth minutes: {summary['recent_window_minutes']}",

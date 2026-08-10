@@ -14,6 +14,7 @@ from query_doctor.web.ui.recent_scan_form import (
     render_batch_text_field,
     render_batch_user_field,
     render_cluster_select,
+    render_hidden_query_inbox_scope_inputs,
     render_running_scan_framing_note,
     user_filter_options,
 )
@@ -21,7 +22,22 @@ from query_doctor.web.cluster_selection import default_cluster_key, settings_for
 from query_doctor.web.models import WebError
 from query_doctor.web.ui.pages import render_page
 from query_doctor.web.ui.progress import render_job_panel
+from query_doctor.web.ui.query_inbox import (
+    QueryInboxScopeFilters,
+    query_inbox_scope_filter_query,
+    query_inbox_scope_filters_match_settings,
+)
 from query_doctor.web.ui.recent_scan_results import render_batch_card
+from query_doctor.web.ui.recent_scan_result_filters import (
+    RecentScanResultFilters,
+    normalize_recent_scan_result_filters,
+    recent_scan_result_filter_query,
+)
+from query_doctor.web.ui.recent_scan_groups import (
+    DEFAULT_RESULT_SORT,
+    RESULT_SORT_PARAM,
+    normalize_result_sort,
+)
 
 
 def render_running_queries_page(
@@ -32,15 +48,31 @@ def render_running_queries_page(
     form_values: dict[str, Any] | None = None,
     query_group: str = "bad",
     only_with_spills: bool = False,
+    result_sort: str = DEFAULT_RESULT_SORT,
+    results_page: Any = 1,
     workload_admin_scope: str = "all",
     workload_admin_signal: str = "all",
     workload_group_scope: str = "",
     workload_group_name: str = "",
     workload_group_signal: str = "all",
+    inbox_scope_filters: QueryInboxScopeFilters | None = None,
+    result_filters: RecentScanResultFilters | None = None,
 ) -> str:
     effective_form_values = form_values
     if effective_form_values is None and job is not None:
         effective_form_values = getattr(job, "batch_form_values", None)
+    scope_filters = inbox_scope_filters or QueryInboxScopeFilters()
+    scope_query = query_inbox_scope_filter_query(scope_filters)
+    normalized_result_filters = normalize_recent_scan_result_filters(result_filters)
+    normalized_result_sort = normalize_result_sort(result_sort)
+    result_query = recent_scan_result_filter_query(normalized_result_filters)
+    result_extra_query = {**scope_query, **result_query}
+    if normalized_result_sort != DEFAULT_RESULT_SORT:
+        result_extra_query[RESULT_SORT_PARAM] = normalized_result_sort
+    if scope_query:
+        effective_form_values = dict(effective_form_values or {})
+        effective_form_values.update(scope_query)
+    scope_matches = query_inbox_scope_filters_match_settings(settings, scope_filters)
     sections = [
         render_running_queries_run_panel(
             settings,
@@ -50,11 +82,14 @@ def render_running_queries_page(
     ]
     if job is not None:
         result_html = None
-        if job.status == "ok" and getattr(job, "kind", "") == "running":
+        if scope_matches and job.status == "ok" and getattr(job, "kind", "") == "running":
             result_html = render_batch_card(
                 settings,
                 query_group=query_group,
                 only_with_spills=only_with_spills,
+                result_filters=normalized_result_filters,
+                result_sort=normalized_result_sort,
+                results_page=results_page,
                 workload_admin_scope=workload_admin_scope,
                 workload_admin_signal=workload_admin_signal,
                 workload_group_scope=workload_group_scope,
@@ -62,13 +97,17 @@ def render_running_queries_page(
                 workload_group_signal=workload_group_signal,
                 title="Running Queries",
                 details_base_path="/running/case",
+                extra_query=result_extra_query,
             )
         sections.append(render_job_panel(job, result_html_override=result_html))
-    if job is None or job.status != "ok":
+    if scope_matches and (job is None or job.status != "ok"):
         batch_card = render_batch_card(
             settings,
             query_group=query_group,
             only_with_spills=only_with_spills,
+            result_filters=normalized_result_filters,
+            result_sort=normalized_result_sort,
+            results_page=results_page,
             workload_admin_scope=workload_admin_scope,
             workload_admin_signal=workload_admin_signal,
             workload_group_scope=workload_group_scope,
@@ -76,6 +115,7 @@ def render_running_queries_page(
             workload_group_signal=workload_group_signal,
             title="Running Queries",
             details_base_path="/running/case",
+            extra_query=result_extra_query,
         )
         if batch_card:
             sections.append(batch_card)
@@ -187,6 +227,7 @@ def render_running_queries_run_panel(
         '<h1 class="section-title">Running Queries</h1>'
         "</div></div>"
         '<form id="running-form" class="batch-form" method="post" action="/running/run">'
+        f"{render_hidden_query_inbox_scope_inputs(values)}"
         '<div class="batch-source-settings">'
         f"{render_cluster_select(settings, value('cluster_key'), field_id='running_cluster_key', field_class='field diagnosis-cluster-field', label_text='Source cluster')}"
         "</div>"

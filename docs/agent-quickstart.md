@@ -1,140 +1,133 @@
 # Agent Quickstart
 
-Last updated: 2026-06-22
+Last updated: 2026-07-10
 
-Use this file as the short entry point before reading larger agent docs. It
-does not replace `AGENTS.md` or the safety contract.
+This is the canonical operational sequence for an authorized code or
+documentation change. Repository hard rules remain in [../AGENTS.md](../AGENTS.md).
+For review, explanation, or diagnosis, use the read-only parts of this sequence
+and do not create changes, commits, or merges unless the user asks for them.
 
-## Always
+## 1. Orient
 
-- Read `AGENTS.md` for repository hard rules.
-- Run `git status --short --branch` before editing and preserve unrelated user
-  changes.
-- Use `python3 scripts/agent_preflight.py` when test or reading scope is not
-  obvious.
-- For engine support wording, second-engine research, normalized engine facts,
-  Spark compact intake, or Trino local production/import work, read
-  [engine-support-gap-matrix.md](engine-support-gap-matrix.md) before changing
-  product claims or wiring.
-- For every code change, review impacted docs for drift. Update docs in the
-  same slice when behavior, contracts, commands, routes, or safety wording
-  changes; otherwise mention that relevant docs remain accurate.
-- Always include the public README in that check for user-facing workflow, CLI,
-  config, demo, release, packaging, or product-positioning changes. Update it
-  when it no longer describes the current capability.
-- For material web UI layout or first-screen workflow changes, check README
-  screenshots and refresh them from the synthetic demo pack when they no longer
-  match the current product path.
-- Use `scripts/local_gate.sh` for a broad local gate before handoff, release
-  preparation, or public-sharing work.
-- Use `pre-commit run --all-files` before release cleanup or public-sharing
-  branches when you need the full hook set, including ruff format checks.
-- Use `python3 scripts/check_staged_public_safety.py` before commits that touch
-  docs, configs, generated-artifact boundaries, or public-facing files.
-- Use `python3 scripts/check_staged_public_safety.py --changed` before broad
-  handoff or merge-ready cleanup to scan staged, unstaged, and untracked
-  non-ignored files for public-safety leaks.
-- Use `python3 scripts/audit_public_docs.py` for documentation changes that
-  touch agent instructions, handoffs, runbooks, validation logs, or public
-  release material.
-- Stage intended files explicitly. Do not use `git add .` or `git add -A`.
-- Always run `git diff --check` before committing.
-- Commit verified repo changes on the task branch without asking again; use
-  tool escalation for `git add` or `git commit` when sandbox permissions require
-  it.
-- End completed work with a concrete next-step recommendation.
+From the repository root:
 
-## Worktrees
+```bash
+git status --short --branch
+python3 scripts/worktree_status.py
+```
 
-- Do not make new code or documentation edits in the main worktree unless the
-  user explicitly asks for that.
-- Run `python3 scripts/worktree_status.py` before creating or cleaning task
-  worktrees; use `git worktree list` as the minimum fallback.
-- Put each behavior or documentation slice in its own worktree under
-  `$HOME/query-doctor-worktrees`.
-- Do not reuse another agent's active worktree for a new task.
-- Prefer a fresh branch from the latest local `main`.
-- If a follow-up slice depends on an earlier unmerged branch, cherry-pick or
-  merge only the needed reviewed commits into the new branch and state the
-  dependency in the handoff.
-- Before merging into `main`, check `git rev-list --left-right --count
-  main...<branch>`. If `main` has advanced, merge current `main` into the task
-  branch and validate there before the main merge. `git merge --ff-only` is
-  acceptable only when the branch is a direct descendant of `main`; do not use
-  it as the default when `main` has moved.
-- When the branch is complete, committed, validated, and clean, merge it back to
-  local `main` in the same turn unless the user explicitly asks to stop before
-  merge. Do not push, rebase, amend, or force-push unless the user explicitly
-  asks for that operation. Never push directly to remote `main`; a requested push
-  should target a task branch for review.
-- When the user explicitly asks to finalize a remote PR after required checks
-  pass, prefer GitHub Rebase and merge (`gh pr merge --rebase`) so remote
-  `main` does not receive a merge commit. Use a regular merge commit, squash
-  merge, amend, rebase, force-push, or direct remote-main push only when the
-  user explicitly asks for that operation.
-- After a successful local merge to `main`, remove completed clean task worktrees
-  and delete merged local branches in the same turn when they are no longer
-  needed. Remove the worktree before deleting a branch that is checked out there,
-  and do not force cleanup when unmerged or user changes are present.
+Preserve unrelated changes and treat unknown or dirty worktrees as owned by
+someone else. If the requested outcome or safety boundary is ambiguous, resolve
+that before editing.
 
-## Engine Preview Work
+## 2. Isolate The Change
 
-Trino surfaces have bounded local production plus preview/import rules, and
-Spark surfaces have bounded compact rules. Before editing or reviewing them,
-run `python3 scripts/agent_preflight.py --paths <changed-paths>` and follow the
-matched read path and focused validation. Use
-[engine-support-gap-matrix.md](engine-support-gap-matrix.md) for support status,
-[engine-redaction-note-v1.md](engine-redaction-note-v1.md) for package-style
-intake, [code-map.md](code-map.md) for ownership, and
-[test-matrix.md](test-matrix.md) for exact commands.
+Use a fresh task worktree from local `main` unless the user explicitly requests
+the current worktree:
 
-Keep engine ownership separated. A Trino feature branch should not silently
-change the Spark evidence schema, and a Spark feature branch should not silently
-change the Trino evidence schema. Shared helper, schema, manifest-reference, or
-capability-manifest changes belong in a separate synchronization slice with
-focused tests.
+```bash
+git worktree add "$HOME/query-doctor-worktrees/<task>" -b "codex/<task>" main
+```
 
-## Read Path
+Do not reuse another agent's branch or worktree. If a required branch is already
+checked out, create a separate branch or arrange an explicit handoff.
 
-- Docs-only: `docs/README.md`, this quickstart, and the target doc.
-- Larger, safety-sensitive, web, report, optimizer, collector, config, or
-  architecture work: `docs/codex-handoff.md`.
-- Public/local documentation split: `docs/public-documentation-boundary.md`.
-- Engine support status and second-engine gates:
-  `docs/engine-support-gap-matrix.md`.
-- Optimizer, report validation, browser safety, web Details, or architecture
-  work: also read `docs/code-audit.md`.
-- Behavior ownership lookup: `docs/code-map.md`.
-- Focused validation choice: `docs/test-matrix.md`.
+## 3. Scope Before Broad Reading
 
-## Local Documentation Boundary
+When planned paths are known, route the task before loading large documents:
 
-- Treat committed Markdown as public documentation.
-- Keep transient branch handoffs, private smoke target names, real endpoints,
-  temporary output paths, and local validation evidence in local exclude-only notes.
-- Public runbooks may show generic placeholders and sanitized aggregate checks;
-  local selectors and private evidence must stay out of committed docs.
-- For follow-up on a current-upstream Impala smoke, use the generic workflow in
-  [local-smoke.md](local-smoke.md), keep local target details in ignored notes,
-  run bounded Recent scans with `--top-reports 0` first, and validate the
-  resulting summary with
-  `scripts/audit_profile_evidence_gates.py --fail-on-issues` before changing
-  support wording or analyzer behavior.
+```bash
+python3 scripts/agent_preflight.py --paths <planned-paths>
+```
 
-## Safety Sources
+Follow the matched read path and focused checks. Use
+[agent-playbook.md](agent-playbook.md) only when a human-readable change-type
+route helps, and [test-matrix.md](test-matrix.md) when focused test selection is
+needed. Feature runbooks own long live and retained-evidence command sequences.
+Do not read every agent document by default.
 
-- Canonical safety rules: `docs/safety-contract.md`.
-- Optimizer trust rules: `docs/query-optimizer-contract.md`.
-- Current risks: `docs/code-audit.md` and `docs/analyzer-audit.md`.
+For unfamiliar or cross-module work, use one focused graph query:
 
-Keep browser and trusted report output raw-free. Do not expose raw SQL,
-profiles, metadata, local paths, artifact filenames, subprocess output, secrets,
-model names, or runtime internals.
+```bash
+python3 scripts/agent_code_graph.py --explain <path> --compact
+```
 
-## Validation Bias
+Use `--changed --compact` after edits when several areas are involved. Graph
+output is orientation, not authority; verify it against current code and tests.
 
-Start with focused tests for touched areas. Run the full suite when a shared
-helper, trust boundary, validator contract, or cross-workflow behavior changes,
-or when focused failures suggest broader risk. For docs-only release prep, run
-the docs checks plus `pre-commit run --all-files`; use `scripts/local_gate.sh`
-before broad release handoff when time permits.
+## 4. Implement A Traceable Slice
+
+Keep the diff limited to the requested behavior, its regression coverage, and
+required documentation drift. Prefer a focused failing test before a bug fix.
+Do not mix formatting cleanup, speculative refactors, or unrelated findings
+into the slice.
+
+For engine status or second-engine work, use
+[engine-support-gap-matrix.md](engine-support-gap-matrix.md) rather than copied
+capability lists. For public/local boundaries, use
+[public-documentation-boundary.md](public-documentation-boundary.md).
+
+## 5. Validate By Risk
+
+After edits, let the router inspect the actual diff:
+
+```bash
+python3 scripts/agent_preflight.py
+python3 scripts/agent_code_graph.py --changed --compact
+```
+
+Run the focused checks it selects. Always run:
+
+```bash
+git diff --check
+```
+
+For committed Markdown or other public-facing files, also run the applicable
+public documentation checks selected by preflight. Use
+`python3 scripts/check_staged_public_safety.py --changed` before merge-ready
+cleanup when docs, configs, generated-artifact boundaries, or public files are
+in scope.
+
+Broaden beyond focused tests only for shared helpers, trust boundaries,
+cross-workflow contracts, release/public-sharing work, or focused failures.
+Use `scripts/local_gate.sh` for a broad release or public-sharing gate and
+`pre-commit run --all-files` when the full hook set is required.
+
+## 6. Commit Explicitly
+
+Review the diff, stage intended paths one by one, and commit the verified slice:
+
+```bash
+git status --short --branch
+git diff -- <paths>
+git add <path> [<path> ...]
+git commit -m "<summary>"
+```
+
+Never use `git add .` or `git add -A`. Do not commit local configs, generated
+cases or outputs, caches, virtual environments, secrets, or ignored local notes.
+
+## 7. Integrate And Clean Up
+
+Before merging:
+
+```bash
+python3 scripts/worktree_status.py
+python3 scripts/agent_code_graph.py --merge-risk --base main --compact
+git rev-list --left-right --count main...<branch>
+```
+
+If local `main` advanced, merge `main` into the task branch and rerun focused
+validation there. When the task branch is committed, clean, validated, and a
+direct descendant of current `main`, fast-forward it from the main worktree:
+
+```bash
+git -C "<main-worktree>" status --short --branch
+git -C "<main-worktree>" merge --ff-only "<branch>"
+```
+
+Then remove only the clean completed task worktree and delete its merged local
+branch. Do not force cleanup or discard dirty, unmerged, unknown, or another
+agent's work. Remote pushes, PR finalization, rebases, amends, force-pushes, and
+destructive Git operations require the explicit authorization defined in
+[../AGENTS.md](../AGENTS.md).

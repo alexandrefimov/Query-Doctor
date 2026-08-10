@@ -398,13 +398,10 @@ def test_prepare_owner_raw_d3_artifacts_docs_mention_script() -> None:
     deployment = (workspace.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(
         encoding="utf-8"
     )
-    matrix = (workspace.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (workspace.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
     assert "scripts/prepare_owner_raw_d3_artifacts.py" in deployment
     assert "support-readiness.summary.json" in deployment
     assert "--skip-support-readiness" in deployment
-    assert "scripts/prepare_owner_raw_d3_artifacts.py" in matrix
-    assert "support-readiness gate by default" in matrix
     assert "owner_raw_d3_artifact_workspace_v1" in changelog
     assert "support-readiness.summary.json" in changelog

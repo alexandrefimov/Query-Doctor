@@ -265,8 +265,10 @@ from query_doctor.web.request_handlers import (
     handle_analyze_request,
     handle_optimizer_request,
     run_analysis_job,
+    run_profile_upload_job,
     sanitize_for_display,
     start_analyze_job,
+    start_profile_upload_job,
 )
 from query_doctor.web.specific_query_actions import (
     handle_specific_query_external_rewrite_validation,
@@ -289,6 +291,7 @@ from query_doctor.web.query_analysis import (
     collect_analyze_and_replace_query_case,
     collect_case,
     run_query_id_analysis,
+    run_uploaded_profile_analysis,
     run_web_analysis,
     update_progress,
     validate_query_id,
@@ -345,7 +348,13 @@ from query_doctor.web.details_facts import (
     parse_table_metadata_heading,
     parse_table_metadata_statement_status_key,
 )
-from query_doctor.web.app import AnalysisFunc, MAX_WEB_POST_BODY_BYTES, make_handler
+from query_doctor.web.app import (
+    AnalysisFunc,
+    MAX_WEB_POST_BODY_BYTES,
+    PROFILE_UPLOAD_POST_OVERHEAD_BYTES,
+    make_handler,
+    read_bounded_profile_upload_form,
+)
 from query_doctor.cli.web import main
 
 
@@ -625,8 +634,10 @@ _FACADE_EXPORT_GROUPS = (
             "handle_analyze_request",
             "handle_optimizer_request",
             "run_analysis_job",
+            "run_profile_upload_job",
             "sanitize_for_display",
             "start_analyze_job",
+            "start_profile_upload_job",
             "run_batch_job",
             "start_batch_job",
             "start_running_job",
@@ -647,6 +658,7 @@ _FACADE_EXPORT_GROUPS = (
             "collect_analyze_and_replace_query_case",
             "collect_case",
             "run_query_id_analysis",
+            "run_uploaded_profile_analysis",
             "run_web_analysis",
             "update_progress",
             "validate_query_id",
@@ -721,7 +733,17 @@ _FACADE_EXPORT_GROUPS = (
             "extract_referenced_tables",
         ),
     ),
-    ("app", ("AnalysisFunc", "MAX_WEB_POST_BODY_BYTES", "make_handler", "main")),
+    (
+        "app",
+        (
+            "AnalysisFunc",
+            "MAX_WEB_POST_BODY_BYTES",
+            "PROFILE_UPLOAD_POST_OVERHEAD_BYTES",
+            "make_handler",
+            "main",
+            "read_bounded_profile_upload_form",
+        ),
+    ),
 )
 
 __all__ = tuple(name for _group, names in _FACADE_EXPORT_GROUPS for name in names)

@@ -81,9 +81,10 @@ def test_web_help_page_renders_curated_static_help():
     )
     assert "manual_profile_dir" in body
     assert "local profile inbox" in body
+    assert "local/private <strong>Exported profile</strong> upload" in body
     assert "replacing <code>:</code> with <code>_</code>" in body
     assert "aaaaaaaaaaaaaaaa_0000000000000001.txt" in body
-    assert "The browser does not upload the profile" in body
+    assert "browser never renders the uploaded profile content" in body
     assert "Running now" in body
     assert 'href="/optimizer">Query Optimizer</a>' not in body
     assert "Run optimizer" not in body
@@ -239,9 +240,10 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Детали Known Query ID" not in body
     assert "manual_profile_dir" in body
     assert "local profile inbox" in body
+    assert "local/private upload <strong>Exported profile</strong>" in body
     assert "замените <code>:</code> на <code>_</code>" in body
     assert "aaaaaaaaaaaaaaaa_0000000000000001.txt" in body
-    assert "Browser не загружает profile" in body
+    assert "browser никогда не render uploaded profile content" in body
     assert "Python-отчет" in body
     assert "LLM narrative" in body
     assert 'href="#workload-patterns"' in body

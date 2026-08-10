@@ -39,7 +39,7 @@ ALLOWED_VERIFICATION_STATUSES = {
     "not_applicable",
 }
 WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
-CASE_ID_RE = re.compile(r"^case-[0-9]{3}$")
+CASE_ID_RE = re.compile(r"^case-[0-9]{3,}$")
 
 
 @dataclass(frozen=True)

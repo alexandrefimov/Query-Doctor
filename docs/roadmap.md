@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-06-15
+Last updated: 2026-07-15
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -45,13 +45,27 @@ is not a historical audit log. For engineering risks, use
   source provenance, resource balance, per-node read/user/system time, Query
   Timeline, and fragment lifecycle timing facts, and can use profile resource
   and timing signals in Runtime Diagnosis.
-- Diagnose is the primary UI screen.
-- Recent Scan is the flagship workflow for production triage across many
-  queries.
-- Recent queries is the default Diagnose mode.
+- The current web UI groups query workflows under Query Inbox.
+- Recent Scan, evolving into a Query Inbox over materialized safe cases, is the
+  flagship workflow for production triage across many queries.
+- Query Inbox now has an explicit first-screen state strip for empty, ready,
+  running, partial, and stale safe summaries. Stale uses parseable safe
+  freshness fields from the materialized summary; missing or synthetic
+  freshness stays unknown rather than becoming a claim. When materialized
+  results are available, the strip also exposes safe
+  source/window/time-range/query-type scope chips and allowlisted result
+  presets plus view-only owner/pool tag, opaque owner/pool value,
+  lifecycle/readiness/action filters for owner-tagged rows, pool-tagged rows,
+  concrete safe owner/pool values, clean analysis, status follow-up, metadata
+  availability, validated reports, optimizer guidance, and recorded action
+  outcomes over existing URL filters.
+  The collapsed New scan form reuses safe
+  source/window/time-range/workflow/query-type refresh defaults from the
+  materialized scope; it does not store browser state or start collection.
+- Recent queries is the default Query Inbox mode.
 - Finished queries is the default completed-query scan target.
 - Running now is a lower-confidence live scan target inside Recent queries.
-- Known Query ID is the secondary Diagnose mode for one known Impala query ID.
+- Known Query ID is the secondary Query Inbox mode for one known Impala query ID.
 - Recent results now include raw-free workload diagnostics for repeated,
   frequent-short, and regressed workload fingerprints, plus workload detail
   pages, admin pool/owner digests, an analyst action queue, and compact action
@@ -68,6 +82,27 @@ is not a historical audit log. For engineering risks, use
   depth lookback across Cloudera Manager and direct Impala sources, with a
   browser warning for large windows that may increase source or optional
   Prometheus load.
+- Recent summary history has a raw-free storage contract. SQLite is the
+  dependency-free local adapter, and optional Postgres is the configured
+  production storage target for `recent_query_summary`. The Helm chart can wire
+  its DSN from an existing Secret key in configured mode. The storage schema now
+  includes raw-free profile-job, analysis-cache, and profile-artifact metadata
+  tables plus a deterministic profile-budget planner and atomic claim semantics
+  for pending or expired jobs. Profile jobs also support owner-guarded lease
+  renewal, completion, retryable failure, and terminal failure transitions. The
+  analysis cache can upsert/load raw-free analyzer payloads by Query ID, profile
+  fingerprint, and analyzer contract; the profile-artifact table stores only
+  compatibility keys, status, size, and `fingerprint_only` metadata. The Helm chart
+  can optionally render a CloudNativePG `Cluster` for configured mode while
+  keeping DSN and owner Secrets external. Storage backends expose explicit
+  retention pruning for old summaries, terminal profile jobs, analysis-cache
+  rows, and profile-artifact metadata, and Batch Recent can opt in through
+  retention-day config/CLI settings. The Recent history Postgres readiness CLI
+  checks DSN env handoff and schema initialization with raw-free output; the
+  Helm chart wires pod readiness, scheduled background retention, and the
+  shared profile worker. Future byte-retaining artifact storage still requires
+  an explicit bounded delete implementation before any local/object artifact
+  references can be accepted.
 - Query Optimizer is a separate pasted-SQL parse/analyze workflow. It never
   executes SQL and does not echo submitted SQL after submit.
 - Apache Impala upstream work around IMPALA-14953 is an explicit alignment
@@ -169,6 +204,75 @@ optimizer" whose primary promise is automatic SQL rewriting.
   near-term direction: it would require a different runtime/profile fact model,
   collector surface, optimizer contract, and market positioning before Query
   Doctor has proven enough value on Impala workloads.
+
+## Query Inbox Direction
+
+The main product direction is a Recent-first Query Inbox: when an operator opens
+the UI, the default production triage path should show already materialized,
+raw-free cases for the configured time range, ranked by deterministic evidence
+and ready for filtering by source, owner, pool, workload, state, attention area,
+and action readiness.
+
+This is an evolution of the existing Recent workflow, not a support-claim
+shortcut. The inbox contract is:
+
+- Source adapters perform only explicit, bounded, read-only collection through
+  implemented source contracts. Cloudera Manager remains the full Impala
+  discovery/profile/metrics/events source; direct Impala and local Trino lanes
+  stay within their documented bounds.
+- The browser works from server-owned materialized case facts, summary indexes,
+  workload digests, action queues, and freshness/coverage states. Trusted
+  surfaces still must not expose raw SQL, raw profiles, raw metadata, local
+  paths, raw artifact filenames, subprocess output, secrets, model names, or
+  runtime internals.
+- Online collection means an operator-configured local materialization loop or
+  explicit scan job that reuses the same bounded collectors and analyzer. It
+  must not auto-run LLM reports, Query Optimizer jobs, generated SQL, SQL
+  execution, metadata crawls, broad query-history crawls, or shared-deployment
+  identity behavior.
+- Query ID diagnosis remains a secondary single-case path, and one-profile
+  intake remains the cheapest first-value path for new users or restricted
+  access. They should feed the same safe Details and report boundaries when a
+  case is materialized.
+
+Pull this direction in staged slices:
+
+1. Define the materialized case index contract: safe case reference, source
+   provenance, time-window/freshness state, coverage and limitation counters,
+   severity/ranking fields, workload fingerprint summaries, and action-readiness
+   fields without raw identifiers or paths.
+2. Make the Recent results page consume that contract first, while preserving
+   the existing explicit scan path and focused tests for raw-free rendering,
+   pagination, grouping, and Details links.
+3. Extend Query Inbox filtering over already materialized summaries. The
+   shipped slices expose safe source/window/time-range/query-type scope
+   context, allowlisted source/window/time-range/workflow/query-type URL scope
+   filters, plus result presets for attention area, workload, stats,
+   rewrite-guidance readiness, all analyzed cases, and spill evidence through
+   existing URL filters. They also expose allowlisted view-only result filters
+   for owner-tagged rows, pool-tagged rows, concrete safe owner/pool values via
+   opaque URL tokens, clean analysis, status follow-up, metadata availability,
+   validated reports, optimizer guidance readiness, and recorded action
+   outcomes over already materialized raw-free rows and workload groups. If
+   selected scope filters do not match the current
+   materialized snapshot, Query Inbox shows a safe filtered state and New scan
+   controls rather than mismatched rows. New scan is prefilled with selected
+   safe source/window/time-range/workflow/query-type URL filters when they map
+   to supported scan controls, otherwise with safe refresh defaults from the
+   current materialized scope. The same allowlisted scope filters are preserved
+   through New scan submit and job pages without echoing arbitrary query
+   parameters. The window, UTC time-range, and query type filters now include
+   inline controls for changing that safe lookback URL scope, exact
+   finished-query range, and short query type identifier inline. Later slices
+   can tune owner/pool value ranking, bucketing, or labels without widening the
+   raw-free URL contract.
+4. Add an operator-controlled local materialization loop only after the index is
+   stable. It should record safe last-run status, collection coverage,
+   freshness, and failure categories, not raw child output or source payloads.
+5. Calibrate on synthetic and sanitized real Impala batches with the existing
+   diagnostic-loop, north-star, leak-canary, browser-safety, and public-doc
+   gates before changing user-facing support wording or default first-screen
+   behavior.
 
 ## Success Metrics
 
@@ -281,7 +385,8 @@ Roadmap work must not weaken that contract.
 
 Planning summary:
 
-- Python/analyzer owns facts; LLM owns wording only.
+- Query Doctor's deterministic Python analyzers own diagnostic facts, evidence
+  merging, and causal promotion; LLMs own wording only.
 - Browser and trusted report output must stay raw-free.
 - External collection stays explicit, bounded, read-only, redacted, and safe by
   default.
@@ -405,7 +510,8 @@ Cloudera Manager deployments:
   from available artifacts or design-partner demand, then build a fixture-only
   parser/fact spike that exists to test the engine fact contract. It must not
   add public support claims, a runtime engine selector, or browser/report output
-  before safety tests exist.
+  before safety tests exist. Query Doctor does not own final execution-engine
+  selection.
 - Optimizer usefulness: fresh optimizer funnel measurement, expression-projection
   predicate pushdown, UNION ALL branch predicate pushdown, narrow Python-owned
   recipes for repeated expensive ETL shapes, and action-quality feedback.
@@ -591,11 +697,13 @@ item first only when the touched area has a direct P0 safety or contract risk.
    discovery spike, starting from
    [trino-discovery-spike.md](trino-discovery-spike.md), that can validate the
    contract without changing current Impala support or public claims.
-6. Finish the Diagnose results-table simplification pass: reduce the default
-   Recent results table to "which queries are bad and worth opening", move
-   technical status/context such as stats, metadata, table key, score reasons,
-   and group explanations behind Details or explicit disclosures, and then run
-   a short repeat UI audit against the local web page.
+6. Repeat the Diagnose results-table audit after sanitized real-workload and
+   operator feedback. The default Recent rows now answer "which queries are bad
+   and worth opening" with one short classification, priority, duration,
+   owner context, and Details; the repeated-workload table keeps only priority,
+   p95, total impact, top owner, and Details alongside its summary. Keep score
+   reasons, p50, pool, bottleneck, and other supporting context in Details or
+   explicit disclosures unless feedback shows they are required for row choice.
 7. When selected-case report or optimizer UI/help is touched, move visible
    action wording toward neutral `Report` and `Query optimizer` labels while
    keeping backend status explicit (`Python-owned`, `LLM-backed`, or
@@ -757,6 +865,25 @@ Improve how runtime context supports diagnosis without overclaiming.
 - Improve profile-to-plan mapping across fragments, operators, tables, joins,
   exchanges, and write paths so findings point to the supported execution
   location instead of a generic symptom.
+- Stabilize the implemented bounded parser for already-provided Impala EXPLAIN
+  evidence across representative sanitized layouts. The current baseline
+  covers classic, legacy, boxed, and modern fragment host/instance syntax with
+  operator-specific bare partition attributes. It publishes raw-free typed
+  optimizer-intent and estimate facts plus conservative structural-link
+  coverage in the analyzer result (`analysis.json` when requested); it does not
+  feed scoring, recommendations, primary diagnosis, reports, browser surfaces,
+  or platform contracts. An accepted external artifact remains explicitly
+  unbound to the runtime profile even when recognized operators overlap.
+  Synthetic fixtures now cover minimal-, standard-, extended-, and
+  verbose-like detail, current fragment resource headers, `HDFS partitions`
+  scan lines, and stored statistics availability without retaining relation or
+  column names. Validate those layouts against representative sanitized
+  current-upstream artifacts before widening fact extraction. Treat bounded
+  extraction of an embedded profile `Plan:` section, including source
+  precedence and truncated/duplicate-section behavior, as a separate slice.
+  Require verified same-snapshot provenance and stronger runtime correlation
+  before any diagnostic promotion. Query Doctor must not submit SQL or generate
+  EXPLAIN.
 - Improve metadata/stats quality facts for stale or missing table stats, column
   stats on join/filter columns, partition coverage, selectivity mismatch, and
   real-fixture validation for stats-present-but-not-explanatory cases.
@@ -1250,6 +1377,14 @@ Documentation cleanup priorities:
 4. Keep `docs/changelog.md` as completed-work history. Do not add completed
    implementation inventories to the roadmap; when a roadmap item is closed,
    move the significant result to the changelog.
+5. After several real agent tasks use generated `SUMMARY.md`, `--changed`,
+   `--explain <path>`, `--merge-risk`, compact output, validation hints, or
+   aggregate `--usage-summary` data from `scripts/agent_code_graph.py`, review
+   whether it actually reduced repeated broad file reads, orientation cost, and
+   late merge surprises. Tune only the heuristics with clear evidence from
+   those tasks, such as noisy top-node rankings, missing ownership edges, weak
+   test-target inference, stale validation hints, noisy merge-risk area
+   overlaps, or sections agents keep ignoring.
 
 ## Medium-Term Work
 
@@ -1417,9 +1552,9 @@ or a new safety contract before they return.
   speculative suggestions; a Copilot flow would invert that trust contract.
 - Auto-fix mode. Query Doctor must not execute user SQL or apply generated SQL.
 - Generic SQL execution or OLTP database support.
-- Runtime engine selector before engine-specific collectors, parsers,
-  metadata allowlists, validators, browser-safety tests, and report coverage
-  exist.
+- Execution-engine selection, session routing, live availability policy, and
+  deterministic fallback. Query Doctor may produce diagnostic evidence but
+  never selects the final route.
 - Claiming support for engines without tests.
 - Plugin framework before the Impala product is useful end to end.
 - Broad package reorganization mixed with feature work.

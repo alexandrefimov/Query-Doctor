@@ -34,7 +34,7 @@ def test_trino_spnego_query_info_fetcher_builds_bounded_curl(
 
     monkeypatch.setattr(kerberos_spnego.subprocess, "run", fake_run)
     fetcher = TrinoKerberosSpnegoFetcher(
-        kerberos_principal="sa@LESTA.HADOOP",
+        kerberos_principal="sa@EXAMPLE.COM",
         service_name="HTTP",
         krb5_ccname="FILE:/tmp/krb5cc_qd_trino",
         insecure_tls=True,
@@ -62,7 +62,7 @@ def test_trino_spnego_query_info_fetcher_builds_bounded_curl(
 
 
 def test_trino_spnego_query_list_rejects_http() -> None:
-    fetcher = TrinoKerberosSpnegoFetcher(kerberos_principal="sa@LESTA.HADOOP")
+    fetcher = TrinoKerberosSpnegoFetcher(kerberos_principal="sa@EXAMPLE.COM")
 
     with pytest.raises(EngineFactContractError, match="requires HTTPS"):
         fetcher.query_list(
@@ -85,7 +85,7 @@ def test_trino_spnego_auth_failure_is_safe(monkeypatch: pytest.MonkeyPatch) -> N
         return subprocess.CompletedProcess(argv, 0, stdout=b"raw body that must not echo\n403")
 
     monkeypatch.setattr(kerberos_spnego.subprocess, "run", fake_run)
-    fetcher = TrinoKerberosSpnegoFetcher(kerberos_principal="sa@LESTA.HADOOP")
+    fetcher = TrinoKerberosSpnegoFetcher(kerberos_principal="sa@EXAMPLE.COM")
 
     with pytest.raises(EngineFactContractError) as exc_info:
         fetcher.query_list(
@@ -100,7 +100,7 @@ def test_trino_spnego_auth_failure_is_safe(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_trino_spnego_rejects_combined_auth_headers() -> None:
-    fetcher = TrinoKerberosSpnegoFetcher(kerberos_principal="sa@LESTA.HADOOP")
+    fetcher = TrinoKerberosSpnegoFetcher(kerberos_principal="sa@EXAMPLE.COM")
 
     with pytest.raises(EngineFactContractError, match="auth mode is unsupported"):
         fetcher.query_info(

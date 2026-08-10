@@ -568,6 +568,14 @@ def collect_case_for_batch(
     progress: ProgressWriter,
 ) -> CaseResult:
     case_id = f"case-{case.index:03d}"
+    if case.profile_reuse_status == "reused" and case.collection_status == "ok":
+        progress.emit(
+            stage="case",
+            case_id=case_id,
+            status="collection_reused",
+            seconds=case.cm_collect_seconds,
+        )
+        return case
     progress.emit(stage="case", case_id=case_id, status="collection_started")
     collect_case_profile(config, case, env=env, repo_root=repo_root, collect_cm_timeseries=False)
     if case.collection_status != "ok":
@@ -626,8 +634,17 @@ def refresh_top_cm_timeseries(
         and case.actual_case_dir is not None
     ]
     candidates = ranked[: config.cm_timeseries_top_limit]
+    candidates = [
+        case
+        for case in candidates
+        if not (case.profile_reuse_status == "reused" and case_has_runtime_metrics_context(case))
+    ]
     if not candidates:
-        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="no analyzed cases")
+        progress.emit(
+            stage="cm_timeseries_refresh",
+            status="skipped",
+            reason="no refreshable analyzed cases",
+        )
         return
     jobs = cm_timeseries_refresh_jobs(config, len(candidates))
     started = time.monotonic()
@@ -753,6 +770,19 @@ def analyze_case_for_batch(
 ) -> CaseResult:
     case_id = f"case-{case.index:03d}"
     if case.collection_status != "ok":
+        return case
+    if (
+        case.profile_reuse_status == "reused"
+        and case.analysis_status == "ok"
+        and case.actual_case_dir is not None
+    ):
+        progress.emit(
+            stage="case",
+            case_id=case_id,
+            status="analysis_reused",
+            seconds=case.analysis_seconds,
+            score=case.score,
+        )
         return case
     progress.emit(stage="case", case_id=case_id, status="analysis_started")
     run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
@@ -909,7 +939,18 @@ def refresh_top_metadata(
 
 
 def metadata_case_has_collectable_references(config: BatchConfig, case: CaseResult) -> bool:
+    if case.profile_reuse_status == "reused" and case.metadata_status in {"collected", "partial"}:
+        return False
     return update_collectable_metadata_table_count(config, case) > 0
+
+
+def case_has_runtime_metrics_context(case: CaseResult) -> bool:
+    if case.actual_case_dir is None:
+        return False
+    return any(
+        (case.actual_case_dir / name).is_file()
+        for name in ("runtime_metrics_context.json", "cm_timeseries_context.json")
+    )
 
 
 def metadata_subprocess_env(env: dict[str, str], case: CaseResult) -> dict[str, str]:

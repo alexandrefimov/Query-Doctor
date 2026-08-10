@@ -6,6 +6,7 @@ from dataclasses import replace
 import re
 from typing import Any
 
+from query_doctor.recent.materialized_case_index import materialized_case_entries
 from query_doctor.source_spans import (
     SOURCE_LINE_SPAN_SOURCE_LEGACY_COORDINATE,
     SOURCE_LINE_SPAN_SOURCE_SQL_PARSER,
@@ -150,13 +151,11 @@ def present_recent_scan_summary(
     *,
     workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None = None,
 ) -> RecentScanSummaryView:
-    cases = summary.get("cases")
-    raw_cases = (
-        [case for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
-    )
+    raw_cases = materialized_case_entries(summary)
     rows = tuple(
         present_recent_scan_case_row(rank, case) for rank, case in enumerate(raw_cases, start=1)
     )
+    rows = recent_scan_rows_with_action_outcomes(rows, workload_outcome_metrics)
     bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
     optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium"})
@@ -169,6 +168,11 @@ def present_recent_scan_summary(
         for row in rows
         if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"}
     )
+    analyzed_count = (
+        online_history_profile_status_count(summary, "analyzed")
+        if is_online_history_summary(summary)
+        else summary.get("selected_count")
+    )
     header_items = (
         ("total", len(rows)),
         ("bad", bad_count),
@@ -178,7 +182,7 @@ def present_recent_scan_summary(
         ("recipe backlog", optimizer_recipe_backlog_count),
         ("review-only", optimizer_review_only_count),
         ("stats", stats_count),
-        ("analyzed", safe_display_value(summary.get("selected_count"))),
+        ("analyzed", safe_display_value(analyzed_count)),
         ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
         ("metadata", metadata_count),
     )
@@ -197,6 +201,45 @@ def present_recent_scan_summary(
         empty_message=recent_scan_empty_message(summary, case_count=len(rows)),
         warning_messages=recent_scan_warning_messages(summary),
     )
+
+
+def is_online_history_summary(summary: dict[str, Any]) -> bool:
+    return str(summary.get("mode") or "").strip().lower() == "recent-history-online"
+
+
+def online_history_profile_status_count(summary: dict[str, Any], status: str) -> int:
+    counts = summary.get("history_profile_status_counts")
+    if not isinstance(counts, dict):
+        return 0
+    value = counts.get(status)
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return max(0, int(value))
+    try:
+        return max(0, int(str(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def recent_scan_rows_with_action_outcomes(
+    rows: tuple[RecentScanCaseRowView, ...],
+    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None,
+) -> tuple[RecentScanCaseRowView, ...]:
+    if not workload_outcome_metrics:
+        return rows
+    updated_rows: list[RecentScanCaseRowView] = []
+    for row in rows:
+        metric = workload_outcome_metrics.get(row.workload_fingerprint)
+        if metric is None:
+            updated_rows.append(row)
+        else:
+            updated_rows.append(
+                replace(row, action_outcome_summary=workload_outcome_summary_text(metric))
+            )
+    return tuple(updated_rows)
 
 
 def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> tuple[int, int, int]:
@@ -858,7 +901,7 @@ def workload_shape_has_safe_tables(value: Any) -> bool:
 
 def safe_case_id(value: Any) -> str:
     text = str(value or "").strip().lower()
-    return text if re.fullmatch(r"case-[0-9]{3}", text) else ""
+    return text if re.fullmatch(r"case-[0-9]{3,}", text) else ""
 
 
 def safe_workload_regression_label(value: Any) -> str:
@@ -985,7 +1028,9 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
         has_spill=case_has_spill(case),
+        start_time=safe_display_value(case.get("start_time")),
         source_locators=present_source_locators(case.get("source_locators")),
+        pool=safe_display_value(case.get("pool")),
     )
 
 

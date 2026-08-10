@@ -297,9 +297,7 @@ def test_owner_raw_staging_preflight_rejects_output_overlap(tmp_path: Path, caps
 
 def test_owner_raw_staging_preflight_docs_mention_script() -> None:
     docs = (audit.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
-    matrix = (audit.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (audit.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_staging_preflight.py" in docs
-    assert "scripts/audit_owner_raw_staging_preflight.py" in matrix
     assert "owner_raw_staging_preflight_v1" in changelog

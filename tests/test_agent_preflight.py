@@ -59,6 +59,12 @@ def test_render_report_calls_out_docs_only_scope():
 
     assert "Validation scope:" in report
     assert "Full pytest is not needed for docs-only changes" in report
+    assert "python3 scripts/check_active_docs.py" in report
+    assert "python3 scripts/audit_public_docs.py" in report
+    assert "python3 scripts/audit_public_distribution_boundary.py" in report
+    assert "python3 scripts/check_markdown_links.py" in report
+    assert "docs/codex-handoff.md" not in report
+    assert "docs/public-documentation-boundary.md" not in report
 
 
 def test_agent_operating_docs_get_active_doc_validation():
@@ -69,9 +75,12 @@ def test_agent_operating_docs_get_active_doc_validation():
     assert "- Agent operating docs" in report
     assert "- `python3 scripts/check_active_docs.py`" in report
     assert "- `python3 scripts/audit_public_docs.py`" in report
+    assert "- `python3 scripts/audit_public_distribution_boundary.py`" in report
     assert "- `python3 scripts/check_markdown_links.py`" in report
     assert "tests/test_agent_preflight.py" in report
     assert "tests/test_audit_public_docs.py" in report
+    assert "tests/test_audit_public_distribution_boundary.py" in report
+    assert "tests/test_check_markdown_links.py" in report
     assert "Full pytest is not usually needed for agent docs/tooling" in report
     assert "Web, optimizer, report, collector, and analyzer suites are not needed" in report
 
@@ -82,6 +91,21 @@ def test_render_report_calls_out_agent_tooling_scope():
 
     assert "Full pytest is not usually needed for agent docs/tooling" in report
     assert "Web, optimizer, report, collector, and analyzer suites are not needed" in report
+    assert "tests/test_agent_code_graph.py" in report
+
+
+def test_agent_code_graph_routes_as_agent_tooling():
+    rules = agent_preflight.matching_rules(
+        [
+            "scripts/agent_code_graph.py",
+            "scripts/agent_code_graph_core.py",
+            "scripts/agent_code_graph_extractors.py",
+            "tests/test_agent_code_graph.py",
+        ]
+    )
+    names = {rule.name for rule in rules}
+
+    assert "Agent tooling" in names
 
 
 def test_agent_guardrail_workflows_route_as_agent_tooling():
@@ -89,6 +113,60 @@ def test_agent_guardrail_workflows_route_as_agent_tooling():
     names = {rule.name for rule in rules}
 
     assert "Agent tooling" in names
+
+
+def test_gitleaks_ignore_routes_as_agent_tooling():
+    rules = agent_preflight.matching_rules([".gitleaksignore"])
+
+    assert "Agent tooling" in {rule.name for rule in rules}
+
+
+def test_config_packaging_and_deployment_paths_get_focused_route():
+    paths = [
+        "pyproject.toml",
+        "Dockerfile",
+        "deploy/helm/query-doctor/values.yaml",
+        "query_doctor/web/config.py",
+    ]
+    rules = agent_preflight.matching_rules(paths)
+    report = agent_preflight.render_report(paths, rules)
+
+    assert "Config / packaging / deployment" in {rule.name for rule in rules}
+    assert "docs/configuration.md" in report
+    assert "deploy/kubernetes/README.md" in report
+    assert "tests/test_config_contract.py" in report
+    assert "tests/test_kubernetes_packaging.py" in report
+    assert "live or image-building smokes" in report
+
+
+def test_config_package_path_gets_focused_route_by_itself():
+    rules = agent_preflight.matching_rules(["query_doctor/config/contract.py"])
+    report = agent_preflight.render_report(["query_doctor/config/contract.py"], rules)
+
+    assert "Config / packaging / deployment" in {rule.name for rule in rules}
+    assert "tests/test_config_contract.py" in report
+
+
+def test_deploy_markdown_gets_docs_and_deployment_routes():
+    rules = agent_preflight.matching_rules(["deploy/kubernetes/README.md"])
+    names = {rule.name for rule in rules}
+
+    assert "Docs" in names
+    assert "Config / packaging / deployment" in names
+
+
+def test_markdown_link_checker_routes_as_agent_tooling():
+    rules = agent_preflight.matching_rules(["scripts/check_markdown_links.py"])
+    report = agent_preflight.render_report(["scripts/check_markdown_links.py"], rules)
+
+    assert "Agent tooling" in {rule.name for rule in rules}
+    assert "python3 scripts/check_markdown_links.py" in report
+
+
+def test_markdown_link_checker_tests_route_as_agent_tooling():
+    rules = agent_preflight.matching_rules(["tests/test_check_markdown_links.py"])
+
+    assert "Agent tooling" in {rule.name for rule in rules}
 
 
 def test_impala_loop_audit_routes_as_agent_tooling():
@@ -108,7 +186,10 @@ def test_render_report_handles_no_matches():
     report = agent_preflight.render_report(["unknown/file.txt"], [])
 
     assert "No specific rule matched" in report
-    assert "docs/codex-handoff.md" in report
+    assert "Inspect the touched file, nearby tests" in report
+    assert "docs/code-map.md" in report
+    assert "validation drift" in report
+    assert "docs/codex-handoff.md" not in report
     assert "git diff --check" in report
 
 

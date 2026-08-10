@@ -1,0 +1,9 @@
++----------------------------------------------------------+
+| Explain String                                           |
++----------------------------------------------------------+
+| Estimated Per-Host Requirements: Memory=8.00MB VCores=1  |
+| 01:AGGREGATE                                             |
+| |  output: count(*)                                      |
+| 00:SCAN HDFS [synthetic_db.boxed_table]                  |
+|    partitions=1/1 size=12.00KB                           |
++----------------------------------------------------------+

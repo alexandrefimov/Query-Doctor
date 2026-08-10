@@ -348,8 +348,10 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "Workload follow-up" in workloads_html
     assert "Open Workload Details;" in workloads_html
     assert "Repeated workload details" not in workloads_html
-    assert "demo-admission-0004" in workloads_html
-    assert "demo-admission-0005" in workloads_html
+    assert 'href="/batch/workload/' in workloads_html
+    assert "Repeated workload: 2 similar queries" in workloads_html
+    assert "demo-admission-0004" not in workloads_html
+    assert "demo-admission-0005" not in workloads_html
     assert "strong; baseline p95 38.0s; n=6" not in workloads_html
     assert "Action outcomes" in workloads_html
     assert (

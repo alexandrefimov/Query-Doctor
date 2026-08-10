@@ -31,5 +31,8 @@ jobs:
       - name: Audit public docs for local-only notes
         run: python scripts/audit_public_docs.py
 
+      - name: Audit public distribution boundary
+        run: python scripts/audit_public_distribution_boundary.py
+
       - name: Check local Markdown links
         run: python scripts/check_markdown_links.py

@@ -1,0 +1,14 @@
+F01:PLAN FRAGMENT [UNPARTITIONED] hosts=1 instances=1
+|  Per-Host Resources: mem-estimate=4.02MB mem-reservation=4.00MB thread-reservation=1
+PLAN-ROOT SINK
+|  mem-estimate=4.00MB mem-reservation=4.00MB spill-buffer=2.00MB thread-reservation=0
+01:EXCHANGE [UNPARTITIONED]
+|  hosts=1 per-host-mem=0B
+|  tuple-ids=0 row-size=16B cardinality=1
+
+F00:PLAN FRAGMENT [RANDOM] hosts=3 instances=3
+DATASTREAM SINK [FRAGMENT=F01, EXCHANGE=01, UNPARTITIONED]
+00:SCAN HDFS [synthetic_db.synthetic_table, RANDOM]
+|  partitions=2/6 files=4 size=64.00MB
+|  hosts=3 per-host-mem=32.00MB
+|  tuple-ids=0 row-size=16B cardinality=100

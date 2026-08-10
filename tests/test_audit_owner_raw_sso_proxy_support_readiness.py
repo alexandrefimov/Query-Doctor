@@ -362,7 +362,6 @@ def test_sso_proxy_support_readiness_docs_mention_script() -> None:
     deployment = (readiness.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(
         encoding="utf-8"
     )
-    matrix = (readiness.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (readiness.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
     release_notes = (readiness.ROOT / "docs" / "release-notes-0.9.0.md").read_text(encoding="utf-8")
     release_checklist = (readiness.ROOT / "docs" / "release-checklist.md").read_text(
@@ -371,7 +370,6 @@ def test_sso_proxy_support_readiness_docs_mention_script() -> None:
     readme = (readiness.ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_sso_proxy_support_readiness.py" in deployment
-    assert "scripts/audit_owner_raw_sso_proxy_support_readiness.py" in matrix
     assert "owner_raw_sso_proxy_support_readiness_v1" in changelog
     assert "Release date: TBD" in release_notes
     assert "trusted SSO/auth proxy through `viewer_identity_header`" in release_notes

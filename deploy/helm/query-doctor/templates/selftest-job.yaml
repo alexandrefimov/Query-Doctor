@@ -1,0 +1,56 @@
+{{- if .Values.selfTestJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-self-test" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "query-doctor.selfTestLabels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- with .Values.selfTestJob.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  backoffLimit: {{ .Values.selfTestJob.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.selfTestJob.ttlSecondsAfterFinished }}
+  activeDeadlineSeconds: {{ .Values.selfTestJob.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "query-doctor.selfTestSelectorLabels" . | nindent 8 }}
+      {{- with .Values.selfTestJob.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "query-doctor.serviceAccountName" . | quote }}
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: self-test
+          image: {{ include "query-doctor.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - query-doctor-self-test
+          args:
+            - --json
+            - --timeout-sec
+            - {{ .Values.selfTestJob.timeoutSeconds | quote }}
+          resources:
+            {{- toYaml .Values.selfTestJob.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

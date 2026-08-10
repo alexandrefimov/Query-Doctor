@@ -307,9 +307,7 @@ def test_owner_raw_d3_readiness_docs_mention_script() -> None:
     deployment = (readiness.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(
         encoding="utf-8"
     )
-    matrix = (readiness.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (readiness.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_d3_readiness.py" in deployment
-    assert "scripts/audit_owner_raw_d3_readiness.py" in matrix
     assert "owner_raw_d3_readiness_v1" in changelog

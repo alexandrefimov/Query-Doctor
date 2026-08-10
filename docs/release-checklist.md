@@ -1,6 +1,6 @@
 # Release Checklist
 
-Last reviewed: 2026-06-12
+Last reviewed: 2026-08-10
 
 Use this checklist before cutting a tag, announcing a public release, or making
 future repository visibility changes.
@@ -48,8 +48,15 @@ Before merging release-facing or public-repository hygiene changes:
 Run from the repository root:
 
 ```bash
+export QUERY_DOCTOR_PUBLIC_RELEASE_MARKER_FINGERPRINTS_FILE="<absolute file outside the repository>"
 PUBLIC_RELEASE=1 scripts/local_gate.sh
 ```
+
+The official release gate requires that external private fingerprint file and
+fails closed when it is absent, malformed, empty, or located inside the public
+checkout. Keep the file in private CI/release configuration; never commit its
+marker-derived hashes, normalized lengths, or source identifiers to the public
+repository.
 
 If you need to run the gate manually, use:
 
@@ -59,6 +66,7 @@ python scripts/agent_preflight.py
 python scripts/check_staged_public_safety.py
 python scripts/check_staged_public_safety.py --changed
 python scripts/audit_public_docs.py
+python scripts/audit_public_distribution_boundary.py --history-base "${RELEASE_HISTORY_BASE:-github/main}" --history-head "${RELEASE_HISTORY_HEAD:-HEAD}" --marker-fingerprints-file "${QUERY_DOCTOR_PUBLIC_RELEASE_MARKER_FINGERPRINTS_FILE}"
 python scripts/check_release_history_shape.py --base "${RELEASE_HISTORY_BASE:-github/main}" --head "${RELEASE_HISTORY_HEAD:-HEAD}"
 pre-commit run --all-files
 git diff --check
@@ -67,12 +75,25 @@ python scripts/check_markdown_links.py
 python -m ruff check query_doctor tests
 python -m ruff format --check query_doctor tests scripts
 python -m pytest -q
+python -m pytest -q tests/test_kubernetes_packaging.py tests/test_deployment_readiness.py tests/test_web_app.py::test_health_probe_routes_are_raw_free_json
+kubeconform -strict -summary deploy/kubernetes/public-demo.yaml deploy/kubernetes/configured-web.yaml deploy/kubernetes/self-test-job.yaml
+scripts/helm-chart-smoke.sh
+scripts/kubernetes-self-test-smoke.sh
+scripts/build-image.sh query-doctor:release-candidate
+scripts/image-smoke.sh query-doctor:release-candidate
 python -m query_doctor.cli.demo_preflight --public-release --history-base "${RELEASE_HISTORY_BASE:-github/main}" --history-head "${RELEASE_HISTORY_HEAD:-HEAD}"
 python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 ```
 
-The public-release preflight scans the tracked tree and git history for common
-private-data markers. It does not prove that history is clean. Any blocker
+The public distribution audit checks tracked paths, commit metadata, and UTF-8
+text blobs in every commit in the configured public range. Its private marker
+set is supplied only through the external release configuration; the public
+repository contains no marker-derived hashes or lengths. Known binary suffixes
+are enumerated but their payload bytes are not marker-scanned. Review every
+changed binary manually and require committed public/synthetic provenance, such
+as `docs/assets/readme-screenshot-provenance.json` for README screenshots. The
+public-release preflight separately scans the tracked tree and git history for
+common private-data markers. Neither proves that history is clean. Any blocker
 requires manual review and a clean release branch before publication.
 It also does not prove that every commit is semantically grouped; history
 cleanup and content review remain manual release responsibilities. The
@@ -84,6 +105,37 @@ The demo pack smoke verifies that the public synthetic demo can be generated
 without LLM, network, Cloudera Manager, Impala, or private artifacts. The demo
 report must remain English by default; localized report output should be
 available only through the explicit `language` config selection.
+
+The Recent history operator-readiness command is for retained configured
+environment evidence. Run it only after collecting raw-free Postgres readiness,
+profile-worker, optional collector, and optional retention summaries; it must
+not be pointed at raw logs, Kubernetes resources, profile artifacts, local case
+directories, or Secrets:
+
+```bash
+query-doctor-recent-history-operator-readiness \
+  --postgres-readiness-summary-json <raw-free-postgres-readiness.json> \
+  --profile-worker-summary-json <raw-free-profile-worker.json> \
+  --collector-summary-json <raw-free-collector.json> \
+  --retention-summary-json <raw-free-retention.json> \
+  --fail-on-warning
+```
+
+Before the release tag, install the candidate in an intentional configured
+staging environment with Postgres history and the collector, profile worker,
+and operator-readiness CronJobs enabled but temporarily suspended. Run one
+bounded end-to-end cycle with `scripts/kubernetes-online-history-smoke.sh`; set
+`QUERY_DOCTOR_K8S_ONLINE_HISTORY_SMOKE_EXPECTED_IMAGE` so the gate rejects a
+mixed or stale rollout. The smoke creates and removes only its temporary Jobs,
+prints no Job logs or page contents, and is not suitable for an unapproved live
+source. Unsuspend the schedules only after the isolated cycle passes.
+
+For the same candidate, temporarily set
+`kerberos.renewer.refreshIntervalSeconds=60` in staging and run
+`scripts/kubernetes-kerberos-renewer-smoke.sh`. It verifies only that the
+shared cache remains valid and its modification time advances after one
+bounded interval; it does not print Kerberos material. Restore the production
+refresh interval after the check.
 
 ## CI Parity
 
@@ -107,6 +159,10 @@ Quickstart copy-paste path, the one-profile Quickstart path and manual inbox
 path, a sanitized Impala Web UI export corpus with filename-derived Query ID
 fallback, and additional offline/dry-run installed CLI paths; Docs CI should
 catch broken local Markdown links before merge.
+Container CI should build the Docker image, smoke `/healthz`, `/readyz`,
+`/deployment/readiness.json`, and the public-demo home page from the running
+image, and publish `ghcr.io/alexandrefimov/query-doctor:<version>` only from a
+published GitHub Release.
 Dependency Review should stay enabled on pull requests as a security signal
 alongside Dependabot. CodeQL should scan production code before release tags;
 test fixtures may be excluded from code-scanning noise when they intentionally
@@ -143,6 +199,14 @@ Confirm public docs state only implemented behavior:
   implement native OIDC, SAML, SPNEGO, Kerberos, LDAP, password, MFA, session,
   group, RBAC, or token auth and must not gate raw reveal on collection
   credentials or keytab ownership.
+- Kubernetes support is claimed only as a containerized web deployment starting
+  point with an official image, `/healthz` and `/readyz` probes, a read-only
+  public-demo manifest, a configured private web manifest, the upstream Helm
+  web chart, raw-free deployment audit, and disposable public-demo smoke script.
+  It does not add native auth, RBAC, sessions, multi-tenant isolation, an
+  operator/CRD, SQL execution, or broader engine support. Shared configured
+  deployments still require the trusted ingress/auth proxy and owner-raw gates
+  described above.
 - Broader live engine support and Cluster Doctor product workflows are roadmap
   seams only.
 - Trino support is described only as sanitized offline evidence package import,
@@ -218,6 +282,9 @@ Confirm public docs state only implemented behavior:
   generated local synthetic outcomes file.
 - README screenshots are refreshed from the synthetic demo pack before tagging
   any release that includes material web UI layout changes.
+- Kubernetes manifests and Helm chart renders are checked before tagging, and
+  the container image smoke validates liveness, readiness, and public-demo
+  render.
 - `tests/fixtures/` remains a synthetic/sanitized corpus. New fixture families
   need either a committed provenance assertion or an explicit public-safety
   scanner allowance with tests.
@@ -357,6 +424,37 @@ python scripts/index_install_quickstart_smoke.py \
   a clean virtual environment and smoke the public demo commands plus
   `scripts/index_install_quickstart_smoke.py` and
   `scripts/installed_user_paths_smoke.py` against that environment.
+
+## Container Publishing
+
+The [Container CI](../.github/workflows/container.yml) workflow builds and
+smokes the image on pull requests. On a published GitHub Release, it also
+pushes:
+
+```text
+ghcr.io/alexandrefimov/query-doctor:VERSION
+ghcr.io/alexandrefimov/query-doctor:latest
+```
+
+Before every release with container changes:
+
+- Run `kubeconform -strict -summary deploy/kubernetes/public-demo.yaml deploy/kubernetes/configured-web.yaml deploy/kubernetes/self-test-job.yaml`.
+- Run `scripts/helm-chart-smoke.sh`.
+- Run `scripts/kubernetes-self-test-smoke.sh` against an intentional
+  disposable Kubernetes context when cluster-side validation is available.
+- Run `scripts/kubernetes-configured-release-gate.sh` before a configured
+  private Kubernetes handoff when a metadata-enabled staging release,
+  external auth front door, and NetworkPolicy are intentionally available.
+- Run `scripts/build-image.sh query-doctor:release-candidate`.
+- Run `scripts/image-smoke.sh query-doctor:release-candidate`.
+- On an arm64 workstation, use
+  `QUERY_DOCTOR_IMAGE_PLATFORM=linux/amd64 scripts/build-image.sh query-doctor:release-candidate-amd64`
+  and
+  `QUERY_DOCTOR_IMAGE_PLATFORM=linux/amd64 scripts/image-smoke.sh query-doctor:release-candidate-amd64`
+  before amd64 Kubernetes smoke.
+
+After the GitHub Release publishes, confirm the GHCR image tag exists before
+announcing Kubernetes deployment support.
 
 ## After Release
 

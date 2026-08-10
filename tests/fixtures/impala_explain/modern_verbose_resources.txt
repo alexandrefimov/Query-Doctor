@@ -1,0 +1,19 @@
+F01:PLAN FRAGMENT [UNPARTITIONED] hosts=1 instances=1
+|  Per-Instance Resources: mem-estimate=4.02MB mem-reservation=4.00MB thread-reservation=1
+PLAN-ROOT SINK
+|  mem-estimate=4.00MB mem-reservation=4.00MB spill-buffer=2.00MB thread-reservation=0
+01:EXCHANGE [UNPARTITIONED]
+|  tuple-ids=0 row-size=16B cardinality=100 cost=100
+
+F00:PLAN FRAGMENT [RANDOM] hosts=3 instances=3
+|  Per-Host Resources: mem-estimate=32.00MB mem-reservation=16.00KB thread-reservation=1
+DATASTREAM SINK [FRAGMENT=F01, EXCHANGE=01, UNPARTITIONED]
+00:SCAN HDFS [synthetic_db.synthetic_table, RANDOM]
+   HDFS partitions=2/6 files=4 size=64.00MB
+   stored statistics:
+     table: rows=100 size=64.00MB
+     columns missing stats: synthetic_key
+   extrapolated-rows=unavailable max-scan-range-rows=50
+   mem-estimate=32.00MB mem-reservation=16.00KB thread-reservation=1
+   tuple-ids=0 row-size=16B cardinality=100 cost=100
+   in pipelines: 00(GETNEXT)

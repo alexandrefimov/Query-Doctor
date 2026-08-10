@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from query_doctor.web.case_detail_context import (
     running_page_settings,
 )
 from query_doctor.web.case_files import expected_case_dir_for_query
+from query_doctor.web.deployment_readiness import deployment_readiness_json
 from query_doctor.web.form_helpers import first_form_value, form_flag_enabled
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
 from query_doctor.web.job_ids import WEB_JOB_ID_PATTERN
@@ -45,7 +47,11 @@ from query_doctor.web.owner_raw_source import (
     unquote_case_id,
 )
 from query_doctor.web.query_analysis import run_query_id_analysis, validate_query_id
-from query_doctor.web.request_handlers import handle_optimizer_request, start_analyze_job
+from query_doctor.web.request_handlers import (
+    handle_optimizer_request,
+    start_analyze_job,
+    start_profile_upload_job,
+)
 from query_doctor.web.trino_details import render_trino_detail_for_request
 from query_doctor.web.trino_guidance import (
     load_trino_optimizer_guidance,
@@ -82,6 +88,7 @@ from query_doctor.web.trusted_artifacts import (
 )
 from query_doctor.web.workload_pages import render_workload_detail_for_request
 from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
+from query_doctor.web.ui.deployment import render_deployment_readiness_page
 from query_doctor.web.ui.optimizer import render_optimizer_page
 from query_doctor.web.ui.outcomes import render_action_outcomes_page
 from query_doctor.web.ui.owner_raw_source import (
@@ -96,6 +103,10 @@ from query_doctor.web.ui.pages import (
     render_query_page,
     render_readme_page,
 )
+from query_doctor.web.ui.query_inbox import query_inbox_scope_filters_from_mapping
+from query_doctor.web.ui.recent_scan_result_filters import (
+    recent_scan_result_filters_from_mapping,
+)
 from query_doctor.web.ui.running import render_running_queries_page
 
 
@@ -107,6 +118,7 @@ STATIC_POST_PATHS = {
     "/running/run",
     "/optimizer",
     "/query-optimizer",
+    "/profile/upload",
 }
 STATIC_ASSETS = {
     "/static/app.css": ("app.css", "text/css; charset=utf-8"),
@@ -124,6 +136,7 @@ ACTION_OUTCOME_POST_RE = re.compile(
 SPECIFIC_QUERY_POST_RE = re.compile(
     r"/query/details/(?P<query_id>[^/]+)/(?P<action>report|python-report|llm-report|optimized-query|validate-rewrite|llm-actions|case-actions)"
 )
+HEALTH_PATHS = {"/healthz", "/readyz"}
 
 
 @dataclass(frozen=True)
@@ -173,6 +186,12 @@ def route_get_request(
     store: WebJobStore,
 ) -> WebRouteResponse | None:
     parsed = urlparse(path)
+    if parsed.path in HEALTH_PATHS:
+        return route_health_get(parsed.path)
+    if parsed.path == "/deployment/readiness.json":
+        return WebRouteResponse.json(200, deployment_readiness_json(settings))
+    if parsed.path in {"/deployment", "/deployment/readiness"}:
+        return WebRouteResponse.html(200, render_deployment_readiness_page(settings))
     if parsed.path in {"/", "/index.html", "/batch"}:
         query = parse_qs(parsed.query, keep_blank_values=True)
         effective_settings = batch_page_settings(settings, store)
@@ -183,11 +202,15 @@ def route_get_request(
                 query_group=first_form_value(query, "query_group")
                 or default_batch_query_group(effective_settings),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                result_sort=first_form_value(query, "result_sort"),
+                results_page=first_form_value(query, "results_page"),
                 workload_admin_scope=first_form_value(query, "workload_admin_scope"),
                 workload_admin_signal=first_form_value(query, "workload_admin_signal"),
                 workload_group_scope=first_form_value(query, "workload_group_scope"),
                 workload_group_name=first_form_value(query, "workload_group_name"),
                 workload_group_signal=first_form_value(query, "workload_group_signal"),
+                inbox_scope_filters=query_inbox_scope_filters_from_mapping(query),
+                result_filters=recent_scan_result_filters_from_mapping(query),
             ),
         )
     static_response = route_static_asset_get(parsed.path)
@@ -223,11 +246,15 @@ def route_get_request(
                 running_page_settings(settings, store),
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                result_sort=first_form_value(query, "result_sort"),
+                results_page=first_form_value(query, "results_page"),
                 workload_admin_scope=first_form_value(query, "workload_admin_scope"),
                 workload_admin_signal=first_form_value(query, "workload_admin_signal"),
                 workload_group_scope=first_form_value(query, "workload_group_scope"),
                 workload_group_name=first_form_value(query, "workload_group_name"),
                 workload_group_signal=first_form_value(query, "workload_group_signal"),
+                inbox_scope_filters=query_inbox_scope_filters_from_mapping(query),
+                result_filters=recent_scan_result_filters_from_mapping(query),
             ),
         )
     if parsed.path == "/help":
@@ -250,6 +277,24 @@ def route_get_request(
     if job_response is not None:
         return job_response
     return None
+
+
+def route_health_get(path: str) -> WebRouteResponse:
+    probe = "readiness" if path == "/readyz" else "liveness"
+    return WebRouteResponse.json(
+        200,
+        json.dumps(
+            {
+                "status": "ok",
+                "service": "query-doctor",
+                "probe": probe,
+                "raw_output": False,
+                "sql_execution": False,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+    )
 
 
 def default_batch_query_group(settings: WebSettings) -> str:
@@ -562,11 +607,15 @@ def route_job_get(
                 job=job,
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                result_sort=first_form_value(query, "result_sort"),
+                results_page=first_form_value(query, "results_page"),
                 workload_admin_scope=first_form_value(query, "workload_admin_scope"),
                 workload_admin_signal=first_form_value(query, "workload_admin_signal"),
                 workload_group_scope=first_form_value(query, "workload_group_scope"),
                 workload_group_name=first_form_value(query, "workload_group_name"),
                 workload_group_signal=first_form_value(query, "workload_group_signal"),
+                inbox_scope_filters=query_inbox_scope_filters_from_mapping(query),
+                result_filters=recent_scan_result_filters_from_mapping(query),
             ),
         )
     if job.kind == "running":
@@ -577,11 +626,15 @@ def route_job_get(
                 job=job,
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                result_sort=first_form_value(query, "result_sort"),
+                results_page=first_form_value(query, "results_page"),
                 workload_admin_scope=first_form_value(query, "workload_admin_scope"),
                 workload_admin_signal=first_form_value(query, "workload_admin_signal"),
                 workload_group_scope=first_form_value(query, "workload_group_scope"),
                 workload_group_name=first_form_value(query, "workload_group_name"),
                 workload_group_signal=first_form_value(query, "workload_group_signal"),
+                inbox_scope_filters=query_inbox_scope_filters_from_mapping(query),
+                result_filters=recent_scan_result_filters_from_mapping(query),
             ),
         )
     if job.kind in {
@@ -677,6 +730,8 @@ def route_post_request(
         status, body = handle_optimizer_request(form, settings, runner=runner)
     elif (preview_surface := preview_surface_for_post_path(parsed.path)) is not None:
         status, body = preview_surface.handle_post(form, settings)
+    elif parsed.path == "/profile/upload":
+        status, body = start_profile_upload_job(form, settings, store, runner=runner)
     elif parsed.path == "/analyze":
         status, body = start_analyze_job(form, settings, store, analysis_func=analysis_func)
     else:
@@ -705,7 +760,7 @@ def job_not_found_error() -> WebError:
         title="Job was not found",
         reason_code="job.not_found",
         stage="Checking analysis job",
-        next_step="Start a new analysis job from the Diagnose page.",
+        next_step="Start a new analysis job from the Query Inbox page.",
     )
 
 

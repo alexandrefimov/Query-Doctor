@@ -316,14 +316,14 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(f"Trino shared deployment boundary audit: {status}")
     print(
         "Deployment: "
-        "config_check=reported_in_summary, "
-        "trino_input_counts=reported_in_summary, "
-        "shared_trino_input_counts=reported_in_summary, "
-        "shared_owner_raw_input_counts=reported_in_summary, "
-        "front_door_requirement=required_for_shared_trino, "
-        "front_door_review=reported_in_summary, "
-        "raw_reveal=blocked_for_shared_trino, "
-        "path_output=none"
+        f"config_checked={'yes' if result.config_checked else 'no'}, "
+        f"trino_sources={result.trino_source_count}, "
+        f"shared_trino_sources={result.shared_trino_source_count}, "
+        f"shared_owner_raw_sources={result.shared_owner_raw_source_count}, "
+        "trusted_front_door_identity=required_for_shared_trino, "
+        f"trusted_front_door_review={trusted_front_door_review_status(result)}, "
+        "raw_source_reveal=blocked_for_shared_trino, "
+        "paths=not_printed"
     )
     print(
         "Static boundary: "
@@ -337,8 +337,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         f"{counter_text(result.shared_deployment_requirement_tracking_counts) or 'none'}"
     )
     print(
-        "Production review: "
-        "review=shared_deployment, "
+        "Production review profile: "
+        f"profile={TRINO_SHARED_DEPLOYMENT_PRODUCTION_REVIEW_PROFILE}, "
         f"status={production_review_profile_status(result)}, "
         f"requirements={counter_text(result.production_review_tracking_counts) or 'none'}"
     )

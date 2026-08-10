@@ -48,9 +48,20 @@ def test_scan_text_ignores_non_public_markdown_paths():
     assert findings == ()
 
 
+def test_scan_text_checks_deployment_markdown_paths():
+    findings = audit_public_docs.scan_text_for_local_doc_notes(
+        "Next session plan: private deployment scratch note.",
+        path="deploy/kubernetes/README.md",
+    )
+
+    assert len(findings) == 1
+    assert findings[0].severity == "blocker"
+
+
 def test_public_markdown_path_filter_includes_public_docs_only():
     assert audit_public_docs.is_public_markdown_path("AGENTS.md")
     assert audit_public_docs.is_public_markdown_path("docs/README.md")
+    assert audit_public_docs.is_public_markdown_path("deploy/kubernetes/README.md")
     assert audit_public_docs.is_public_markdown_path(".github/PULL_REQUEST_TEMPLATE.md")
     assert not audit_public_docs.is_public_markdown_path("tests/fixtures/README.md")
     assert not audit_public_docs.is_public_markdown_path("scripts/audit_public_docs.py")

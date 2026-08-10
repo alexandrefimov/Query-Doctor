@@ -1,9 +1,69 @@
 # Code Map
 
-Last updated: 2026-06-24
+Last updated: 2026-07-29
 
 This is the practical lookup map for coding agents. Use it to find the likely
 owner of a behavior before reading large modules.
+
+## Graph-Assisted Lookup
+
+This map remains the durable source of behavior ownership. Local code graphs
+can help with unfamiliar or cross-module work, but they are orientation tools,
+not authority.
+
+- Prefer this map and focused code search first. Use a local graph only when
+  import, call, route, presenter, validator, or test ownership is still unclear.
+- Run `python3 scripts/agent_code_graph.py` for a compact local
+  `SUMMARY.md` and `graph.json` in the system temporary directory when a
+  repeated lookup would otherwise require broad file reads.
+- Use `python3 scripts/agent_code_graph.py --changed` for a graph-derived
+  read-scope hint around current Git changes, or `--explain <path>` when one
+  unfamiliar file needs nearby tests, docs, entrypoints, and support files. Add
+  `--compact` for a shorter hint. Validation hints in graph output are a
+  starting point; use `scripts/agent_preflight.py` or the test matrix when scope
+  is unclear.
+- Use `--symbol <name>` when a Python class, function, method, or failing test
+  name is known but its focused implementation window is not. Symbol indexing
+  is built only for that query, ranks exact names first, and keeps ordinary
+  file-level graph calls on their existing lightweight path. With `--context
+  --detail preview`, the first source window starts around the matched symbol;
+  related production or test files still fall back to file-level ranking when
+  no nearby Python symbol matches.
+- When the ranked paths are known but source context is still needed, add
+  `--context --detail fold|preview|full --line-budget <lines>` to an
+  `--explain <path>` or `--symbol <name>` query. `fold` emits paths only,
+  `preview` shares the budget across ranked files, and `full` spends it in rank
+  order. An optional
+  `--context-ledger <ignored-or-external.jsonl>` records only content hashes and
+  emitted line ranges, skips unchanged ranges on later calls, and automatically
+  invalidates entries after a file changes. Keep ledgers out of committed docs
+  and generated artifacts.
+- Run `python3 scripts/agent_code_graph.py --merge-risk --base main --compact`
+  before merging task branches to detect exact file overlaps and area overlaps
+  against `main` and sibling worktrees. Use it as an early coordination signal;
+  it does not prove whether a merge will conflict.
+- Safe aggregate usage metrics are recorded by default in shared local state
+  outside the repository so they survive task-worktree cleanup. Review only the
+  aggregate with `python3 scripts/agent_code_graph.py --usage-summary`. The
+  summary includes daily mode counts and a local `main` reflog proxy for
+  merge-risk runs before merge events; use it as adoption signal, not causal
+  proof. Use `--no-record-usage` for a run that should not be counted, and do
+  not commit or quote raw usage JSONL records.
+- Keep graph generation local or ignored. Do not commit generated graph JSON,
+  HTML, caches, reports, screenshots, or `graphify-out` output.
+- Keep graph inputs narrow and public-safe by default: source code, deployment
+  templates, schemas, build scripts, public config examples, and public docs
+  are reasonable; local notes, generated cases, raw profiles, raw SQL, raw
+  metadata, private configs, and retained local smoke outputs are not.
+- Avoid LLM/API-backed semantic extraction for repository graphs unless the
+  user explicitly approves that data boundary. Prefer deterministic AST/import
+  extraction for routine ownership lookup.
+- Treat confidence labels literally. `EXTRACTED` means a tool found a
+  structural edge; it does not prove product behavior. `INFERRED` and
+  ambiguous edges are leads to check, not facts to cite.
+- When a graph reveals a durable ownership improvement, verify the claim
+  against current code, tests, and docs, then update this file with the
+  public-safe conclusion rather than preserving the raw graph artifact.
 
 ## Product Surfaces
 
@@ -22,6 +82,7 @@ owner of a behavior before reading large modules.
 | Prometheus runtime metrics | `query_doctor/prometheus/`, `query_doctor/impala/`, analyzer runtime metrics modules | Optional bounded runtime context for configured direct Impala workflows; allowlisted PromQL only. |
 | Impala metadata | `query_doctor/impala/` | Allowlisted `SHOW` statements only. |
 | Analyzer facts and scoring | `query_doctor/analyzer/`, `query_doctor/recent/` | Deterministic facts, score reasons, and action candidates. |
+| Already-provided Impala EXPLAIN facts | `query_doctor/analyzer/impala_explain.py`, `query_doctor/analyzer/impala_explain_loader.py`, `query_doctor/cli/analyze_profile.py` | Bounded case-contained loader and pure parser with a raw-free analyzer-result projection (`analysis.json` when requested); no EXPLAIN execution, scoring, recommendations, report/browser rendering, or platform contract. |
 | Representative validation audits | `scripts/audit_impala_diagnostic_loop.py`, `scripts/audit_impala_north_star_gate.py`, `scripts/build_impala_north_star_suite_manifest.py`, `scripts/audit_recent_details.py`, `scripts/audit_profile_evidence_gates.py`, `scripts/audit_impala_coverage_gaps.py`, `scripts/audit_workload_diagnostics.py`, `scripts/audit_stats_diagnostics.py`, `scripts/audit_optimizer_funnel.py` | Aggregate and component strict gates for raw-free Impala representative-batch calibration. |
 | Dev-only handoff artifact safety | `query_doctor/safety/handoff_artifacts.py`, `scripts/*handoff*.py` | Shared path-overlap checks and ASCII/sorted JSON artifact writing for retained raw-free handoff summaries and compact artifacts. Engine-specific redaction checks, readiness gates, and support-boundary wording remain in the owning Trino/Spark scripts. |
 | Engine fact contract and Trino intake | `query_doctor/analyzer/engine_facts.py`, `query_doctor/analyzer/engine_fact_promotion_policy.py`, `query_doctor/analyzer/engine_fact_consumer.py`, `query_doctor/analyzer/engine_intake_primitives.py`, `query_doctor/analyzer/engine_redaction_note.py`, `query_doctor/analyzer/impala_engine_facts.py`, `query_doctor/analyzer/trino_fixture_facts.py`, `query_doctor/analyzer/trino_evidence_package.py`, `query_doctor/analyzer/spark_fixture_facts.py`, `query_doctor/analyzer/spark_fixture_schema.py`, `query_doctor/trino/local_event_store.py`, `query_doctor/trino/http_event_archive.py`, `query_doctor/trino/http_query_detail_archive.py`, `query_doctor/trino/local_query_detail.py`, `query_doctor/trino/local_query_list.py`, `query_doctor/trino/local_statement_stats.py`, `query_doctor/trino/source_contract_registry.py`, `query_doctor/trino/production_collector_contracts.py`, `query_doctor/trino/representative_evidence.py`, `query_doctor/trino/query_linked_fact_coverage.py`, `query_doctor/trino/product_metadata_collection.py`, `query_doctor/trino/report_optimizer_safety.py`, `query_doctor/trino/production_closure_gates.py`, `query_doctor/trino/event_source_contract.py`, `query_doctor/trino/coordinator_query_info_target.py`, `query_doctor/trino/coordinator_query_info_pruned_import.py`, `query_doctor/trino/diagnosis.py`, `query_doctor/cli/build_trino_evidence_package.py`, `query_doctor/cli/validate_trino_evidence_package.py`, `query_doctor/cli/trino_import.py`, `query_doctor/cli/trino_event_store_import.py`, `query_doctor/cli/trino_http_event_archive_import.py`, `query_doctor/cli/trino_http_query_detail_archive_import.py`, `query_doctor/cli/trino_query_detail_import.py`, `query_doctor/cli/trino_query_list_import.py`, `query_doctor/cli/trino_statement_stats_import.py`, `query_doctor/cli/trino_query_info_pruned_import.py`, `query_doctor/cli/trino_event_source_contract_check.py`, `query_doctor/cli/trino_coordinator_query_info_target_check.py`, `query_doctor/cli/trino_coordinator_query_info_pruned_probe.py`, `query_doctor/cli/trino_coordinator_query_info_pruned_import.py`, `query_doctor/cli/trino_diagnosis_output.py`, `query_doctor/cli/diagnose_trino_compact.py`, `query_doctor/safety/manifest_references.py`, `query_doctor/web/preview_surfaces.py`, `query_doctor/web/trino_compact.py`, `query_doctor/web/ui/trino.py`, `scripts/trino_evidence_package_requirements.py`, `scripts/build_trino_evidence_package.py`, `scripts/validate_trino_evidence_package.py`, `scripts/audit_trino_evidence_handoff.py`, `scripts/build_trino_evidence_handoff_suite_manifest.py`, `scripts/audit_trino_product_surface_boundary.py`, `scripts/audit_trino_production_collector_contracts.py`, `scripts/audit_trino_representative_evidence.py`, `scripts/audit_trino_query_linked_fact_coverage.py`, `scripts/audit_trino_product_metadata_collection.py`, `scripts/audit_trino_report_optimizer_safety.py`, `scripts/audit_trino_production_closure_gates.py`, `scripts/audit_trino_shared_deployment_boundary.py`, `scripts/audit_trino_shared_deployment_preflight.py`, `scripts/audit_trino_support_gap_matrix.py`, `scripts/audit_trino_web_beta_readiness.py`, `scripts/audit_trino_web_beta_live_smoke.py`, `scripts/audit_trino_beta_release_readiness.py`, `scripts/trino_one_query_live_handoff.py`, `scripts/build_trino_handoff_suite_manifest.py`, `scripts/audit_trino_compact_readiness.py`, `tests/engine_fact_contract_harness.py` | Typed normalized facts, explicit fact namespace registration, checked promotion-policy registry for shared/distributed-SQL-family/source-boundary/support-boundary facts, raw-free boundary payloads, shared bounded JSON intake primitives and package-style `redaction_note_v1` validation for evidence-package wrappers, shared safe relative JSON manifest reference checks for retained handoff-suite artifacts, source-contract/source-type registry for accepted bounded local production and preview source kinds, production collector closure-gate audit over existing local lanes, preview readers, contract-only sources, open blockers, and optional retained representative-evidence summary handoff checks that require the production_review_breadth_v1 ready profile, representative-evidence closure-gate audit over already retained raw-free summary-counter payload breadth with the production_review_breadth_v1 profile, query-linked fact coverage closure-gate audit over bounded compact facts and open operator/split/telemetry blockers, product metadata collection closure-gate audit over metadata source registry, fact namespace, adapter flags, product-surface blocks, identifier/raw metadata redaction, and no user SQL execution, report optimizer safety closure-gate audit over materialized report/guidance capabilities, raw-source policy, validator sentinels, adapter flags, and blocked LLM/job/generated-SQL/SQL-execution surfaces, consolidated bounded production claim closure-gate audit over the support-gap gate list, Trino dev-gate capability wiring, retained closure tracking summaries, and collector-to-representative-evidence linkage with raw-free current-tracking validity, invalid-summary count, linkage validity/missing-summary, claim-ready status, and CLI output, raw policy, bounds, and promotion gates, sanitized Trino package build/validation through CLI modules with script wrappers, local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, local query-detail import, local query-list aggregate import, local statement-stats import, local compact pruned QueryInfo import, event-source contract checks, dry-run coordinator query-info target checks, bounded pruned coordinator probes, one-query pruned coordinator fact import with direct `--boundary-out`, dev-only evidence-package requirements printing from the Python-owned contract, dev-only package-to-boundary handoff audit over sanitized packages with optional retained raw-free handoff summary JSON, dev-only retained evidence-handoff summary suite manifest and audit, dev-only product-surface boundary audit over retained raw-free compact artifacts and handoff-suite manifests with optional retained product-surface summary checks, dev-only shared-deployment boundary audit over local config shape and static surface registries for trusted front-door identity plus raw-source isolation, dev-only shared-deployment preflight over the shared boundary, product-surface, support-gap, and active-docs gates with child output captured and only raw-free gate counts/categories emitted, dev-only static support-gap audit over registered Trino fact-family coverage, source-type registry coverage, engine fact promotion-policy coverage, adapter flags, and bounded production claim status, dev-only Trino Beta web readiness/live-smoke/release-readiness gates with raw-free summaries and no unsupported product output, dev-only one-query handoff wrapper with strict readiness audit, optional `--query-id-file`, and optional handoff summary output, and optional product-surface summary output, dev-only handoff-suite manifest builder, manifest-driven one-query handoff suite readiness over raw-free boundary/diagnosis/smoke artifacts with optional matching per-entry readiness summary checks, optional retained handoff summary refs, and optional retained product-surface summary refs and optional raw-free suite summary JSON, local compact diagnosis over raw-free direct boundary JSON excluding metadata summary boundaries or selected package sample boundaries with a checked `diagnostic_lane` summary, single-boundary import `--diagnosis-out`, registered isolated local `/trino/compact-diagnosis` rendering for the same already raw-free inputs, fixture/experimental Spark mapping, and a read-only consumer probe; not a live engine selector. |
@@ -197,6 +258,8 @@ Start with:
 
 - `query_doctor/recent/`;
 - `query_doctor/cli/batch_recent.py`;
+- `query_doctor/cli/recent_profile_worker.py` for shared Recent profile-job
+  worker behavior;
 - `query_doctor/web/jobs.py`;
 - Details progress rendering.
 

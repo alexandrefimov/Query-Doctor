@@ -81,11 +81,13 @@ def test_web_corpus_dir_config_field_is_allowed():
         minimal_config(
             corpus_dir="query-doctor-cases",
             manual_profile_dir="profile-inbox",
+            recent_batch_root="/tmp/query-doctor-web-batches",
         )
     )
 
     assert values["corpus_dir"] == "query-doctor-cases"
     assert values["manual_profile_dir"] == "profile-inbox"
+    assert values["recent_batch_root"] == "/tmp/query-doctor-web-batches"
 
 
 def test_viewer_identity_header_config_field_is_global_only():
@@ -102,6 +104,159 @@ def test_viewer_identity_header_config_field_is_global_only():
                     {
                         "id": "prod",
                         "viewer_identity_header": "X-QD-Viewer",
+                    }
+                ]
+            )
+        )
+
+
+def test_recent_batch_root_config_field_is_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(recent_batch_root="/tmp/query-doctor-web-batches")
+    )
+
+    assert values["recent_batch_root"] == "/tmp/query-doctor-web-batches"
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "recent_batch_root": "/tmp/query-doctor-web-batches",
+                    }
+                ]
+            )
+        )
+
+
+def test_recent_history_db_config_field_is_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(recent_history_db="/var/lib/query-doctor/recent-history.sqlite")
+    )
+
+    assert values["recent_history_db"] == "/var/lib/query-doctor/recent-history.sqlite"
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "recent_history_db": "/var/lib/query-doctor/recent-history.sqlite",
+                    }
+                ]
+            )
+        )
+
+
+def test_recent_history_postgres_config_fields_are_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(
+            recent_history_backend="postgres",
+            recent_history_postgres_dsn_env="QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN",
+        )
+    )
+
+    assert values["recent_history_backend"] == "postgres"
+    assert values["recent_history_postgres_dsn_env"] == "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN"
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "recent_history_backend": "postgres",
+                    }
+                ]
+            )
+        )
+
+
+def test_recent_history_operator_readiness_summary_config_field_is_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(
+            recent_history_operator_readiness_summary_json="operator-readiness.json",
+        )
+    )
+
+    assert values["recent_history_operator_readiness_summary_json"] == "operator-readiness.json"
+
+    with pytest.raises(config_contract.ConfigError, match="must be a string"):
+        config_contract.normalize_config_keys(
+            minimal_config(recent_history_operator_readiness_summary_json=123)
+        )
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "recent_history_operator_readiness_summary_json": (
+                            "operator-readiness.json"
+                        ),
+                    }
+                ]
+            )
+        )
+
+
+def test_recent_history_collector_summary_config_field_is_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(
+            recent_history_collector_summary_json="collector-summary.json",
+        )
+    )
+
+    assert values["recent_history_collector_summary_json"] == "collector-summary.json"
+
+    with pytest.raises(config_contract.ConfigError, match="must be a string"):
+        config_contract.normalize_config_keys(
+            minimal_config(recent_history_collector_summary_json=123)
+        )
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "recent_history_collector_summary_json": "collector-summary.json",
+                    }
+                ]
+            )
+        )
+
+
+def test_recent_history_retention_config_fields_are_global_only():
+    values = config_contract.normalize_config_keys(
+        minimal_config(
+            recent_history_summary_retention_days=30,
+            recent_history_profile_job_retention_days=14,
+            recent_history_analysis_cache_retention_days=45,
+            recent_history_profile_artifact_retention_days=60,
+        )
+    )
+
+    assert values["recent_history_summary_retention_days"] == 30
+    assert values["recent_history_profile_job_retention_days"] == 14
+    assert values["recent_history_analysis_cache_retention_days"] == 45
+    assert values["recent_history_profile_artifact_retention_days"] == 60
+
+    with pytest.raises(config_contract.ConfigError, match="must be a positive integer"):
+        config_contract.normalize_config_keys(
+            minimal_config(recent_history_summary_retention_days=0)
+        )
+
+    with pytest.raises(config_contract.ConfigError, match="Unknown cluster config field"):
+        config_contract.normalize_config_keys(
+            minimal_config(
+                clusters=[
+                    {
+                        "id": "prod",
+                        "recent_history_summary_retention_days": 30,
                     }
                 ]
             )
@@ -328,6 +483,7 @@ def test_supported_keys_are_accepted(tmp_path):
         "recent_min_duration_sec": 1.0,
         "recent_max_duration_sec": 10.0,
         "recent_order": "duration-desc",
+        "recent_batch_root": "/tmp/query-doctor-web-batches",
         "recent_output_json": "/tmp/recent.json",
         "recent_scan_timezone": "Europe/Berlin",
         "recent_include_failed": True,
@@ -360,7 +516,7 @@ def test_supported_keys_are_accepted(tmp_path):
         "trino_query_info_source_contract": "trino-query-info-contract.json",
         "trino_query_list_source_contract": "trino-query-list-contract.json",
         "trino_auth_header_file": "trino-auth-header.txt",
-        "trino_kerberos_principal": "sa@LESTA.HADOOP",
+        "trino_kerberos_principal": "sa@EXAMPLE.COM",
         "trino_kerberos_service_name": "HTTP",
         "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
         "trino_krb5_config": "krb5.conf",
@@ -392,7 +548,7 @@ def test_supported_keys_are_accepted(tmp_path):
     assert loaded["trino_query_info_source_contract"] == "trino-query-info-contract.json"
     assert loaded["trino_query_list_source_contract"] == "trino-query-list-contract.json"
     assert loaded["trino_auth_header_file"] == "trino-auth-header.txt"
-    assert loaded["trino_kerberos_principal"] == "sa@LESTA.HADOOP"
+    assert loaded["trino_kerberos_principal"] == "sa@EXAMPLE.COM"
     assert loaded["trino_kerberos_service_name"] == "HTTP"
     assert loaded["trino_krb5_ccname"] == "FILE:/tmp/krb5cc_qd_trino"
     assert loaded["trino_krb5_config"] == "krb5.conf"
@@ -509,7 +665,7 @@ def test_clusters_config_is_accepted_and_normalized(tmp_path):
                     "trino_coordinator_url": "https://trino.example.com",
                     "trino_query_info_source_contract": "trino-contract.json",
                     "trino_auth_header_file": "trino-header.txt",
-                    "trino_kerberos_principal": "sa@LESTA.HADOOP",
+                    "trino_kerberos_principal": "sa@EXAMPLE.COM",
                     "trino_kerberos_service_name": "HTTP",
                     "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
                     "trino_krb5_config": "krb5.conf",
@@ -546,7 +702,7 @@ def test_clusters_config_is_accepted_and_normalized(tmp_path):
             "trino_coordinator_url": "https://trino.example.com",
             "trino_query_info_source_contract": "trino-contract.json",
             "trino_auth_header_file": "trino-header.txt",
-            "trino_kerberos_principal": "sa@LESTA.HADOOP",
+            "trino_kerberos_principal": "sa@EXAMPLE.COM",
             "trino_kerberos_service_name": "HTTP",
             "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
             "trino_krb5_config": "krb5.conf",

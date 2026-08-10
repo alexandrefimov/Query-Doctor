@@ -17,7 +17,11 @@ from query_doctor.web.job_errors import unexpected_job_failure_error
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.optimizer_workflow import run_optimizer_analysis
-from query_doctor.web.query_analysis import run_query_id_analysis, run_web_analysis
+from query_doctor.web.query_analysis import (
+    run_query_id_analysis,
+    run_uploaded_profile_analysis,
+    run_web_analysis,
+)
 from query_doctor.web.subprocesses import Runner
 from query_doctor.web.ui.optimizer import render_optimizer_page
 from query_doctor.web.ui.pages import render_query_page
@@ -172,6 +176,63 @@ def start_analyze_job(
     return 303, f"/jobs/{job.job_id}"
 
 
+def start_profile_upload_job(
+    form: dict[str, list[str]],
+    settings: WebSettings,
+    job_store: WebJobStore,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[int, str]:
+    query_id = first_form_value(form, "query_id")
+    profile_values = form.get("profile_text", [])
+    profile_text = profile_values[0] if profile_values else ""
+    form_values = {
+        "diagnosis_target": "query",
+        "cluster_key": selected_cluster_key_from_mapping(form, settings),
+        "engine": "impala",
+    }
+    if not query_id:
+        return 400, render_query_page(
+            settings, error=query_id_required_error(), form_values=form_values
+        )
+    if not profile_text:
+        return 400, render_query_page(
+            settings, error=profile_upload_required_error(), form_values=form_values
+        )
+    try:
+        selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
+        selected_settings = settings_with_selected_engine(selected_settings, "impala")
+        require_selected_query_id_ready(query_id, selected_settings)
+    except WebError as exc:
+        return 400, render_query_page(
+            settings,
+            query_id=safe_error_query_id(query_id, form_values),
+            error=exc,
+            form_values=form_values,
+        )
+
+    job = job_store.create(
+        query_id,
+        "uploaded_profile",
+        form_values=form_values,
+        kind="query",
+    )
+    thread = threading.Thread(
+        target=run_profile_upload_job,
+        args=(
+            job.job_id,
+            query_id,
+            profile_text,
+            selected_settings,
+            job_store,
+            runner,
+        ),
+        daemon=True,
+    )
+    thread.start()
+    return 303, f"/jobs/{job.job_id}"
+
+
 def settings_with_selected_engine(settings: WebSettings, engine: str) -> WebSettings:
     if settings.selected_engine == engine:
         return settings
@@ -220,6 +281,16 @@ def optimizer_sql_required_error() -> WebError:
     )
 
 
+def profile_upload_required_error() -> WebError:
+    return WebError(
+        "Exported Impala profile file is required.",
+        title="Profile file is missing",
+        reason_code="web.profile_upload_required",
+        stage="Checking profile upload",
+        next_step="Choose one exported Impala text profile, then submit again.",
+    )
+
+
 def run_analysis_job(
     job_id: str,
     query_id: str,
@@ -264,3 +335,32 @@ def run_analysis_job(
             job_id,
             unexpected_job_failure_error(job.kind if job is not None else "query"),
         )
+
+
+def run_profile_upload_job(
+    job_id: str,
+    query_id: str,
+    profile_text: str,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    runner: Runner,
+) -> None:
+    def progress(stage_index: int) -> None:
+        job_store.update_stage(job_id, stage_index)
+
+    try:
+        result = run_uploaded_profile_analysis(
+            query_id,
+            profile_text,
+            settings,
+            runner=runner,
+            progress=progress,
+            cancel_check=lambda: job_store.cancel_requested(job_id),
+        )
+        if job_store.cancel_requested(job_id):
+            return
+        job_store.complete(job_id, result)
+    except WebError as exc:
+        job_store.fail(job_id, exc)
+    except Exception:  # pragma: no cover - defensive UI sanitization.
+        job_store.fail(job_id, unexpected_job_failure_error("query"))

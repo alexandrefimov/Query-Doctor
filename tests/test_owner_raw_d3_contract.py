@@ -137,21 +137,26 @@ def test_owner_raw_d3_doc_pins_public_safe_front_door_examples():
 
 
 def test_owner_raw_d3_validation_matrix_pins_broader_checks():
-    text = (REPO_DIR / "docs" / "test-matrix.md").read_text(encoding="utf-8")
-    normalized_text = " ".join(text.split())
+    matrix = (REPO_DIR / "docs" / "test-matrix.md").read_text(encoding="utf-8")
+    deployment = (REPO_DIR / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
+    dev_sso = (REPO_DIR / "docs" / "dev-sso-keycloak.md").read_text(encoding="utf-8")
+    normalized_matrix = " ".join(matrix.split())
+    runbooks = "\n".join((deployment, dev_sso))
 
-    assert "Owner-raw D3 viewer identity, front-door contract" in text
-    assert "docs/owner-raw-d3-deployment.md" in text
-    assert "python3 scripts/owner_raw_front_door_smoke.py --compact" in text
-    assert "python3 scripts/audit_owner_raw_live_front_door_review.py" in text
-    assert "python3 scripts/owner_raw_policy_simulator.py" in text
-    assert "--viewer-identity-header-configured" in text
-    assert "--fail-on-deny" in text
-    assert "tests/test_owner_raw_front_door_smoke.py" in text
-    assert "tests/test_audit_owner_raw_live_front_door_review.py" in text
-    assert "tests/test_owner_raw_d3_contract.py" in text
-    assert 'tests/test_web_server.py -k "owner_raw or viewer_identity_header"' in normalized_text
-    assert "python3 scripts/check_staged_public_safety.py --changed" in text
+    assert "Owner-raw D3 viewer identity, front-door contract" in matrix
+    assert "owner-raw-d3-deployment.md" in matrix
+    assert "tests/test_*owner_raw*.py" in matrix
+    assert "tests/test_viewer_identity.py" in matrix
+    assert 'tests/test_web_server.py -k "owner_raw or viewer_identity_header"' in (
+        normalized_matrix
+    )
+    assert "python3 scripts/check_staged_public_safety.py --changed" in matrix
+
+    assert "python3 scripts/owner_raw_front_door_smoke.py --compact" in runbooks
+    assert "python3 scripts/audit_owner_raw_live_front_door_review.py" in runbooks
+    assert "python3 scripts/owner_raw_policy_simulator.py" in runbooks
+    assert "--viewer-identity-header-configured" in runbooks
+    assert "--fail-on-deny" in runbooks
 
 
 def test_owner_raw_d3_docs_pin_pre_proxy_and_live_gate_boundary():

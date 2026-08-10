@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import urllib.error
@@ -112,7 +113,13 @@ def fetch_admission_context_payload(
     try:
         with opener(request, timeout=timeout_sec) as response:
             raw = response.read(max_admission_context_bytes + 1)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        http.client.HTTPException,
+    ) as exc:
         raise CMClientError("request_failed") from exc
     if len(raw) > max_admission_context_bytes:
         raise CMClientError("response_too_large")

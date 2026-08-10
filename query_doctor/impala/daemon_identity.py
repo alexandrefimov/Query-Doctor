@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import http.client
 import json
 import re
 import urllib.error
@@ -101,7 +102,13 @@ def fetch_identity_from_metrics_url(
         request = urllib.request.Request(url, headers={"Accept": "application/json"})
         with opener(request, timeout=timeout_sec) as response:
             raw = response.read(MAX_IDENTITY_BYTES + 1)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        http.client.HTTPException,
+    ):
         return None
     if len(raw) > MAX_IDENTITY_BYTES:
         raise CMClientError("Impala daemon identity response exceeded the configured byte limit.")
@@ -125,7 +132,13 @@ def fetch_identity_from_index_url(
         request = urllib.request.Request(url, headers={"Accept": "text/html,text/plain"})
         with opener(request, timeout=timeout_sec) as response:
             raw = response.read(MAX_IDENTITY_BYTES + 1)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        http.client.HTTPException,
+    ):
         return None
     if len(raw) > MAX_IDENTITY_BYTES:
         raise CMClientError("Impala daemon identity response exceeded the configured byte limit.")

@@ -2222,6 +2222,45 @@ def test_recent_run_panel_marks_trino_beta_source_without_local_config_echo(
     assert str(tmp_path) not in html
 
 
+def test_recent_run_panel_uses_plain_source_label_for_production_trino(
+    tmp_path: Path,
+) -> None:
+    contract = tmp_path / "trino-query-info-contract.json"
+    query_list_contract = tmp_path / "trino-query-list-contract.json"
+    settings = WebSettings(
+        config=tmp_path / "web.json",
+        clusters=(
+            WebClusterConfig(key="impala", label="Impala production"),
+            WebClusterConfig(
+                key="trino",
+                label="Trino k8s",
+                trino_support_mode="production",
+                trino_coordinator_url=COORDINATOR_URL,
+                trino_query_info_source_contract=contract,
+                trino_query_list_source_contract=query_list_contract,
+            ),
+        ),
+        active_cluster_key="trino",
+    )
+
+    html = render_batch_run_panel(
+        settings,
+        {"cluster_key": "trino", "engine": "trino"},
+        diagnosis_target="recent",
+    )
+
+    assert (
+        '<option value="trino" selected data-engine-impala-ready="false" '
+        'data-engine-trino-ready="true" data-trino-beta-query-ready="true" '
+        'data-trino-beta-recent-ready="true" data-trino-display-label="Trino">'
+        "Trino k8s</option>" in html
+    )
+    assert "Trino k8s - Trino Recent" not in html
+    assert "Trino Beta" not in html
+    assert COORDINATOR_URL not in html
+    assert str(tmp_path) not in html
+
+
 def test_recent_run_panel_does_not_mark_partial_trino_beta_source_ready(
     tmp_path: Path,
 ) -> None:
@@ -2404,7 +2443,7 @@ def test_trino_beta_kerberos_config_loads_from_local_config(tmp_path: Path) -> N
                 "trino_beta_enabled": True,
                 "trino_coordinator_url": COORDINATOR_URL,
                 "trino_query_info_source_contract": "trino-query-info-contract.json",
-                "trino_kerberos_principal": "sa@LESTA.HADOOP",
+                "trino_kerberos_principal": "sa@EXAMPLE.COM",
                 "trino_kerberos_service_name": "HTTP",
                 "trino_krb5_ccname": "FILE:/tmp/krb5cc_qd_trino",
                 "trino_krb5_config": "krb5.conf",
@@ -2417,7 +2456,7 @@ def test_trino_beta_kerberos_config_loads_from_local_config(tmp_path: Path) -> N
 
     settings = build_web_settings(parse_args(["--config", str(config)]), cwd=tmp_path)
 
-    assert settings.trino_kerberos_principal == "sa@LESTA.HADOOP"
+    assert settings.trino_kerberos_principal == "sa@EXAMPLE.COM"
     assert settings.trino_kerberos_service_name == "HTTP"
     assert settings.trino_krb5_ccname == "FILE:/tmp/krb5cc_qd_trino"
     assert settings.trino_krb5_config == krb5_config
@@ -2436,7 +2475,7 @@ def test_trino_beta_query_analysis_uses_kerberos_spnego_fetcher(
         trino_beta_enabled=True,
         trino_coordinator_url=COORDINATOR_URL,
         trino_query_info_source_contract=settings.trino_query_info_source_contract,
-        trino_kerberos_principal="sa@LESTA.HADOOP",
+        trino_kerberos_principal="sa@EXAMPLE.COM",
         trino_krb5_ccname="FILE:/tmp/krb5cc_qd_trino",
         selected_engine="trino",
     )
@@ -2733,7 +2772,7 @@ def test_trino_beta_startup_validation_rejects_combined_auth_modes_without_secre
                 "trino_coordinator_url": COORDINATOR_URL,
                 "trino_query_info_source_contract": "trino-query-info-contract.json",
                 "trino_auth_header_file": "trino-auth-header.txt",
-                "trino_kerberos_principal": "sa@LESTA.HADOOP",
+                "trino_kerberos_principal": "sa@EXAMPLE.COM",
             }
         ),
         encoding="utf-8",

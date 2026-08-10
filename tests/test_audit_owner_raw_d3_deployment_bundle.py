@@ -466,9 +466,7 @@ def test_owner_raw_d3_deployment_bundle_rejects_summary_overlap_without_path_ech
 
 def test_owner_raw_d3_deployment_bundle_docs_mention_script() -> None:
     deployment = (bundle.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
-    matrix = (bundle.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (bundle.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_d3_deployment_bundle.py" in deployment
-    assert "scripts/audit_owner_raw_d3_deployment_bundle.py" in matrix
     assert "owner_raw_d3_deployment_bundle_v1" in changelog

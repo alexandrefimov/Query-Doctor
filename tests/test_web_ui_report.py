@@ -58,7 +58,8 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     assert 'class="panel report-card"' not in body
     assert "<pre>" not in body
     assert "<script>not raw html</script>" not in body
-    assert "&lt;script&gt;not raw html&lt;/script&gt;" in body
+    assert "abc&lt;script&gt;:def" in body
+    assert "not raw html" not in body
     assert ".query-doctor-cm.local.json" not in body
     assert "Case path" not in body
     assert "case_dir" not in body

@@ -1,0 +1,32 @@
+{{- $recentHistory := .Values.recentHistory | default dict -}}
+{{- $postgres := (get $recentHistory "postgres") | default dict -}}
+{{- $cnpg := (get $postgres "cnpg") | default dict -}}
+{{- $cnpgEnabled := and (eq .Values.mode "configured") ((get $cnpg "enabled") | default false) -}}
+{{- if $cnpgEnabled }}
+{{- $storage := (get $cnpg "storage") | default dict -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "query-doctor.recentHistoryCnpgClusterName" . | quote }}
+  labels:
+    {{- include "query-doctor.recentHistoryPostgresLabels" . | nindent 4 }}
+spec:
+  instances: {{ (get $cnpg "instances") | default 1 }}
+  {{- with (get $cnpg "imageName") }}
+  imageName: {{ . | quote }}
+  {{- end }}
+  bootstrap:
+    initdb:
+      database: {{ (get $cnpg "database") | default "query_doctor" | quote }}
+      owner: {{ (get $cnpg "owner") | default "query_doctor" | quote }}
+      {{- with (get $cnpg "existingOwnerSecret") }}
+      secret:
+        name: {{ . | quote }}
+      {{- end }}
+  storage:
+    size: {{ (get $storage "size") | default "20Gi" | quote }}
+  {{- with (get $cnpg "resources") }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

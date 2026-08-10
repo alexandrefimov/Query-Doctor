@@ -47,8 +47,8 @@ setup(
     name="query-doctor",
     version=VERSION,
     description=(
-        "Local-first Big Data query diagnostics for Apache Impala production triage "
-        "and bounded local Trino lanes."
+        "Local-first Big Data query diagnostics for Apache Impala production triage, "
+        "bounded local Trino lanes, and containerized web deployment."
     ),
     author="Aleksandr Efimov",
     maintainer="Aleksandr Efimov",
@@ -78,7 +78,10 @@ setup(
         "apache-impala",
         "apache-trino",
         "cloudera-manager",
+        "container",
         "diagnostics",
+        "docker",
+        "kubernetes",
         "query-analysis",
         "sql",
         "trino",

@@ -459,9 +459,7 @@ def test_owner_raw_d3_rehearsal_docs_mention_script() -> None:
     deployment = (rehearsal.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(
         encoding="utf-8"
     )
-    matrix = (rehearsal.ROOT / "docs" / "test-matrix.md").read_text(encoding="utf-8")
     changelog = (rehearsal.ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_d3_rehearsal.py" in deployment
-    assert "scripts/audit_owner_raw_d3_rehearsal.py" in matrix
     assert "owner_raw_d3_rehearsal_v1" in changelog

@@ -1,0 +1,129 @@
+{{- $recentHistory := .Values.recentHistory | default dict -}}
+{{- $recentHistoryPostgres := (get $recentHistory "postgres") | default dict -}}
+{{- $recentHistoryPostgresEnabled := and (eq .Values.mode "configured") ((get $recentHistoryPostgres "enabled") | default false) -}}
+{{- $retention := (get $recentHistoryPostgres "retention") | default dict -}}
+{{- $retentionEnabled := and $recentHistoryPostgresEnabled ((get $retention "enabled") | default false) -}}
+{{- if $retentionEnabled }}
+{{- $recentHistoryPostgresSecret := (get $recentHistoryPostgres "existingSecret") | default "" -}}
+{{- $recentHistoryPostgresDsnKey := (get $recentHistoryPostgres "dsnKey") | default "dsn" -}}
+{{- $recentHistoryPostgresDsnEnvName := (get $recentHistoryPostgres "dsnEnvName") | default "QUERY_DOCTOR_RECENT_HISTORY_POSTGRES_DSN" -}}
+{{- $operatorReadiness := (get $recentHistory "operatorReadiness") | default dict -}}
+{{- $operatorReadinessEnabled := and (eq .Values.mode "configured") ((get $operatorReadiness "enabled") | default false) -}}
+{{- $operatorReadinessSummaryDir := (get $operatorReadiness "summaryDir") | default "/var/lib/query-doctor/recent-history/operator-readiness" -}}
+{{- $operatorReadinessRetentionSummary := (get $operatorReadiness "retentionSummaryJson") | default "" -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ printf "%s-recent-history-retention" (include "query-doctor.fullname" .) | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "query-doctor.recentHistoryRetentionLabels" . | nindent 4 }}
+  {{- with .Values.recentHistory.postgres.retention.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.recentHistory.postgres.retention.schedule | quote }}
+  suspend: {{ .Values.recentHistory.postgres.retention.suspend }}
+  concurrencyPolicy: {{ .Values.recentHistory.postgres.retention.concurrencyPolicy | quote }}
+  startingDeadlineSeconds: {{ .Values.recentHistory.postgres.retention.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.recentHistory.postgres.retention.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.recentHistory.postgres.retention.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.recentHistory.postgres.retention.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.recentHistory.postgres.retention.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "query-doctor.recentHistoryRetentionSelectorLabels" . | nindent 12 }}
+          {{- with .Values.recentHistory.postgres.retention.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          serviceAccountName: {{ include "query-doctor.serviceAccountName" . | quote }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if and $operatorReadinessEnabled $operatorReadinessRetentionSummary }}
+          initContainers:
+            - name: operator-readiness-summary-dir
+              image: {{ include "query-doctor.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+              args:
+                - mkdir -p {{ $operatorReadinessSummaryDir | quote }}
+              resources:
+                {{- toYaml .Values.recentHistory.postgres.retention.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              volumeMounts:
+                - name: cases
+                  mountPath: {{ .Values.persistence.mountPath | quote }}
+          {{- end }}
+          containers:
+            - name: recent-history-retention
+              image: {{ include "query-doctor.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - query-doctor-recent-history-retention
+              args:
+                - --json
+                - --fail-on-warning
+                {{- if and $operatorReadinessEnabled $operatorReadinessRetentionSummary }}
+                - --summary-json
+                - {{ $operatorReadinessRetentionSummary | quote }}
+                {{- end }}
+                - --backend
+                - postgres
+                - --postgres-dsn-env
+                - {{ $recentHistoryPostgresDsnEnvName | quote }}
+                {{- with .Values.recentHistory.postgres.retention.summaryRetentionDays }}
+                - --summary-retention-days
+                - {{ . | quote }}
+                {{- end }}
+                {{- with .Values.recentHistory.postgres.retention.profileJobRetentionDays }}
+                - --profile-job-retention-days
+                - {{ . | quote }}
+                {{- end }}
+                {{- with .Values.recentHistory.postgres.retention.analysisCacheRetentionDays }}
+                - --analysis-cache-retention-days
+                - {{ . | quote }}
+                {{- end }}
+                {{- with .Values.recentHistory.postgres.retention.profileArtifactRetentionDays }}
+                - --profile-artifact-retention-days
+                - {{ . | quote }}
+                {{- end }}
+              env:
+                - name: {{ $recentHistoryPostgresDsnEnvName | quote }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $recentHistoryPostgresSecret | quote }}
+                      key: {{ $recentHistoryPostgresDsnKey | quote }}
+              resources:
+                {{- toYaml .Values.recentHistory.postgres.retention.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                {{- if and $operatorReadinessEnabled $operatorReadinessRetentionSummary }}
+                - name: cases
+                  mountPath: {{ .Values.persistence.mountPath | quote }}
+                {{- end }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            {{- if and $operatorReadinessEnabled $operatorReadinessRetentionSummary }}
+            - name: cases
+              persistentVolumeClaim:
+                claimName: {{ include "query-doctor.claimName" . | quote }}
+            {{- end }}
+{{- end }}
