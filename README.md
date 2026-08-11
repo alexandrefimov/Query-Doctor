@@ -23,7 +23,12 @@ Python owns facts. LLM owns wording only.
 
 ## Try It
 
-No cluster, no config, no credentials — synthetic data only:
+**[Analyze a profile in your browser](https://alexandrefimov.github.io/Query-Doctor/)**
+— drop an exported Impala text profile and get the diagnosis. Nothing installs
+and nothing uploads: the analyzer runs in your browser through WebAssembly, and
+the page makes no request to any host after it loads.
+
+Locally, with no cluster, config, or credentials — synthetic data only:
 
 ```bash
 python -m pip install query-doctor
