@@ -19,7 +19,7 @@ require Kerberos, metadata collection, Prometheus, or an LLM provider.
 
 ```bash
 query-doctor-analyze \
-  --profile-text ./exported-impala-profile.txt \
+  --profile-text ./your-profile.txt \
   --out cases/cm-corpus
 ```
 
