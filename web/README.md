@@ -42,6 +42,14 @@ collectors live behind the same entry point. The page calls
 `analyzer.service.analyze` directly with a `SimpleNamespace` of the seven
 threshold arguments the analyzer reads, so no argparse and no CLI import.
 
+Calling the analyzer directly skips the CLI's case staging, which is where
+`query-doctor-analyze` applies redaction. The page therefore calls
+`safety.redaction.redact_profile_text` itself with the same defaults
+(`redact_hosts=True`, `redact_identifiers=False`) before analyzing, so users,
+pools, emails, secrets, local paths, and host identifiers do not reach the
+rendered facts. Nothing is transmitted either way, but the rendered output is a
+browser surface, and screenshots of it travel.
+
 ## Measurements
 
 Analyzer throughput, best of three runs, synthetic profiles shaped like real
