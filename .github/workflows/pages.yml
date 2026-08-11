@@ -1,6 +1,15 @@
 name: Pages
 
 on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "query_doctor/analyzer/**"
+      - "query_doctor/report/**"
+      - "query_doctor/safety/**"
+      - "query_doctor/impala/**"
+      - "pyproject.toml"
+      - ".github/workflows/pages.yml"
   push:
     branches:
       - main
@@ -55,6 +64,7 @@ jobs:
           python web/bench/check_page.py "${RUNNER_TEMP}/page.png"
 
       - name: Upload the Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
@@ -62,6 +72,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
