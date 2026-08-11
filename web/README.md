@@ -91,8 +91,9 @@ profile dialects in `analyzer/profile_counter_registry.py`.
 
 - **Hosting.** Not deployed. A `gh-pages` branch or an `actions/deploy-pages`
   workflow from `web/dist` both work; neither is set up.
-- **Output language.** `render_md` emits English. The prototype page chrome is
-  Russian, which reads badly together. Pick one, or add a language switch.
+- **Output language.** Settled: English. Page chrome and `render_md` output now
+  match. A Russian layer would follow the `docs/i18n/ru/` convention, not a
+  second page.
 - **Sample profile.** Currently synthetic and generated at build time. A
   hand-written sample with a real pathology would demo better than uniform
   generated counters.

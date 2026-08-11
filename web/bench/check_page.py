@@ -32,7 +32,7 @@ def main() -> int:
 
         page.goto(URL, wait_until="load")
         page.wait_for_function(
-            "() => document.getElementById('status').textContent.includes('Готово за')",
+            "() => document.getElementById('status').textContent.includes('Ready in')",
             timeout=120_000,
         )
         boot_status = page.inner_text("#status")
@@ -40,7 +40,7 @@ def main() -> int:
 
         page.click("#sample")
         page.wait_for_function(
-            "() => document.getElementById('status').textContent.includes('Разобрано за')",
+            "() => document.getElementById('status').textContent.includes('Analyzed in')",
             timeout=120_000,
         )
         print("run :", page.inner_text("#status"))

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Query Doctor — разбор профиля Impala в браузере</title>
+<title>Query Doctor — analyze an Impala profile in your browser</title>
 <style>
   :root {
     --bg: #ffffff; --fg: #14171a; --muted: #5b6570; --line: #e3e7eb;
@@ -65,31 +65,31 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Разбор профиля Impala</h1>
-  <p class="sub">Перетащите экспортированный текстовый query profile — получите детерминированный разбор.</p>
+  <h1>Analyze an Impala query profile</h1>
+  <p class="sub">Drop an exported text query profile and get a deterministic diagnosis.</p>
 
   <div class="privacy">
-    <b>Профиль не покидает браузер.</b> Анализатор Query Doctor целиком выполняется здесь,
-    в WebAssembly. Сервера нет, загрузки файла нет — страницу можно открыть офлайн,
-    и она продолжит работать.
+    <b>The profile never leaves your browser.</b> The Query Doctor analyzer runs here,
+    in WebAssembly. There is no server and no upload — open this page offline and it
+    keeps working.
   </div>
 
-  <div id="drop" tabindex="0" role="button" aria-label="Загрузить профиль">
-    <p>Перетащите файл профиля сюда</p>
-    <small>или нажмите, чтобы выбрать — обрабатывается локально</small>
+  <div id="drop" tabindex="0" role="button" aria-label="Load a profile">
+    <p>Drop a profile file here</p>
+    <small>or click to choose one — processed locally</small>
     <input id="file" type="file" accept=".txt,text/plain" hidden>
   </div>
 
   <div class="row">
-    <button id="sample">Показать на демо-профиле</button>
-    <button id="clear" disabled>Очистить</button>
+    <button id="sample">Try the sample profile</button>
+    <button id="clear" disabled>Clear</button>
   </div>
 
-  <div id="status">Загрузка среды анализа…</div>
+  <div id="status">Loading the analysis runtime…</div>
   <div id="out"></div>
 
   <footer>
-    Синтетические демо-данные. Не использовать как доказательство производительности.
+    Synthetic demo data. Not performance evidence.
     · <a href="https://github.com/alexandrefimov/Query-Doctor">GitHub</a>
     · Apache-2.0
   </footer>
@@ -140,19 +140,19 @@ def diagnose(text):
 async function boot() {
   const t0 = performance.now();
   py = await loadPyodide({ indexURL: "vendor/" });
-  say("Установка анализатора…");
+  say("Installing the analyzer…");
   const buf = await (await fetch("query_doctor-0.11.0-py3-none-any.whl")).arrayBuffer();
   py.FS.mkdir("/qd");
   py.unpackArchive(buf, "zip", { extractDir: "/qd" });
   await py.runPythonAsync(PY_SETUP);
   ready = true;
   const ms = Math.round(performance.now() - t0);
-  say(`Готово за ${ms} мс. Анализ идёт локально в этой вкладке.`);
+  say(`Ready in ${ms} ms. Analysis runs locally in this tab.`);
 }
 
 async function diagnose(text, label) {
-  if (!ready) { say("Среда ещё загружается, секунду…"); return; }
-  say(`Разбор ${label} (${(text.length / 1024).toFixed(0)} KiB)…`);
+  if (!ready) { say("The runtime is still loading, one moment…"); return; }
+  say(`Analyzing ${label} (${(text.length / 1024).toFixed(0)} KiB)…`);
   outEl.innerHTML = "";
   await new Promise((r) => setTimeout(r, 0));
   const t0 = performance.now();
@@ -161,9 +161,9 @@ async function diagnose(text, label) {
     const md = await py.runPythonAsync("diagnose(profile_text)");
     outEl.innerHTML = renderMarkdown(md);
     clearBtn.disabled = false;
-    say(`Разобрано за ${Math.round(performance.now() - t0)} мс. Файл никуда не отправлялся.`);
+    say(`Analyzed in ${Math.round(performance.now() - t0)} ms. Nothing was uploaded.`);
   } catch (e) {
-    say("Не удалось разобрать этот файл: " + String(e).split("\n").pop(), true);
+    say("Could not analyze this file: " + String(e).split("\n").pop(), true);
   }
 }
 
@@ -223,7 +223,7 @@ function renderMarkdown(md) {
 function readFile(file) {
   const reader = new FileReader();
   reader.onload = () => diagnose(String(reader.result), file.name);
-  reader.onerror = () => say("Не удалось прочитать файл", true);
+  reader.onerror = () => say("Could not read the file", true);
   reader.readAsText(file);
 }
 
@@ -238,15 +238,15 @@ dropEl.addEventListener("drop", (e) => { if (e.dataTransfer.files[0]) readFile(e
 
 sampleBtn.addEventListener("click", async () => {
   const text = await (await fetch("sample-profile.txt")).text();
-  diagnose(text, "демо-профиля");
+  diagnose(text, "the sample profile");
 });
 clearBtn.addEventListener("click", () => {
   outEl.innerHTML = "";
   clearBtn.disabled = true;
-  say("Готово. Анализ идёт локально в этой вкладке.");
+  say("Ready. Analysis runs locally in this tab.");
 });
 
-boot().catch((e) => say("Не удалось загрузить среду анализа: " + e, true));
+boot().catch((e) => say("Could not load the analysis runtime: " + e, true));
 </script>
 </body>
 </html>

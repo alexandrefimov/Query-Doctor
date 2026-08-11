@@ -64,5 +64,5 @@ behavior, raw event logs или Spark job execution.
 Будущие Big Data SQL/lakehouse live collectors, более широкие providers,
 подготовленные event/log sources и Cluster Doctor workflows остаются roadmap
 seams, а не текущей поддержкой. Detailed Trino/Spark preview command catalog:
-[docs/engines/README.md](../../engines/README.md). Текущий support/research
-boundary: [docs/engine-support-gap-matrix.md](../../engine-support-gap-matrix.md).
+[engines/README.md](../../engines/README.md). Текущий support/research
+boundary: [engine-support-gap-matrix.md](../../engine-support-gap-matrix.md).
