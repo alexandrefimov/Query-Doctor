@@ -33,8 +33,8 @@ DEFAULT_PROFILE_TEXT = (
     ROOT / "tests" / "fixtures" / "mixed_stats_runtime_case" / "profile_digest.md"
 )
 INSTALLED_BIN_ENV = "QUERY_DOCTOR_INSTALLED_CLI_BIN"
-README_PROFILE_NAME = "exported-impala-profile.txt"
-README_PROFILE_ARG = "./exported-impala-profile.txt"
+README_PROFILE_NAME = "your-profile.txt"
+README_PROFILE_ARG = "./your-profile.txt"
 README_CORPUS_ARG = "cases/cm-corpus"
 README_CORPUS_DIR = Path(README_CORPUS_ARG)
 REQUIRED_SELF_TEST_CHECKS = frozenset(

@@ -141,8 +141,10 @@ def test_dev_sso_keycloak_smoke_docs_mention_script():
     deployment_doc = (smoke.ROOT / "docs" / "owner-raw-d3-deployment.md").read_text(
         encoding="utf-8"
     )
-    readme = (smoke.ROOT / "README.md").read_text(encoding="utf-8")
+    support_boundary = (smoke.ROOT / "docs" / "support-boundary.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "scripts/dev_sso_keycloak_smoke.py --compact" in dev_doc
     assert "scripts/dev_sso_keycloak_smoke.py" in deployment_doc
-    assert "scripts/dev_sso_keycloak_smoke.py" in readme
+    assert "scripts/dev_sso_keycloak_smoke.py" in support_boundary

@@ -135,9 +135,9 @@ def test_kubernetes_auth_front_door_smoke_docs_mention_script() -> None:
     root = Path(__file__).resolve().parents[1]
     auth_doc = (root / "docs" / "kubernetes-auth-front-door.md").read_text(encoding="utf-8")
     test_matrix = (root / "docs" / "test-matrix.md").read_text(encoding="utf-8")
-    readme = (root / "README.md").read_text(encoding="utf-8")
+    deploy_doc = (root / "deploy" / "kubernetes" / "README.md").read_text(encoding="utf-8")
 
     assert "scripts/kubernetes_auth_front_door_smoke.py --compact" in auth_doc
     assert "kubernetes-auth-front-door.md#live-external-smoke" in test_matrix
     assert "tests/test_kubernetes_auth_front_door_smoke.py" in test_matrix
-    assert "scripts/kubernetes_auth_front_door_smoke.py" in readme
+    assert "scripts/kubernetes_auth_front_door_smoke.py" in deploy_doc

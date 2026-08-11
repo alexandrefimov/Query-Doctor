@@ -47,8 +47,8 @@ setup(
     name="query-doctor",
     version=VERSION,
     description=(
-        "Local-first Big Data query diagnostics for Apache Impala production triage, "
-        "bounded local Trino lanes, and containerized web deployment."
+        "Rank slow Apache Impala queries and turn one exported profile into a "
+        "deterministic diagnosis, without raw SQL or profiles leaving the machine."
     ),
     author="Aleksandr Efimov",
     maintainer="Aleksandr Efimov",
@@ -61,7 +61,7 @@ setup(
     },
     license="Apache-2.0",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Environment :: Console",
         "Environment :: Web Environment",
         "Intended Audience :: Developers",

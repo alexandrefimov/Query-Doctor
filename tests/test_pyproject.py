@@ -87,7 +87,7 @@ def test_public_packaging_metadata_is_present():
         "[project.urls]",
         'Homepage = "https://github.com/alexandrefimov/Query-Doctor"',
         'Issues = "https://github.com/alexandrefimov/Query-Doctor/issues"',
-        '"Development Status :: 3 - Alpha"',
+        '"Development Status :: 4 - Beta"',
         '"Programming Language :: Python :: 3.9"',
         '"Programming Language :: Python :: 3.11"',
     ):
@@ -98,7 +98,7 @@ def test_public_packaging_metadata_is_present():
         'maintainer="Aleksandr Efimov"',
         'url="https://github.com/alexandrefimov/Query-Doctor"',
         '"Homepage": "https://github.com/alexandrefimov/Query-Doctor"',
-        '"Development Status :: 3 - Alpha"',
+        '"Development Status :: 4 - Beta"',
         '"Programming Language :: Python :: 3.9"',
         '"Programming Language :: Python :: 3.11"',
     ):
