@@ -95,9 +95,10 @@ profile dialects in `analyzer/profile_counter_registry.py`.
 - `bench/bench.py <profile>` — time `analyze` on CPython.
 - `bench/harness.mjs <scratch-dir> <profile...>` — the same timing under Pyodide
   in Node. Needs `npm install pyodide` in its working directory.
-- `bench/check_page.py [out.png]` — drive the served page in Chromium, assert no
-  external requests, screenshot the result. Needs `pip install playwright` and
-  `playwright install chromium`.
+- `bench/check_page.py [out.png]` — drive the served page in Chromium and fail
+  if it reaches an external host, raises a JS error, or renders nothing. Set
+  `QUERY_DOCTOR_PAGE_URL` to check the deployed site instead of a local build.
+  Needs `pip install playwright` and `playwright install chromium`.
 
 ## Open decisions
 

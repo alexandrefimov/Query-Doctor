@@ -1,11 +1,14 @@
 """Drive the prototype page in a real browser: measure load, run the sample, screenshot."""
 from __future__ import annotations
 
+import os
 import sys
 
 from playwright.sync_api import sync_playwright
 
-URL = "http://127.0.0.1:8799/"
+# Defaults to the locally served build; point QUERY_DOCTOR_PAGE_URL at the
+# deployed site to run the same checks against it.
+URL = os.environ.get("QUERY_DOCTOR_PAGE_URL", "http://127.0.0.1:8799/")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "page.png"
 
 transferred = {"requests": 0, "external": []}
