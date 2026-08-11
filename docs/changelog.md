@@ -24,7 +24,24 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
-- The public distribution boundary now rejects platform-specific controller
+- The README is now a landing page rather than the full contract. Its first
+  command runs without any input the reader has to obtain, the synthetic demo
+  leads instead of sitting several hundred lines down, and the one-profile path
+  follows it. The support contract, the What Is / Is Not scope lists, the Trino
+  and Spark detail, the direct-Impala history depth note, and the supported
+  deployment shape moved to `support-boundary.md` with a Russian companion under
+  `i18n/ru/`; the three entry paths moved to `first-path.md` with their setup
+  options and troubleshooting unchanged. No support claim changed. Tests that
+  pinned individual sentences to `README.md` now assert against the document
+  that carries the claim, so a landing page can stay short without dropping a
+  guarantee.
+- Added a browser analyzer prototype under `web/`. It runs the deterministic
+  analyzer in the visitor's browser through Pyodide, so an exported Impala text
+  profile can be diagnosed without a server, an upload, or any request after the
+  page loads. The analyzer core needed no changes, and the page applies the same
+  default redaction `query-doctor-analyze` applies during case staging before
+  rendering facts. The prototype is not deployed, not linked from the README,
+  and not part of the published distribution.
   metadata across public documentation, source, deployment assets, packaging,
   tests, and release tooling. Its public-release mode scans every commit's
   metadata and UTF-8 text blobs after the configured public base using a
