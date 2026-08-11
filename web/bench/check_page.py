@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 URL = "http://127.0.0.1:8799/"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "page.png"
 
-transferred = {"bytes": 0, "requests": 0, "external": []}
+transferred = {"requests": 0, "external": []}
 
 
 def main() -> int:
@@ -19,18 +19,24 @@ def main() -> int:
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
 
-        def on_response(resp):
+        # Track requests, not responses: an external reference that fails to
+        # resolve never produces a response, which is exactly the case a gate
+        # for "reaches no external host" must not miss.
+        def on_request(request):
             transferred["requests"] += 1
-            if not resp.url.startswith("http://127.0.0.1:8799/"):
-                transferred["external"].append(resp.url)
+            if not request.url.startswith(URL):
+                transferred["external"].append(request.url)
+
+        page.on("request", on_request)
+
+        for attempt in range(30):
             try:
-                transferred["bytes"] += len(resp.body())
+                page.goto(URL, wait_until="load")
+                break
             except Exception:
-                pass
-
-        page.on("response", on_response)
-
-        page.goto(URL, wait_until="load")
+                if attempt == 29:
+                    raise
+                page.wait_for_timeout(500)
         page.wait_for_function(
             "() => document.getElementById('status').textContent.includes('Ready in')",
             timeout=120_000,
@@ -50,16 +56,25 @@ def main() -> int:
         print(f"output: {len(headings)} sections, {tables} tables")
         print("sections:", " | ".join(headings[:12]))
 
-        print(f"network: {transferred['requests']} requests, "
-              f"{transferred['bytes'] / 1048576:.1f} MB total")
+        print(f"network: {transferred['requests']} requests")
         print("external hosts:", sorted({u.split('/')[2] for u in transferred['external']}) or "none")
 
         page.screenshot(path=OUT, full_page=False)
         print("screenshot:", OUT)
+
+        failures = []
+        if transferred["external"]:
+            hosts = sorted({u.split("/")[2] for u in transferred["external"]})
+            failures.append(f"page reached external hosts: {hosts}")
         if errors:
-            print("JS ERRORS:", errors[:5])
+            failures.append(f"JS errors: {errors[:5]}")
+        if not headings:
+            failures.append("analyzer produced no output sections")
+
         browser.close()
-        return 1 if errors else 0
+        for failure in failures:
+            print("FAIL:", failure)
+        return 1 if failures else 0
 
 
 if __name__ == "__main__":

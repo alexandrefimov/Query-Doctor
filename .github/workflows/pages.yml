@@ -1,0 +1,90 @@
+name: Pages
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "query_doctor/analyzer/**"
+      - "query_doctor/report/**"
+      - "query_doctor/safety/**"
+      - "query_doctor/impala/**"
+      - "pyproject.toml"
+      - ".github/workflows/pages.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - "query_doctor/analyzer/**"
+      - "query_doctor/report/**"
+      - "query_doctor/safety/**"
+      - "query_doctor/impala/**"
+      - "pyproject.toml"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the browser analyzer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install build and check tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build playwright
+
+      - name: Install Chromium browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Build the site
+        run: web/build.sh
+
+      - name: Verify the built site loads and reaches no external host
+        run: |
+          python -m http.server 8799 --directory web/dist &
+          server_pid=$!
+          trap 'kill "${server_pid}"' EXIT
+          python web/bench/check_page.py "${RUNNER_TEMP}/page.png"
+
+      - name: Upload the Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

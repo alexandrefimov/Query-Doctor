@@ -10,7 +10,11 @@ does not: there is no server, no upload, and no request to any host after the
 page loads. That is checkable in DevTools in ten seconds, which the safety
 documentation is not.
 
-Status: working prototype on a branch. Not deployed, not linked from the README.
+Deployed to https://alexandrefimov.github.io/Query-Doctor/ by
+`.github/workflows/pages.yml` on pushes to `main` that touch `web/` or the
+analyzer, and linked from the README. The workflow builds the site, serves it,
+and runs `bench/check_page.py` against it; that check fails the build if the
+page reaches any external host, raises a JS error, or produces no output.
 
 ## Build and run
 
@@ -69,7 +73,7 @@ Full page in headless Chromium (`bench/check_page.py`):
 ```
 boot: 1196 ms      (runtime + wheel + analyzer import)
 run:  127 ms       (103 KiB sample profile)
-network: 8 requests, external hosts: none
+network: 8 requests, external hosts: none  (the check fails on either)
 JS errors: none
 ```
 
@@ -97,8 +101,9 @@ profile dialects in `analyzer/profile_counter_registry.py`.
 
 ## Open decisions
 
-- **Hosting.** Not deployed. A `gh-pages` branch or an `actions/deploy-pages`
-  workflow from `web/dist` both work; neither is set up.
+- ~~**Hosting.**~~ Settled: `actions/deploy-pages` from `web/dist`. A `gh-pages`
+  branch was rejected because it would commit ~13 MB of Pyodide binaries per
+  rebuild and let the deployed site drift from source.
 - **Output language.** Settled: English. Page chrome and `render_md` output now
   match. A Russian layer would follow the `docs/i18n/ru/` convention, not a
   second page.
