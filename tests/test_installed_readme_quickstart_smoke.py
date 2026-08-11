@@ -37,7 +37,7 @@ def test_installed_readme_quickstart_smoke_uses_installed_cli_and_real_server() 
     assert 'installed_executable(bin_dir, "query-doctor-analyze")' in text
     assert 'installed_executable(bin_dir, "query-doctor-web")' in text
     assert '"--profile-text"' in text
-    assert '"./exported-impala-profile.txt"' in text
+    assert '"./your-profile.txt"' in text
     assert '"--out"' in text
     assert '"cases/cm-corpus"' in text
     assert "subprocess.Popen" in text

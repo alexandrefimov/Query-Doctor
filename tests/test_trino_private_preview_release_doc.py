@@ -7,6 +7,8 @@ DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
 RU_DOCS_INDEX = REPO_ROOT / "docs" / "i18n" / "ru" / "README.md"
 README = REPO_ROOT / "README.md"
 README_RU = REPO_ROOT / "README.ru.md"
+SUPPORT_BOUNDARY = REPO_ROOT / "docs" / "support-boundary.md"
+RU_SUPPORT_BOUNDARY = REPO_ROOT / "docs" / "i18n" / "ru" / "support-boundary.md"
 RELEASE_CHECKLIST = REPO_ROOT / "docs" / "release-checklist.md"
 PUBLIC_READINESS = REPO_ROOT / "docs" / "public-release-readiness.md"
 TRINO_LIVE_COLLECTION_DOC = REPO_ROOT / "docs" / "engines" / "trino-live-collection-design.md"
@@ -251,7 +253,9 @@ def test_trino_private_preview_release_path_is_indexed_and_linked():
 
 
 def test_readme_and_release_docs_keep_trino_limited_to_offline_import():
-    for path in (README, README_RU, RELEASE_CHECKLIST, PUBLIC_READINESS):
+    # The full Trino boundary claim lives in the support-boundary document. The
+    # landing READMEs keep a short scope statement and must not overclaim.
+    for path in (SUPPORT_BOUNDARY, RELEASE_CHECKLIST, PUBLIC_READINESS):
         text = _normalized_doc_text(path)
         lower_text = text.lower()
         assert "Trino" in text
@@ -263,6 +267,14 @@ def test_readme_and_release_docs_keep_trino_limited_to_offline_import():
         assert "raw-free" in lower_text
         assert "Query Doctor-generated" in text
         assert "SQL" in text
+
+    for path in (README, README_RU):
+        text = _normalized_doc_text(path)
+        lower_text = text.lower()
+        assert "Trino" in text
+        assert "Apache Impala" in text
+        assert "bounded local production support" in lower_text
+        assert "support-boundary.md" in text
 
 
 def test_release_checklists_name_trino_beta_without_support_expansion():
@@ -285,7 +297,9 @@ def test_release_checklists_name_trino_beta_without_support_expansion():
 
 
 def test_russian_readme_names_current_trino_pruned_query_info_surfaces():
-    text = _normalized_doc_text(README_RU)
+    # Moved out of the landing README.ru.md; the Russian claim now lives in the
+    # Russian support-boundary document.
+    text = _normalized_doc_text(RU_SUPPORT_BOUNDARY)
 
     for required in (
         "bounded local pruned QueryInfo import",

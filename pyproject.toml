@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "query-doctor"
 version = "0.11.0"
-description = "Local-first Big Data query diagnostics for Apache Impala production triage, bounded local Trino lanes, and containerized web deployment."
+description = "Rank slow Apache Impala queries and turn one exported profile into a deterministic diagnosis, without raw SQL or profiles leaving the machine."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
@@ -30,7 +30,7 @@ keywords = [
     "trino",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: Developers",

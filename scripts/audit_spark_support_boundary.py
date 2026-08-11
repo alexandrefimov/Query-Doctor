@@ -182,7 +182,14 @@ def count_forbidden_product_imports(paths: Iterable[Path]) -> int:
 
 
 def _audit_docs(result: SparkSupportBoundaryAuditResult, root: Path) -> None:
-    readme = _normalized_doc(root, "README.md")
+    # The public support statement moved out of the landing README into the
+    # support-boundary document; both count as the public claim surface.
+    readme = " ".join(
+        (
+            _normalized_doc(root, "README.md"),
+            _normalized_doc(root, "docs/support-boundary.md"),
+        )
+    )
     matrix = _read_doc(root, "docs/engine-support-gap-matrix.md")
     spark_public_status = _normalized_matrix_spark_cell(matrix, "Public support status")
     spark_live_collection = _normalized_matrix_spark_cell(matrix, "Live query/profile collection")

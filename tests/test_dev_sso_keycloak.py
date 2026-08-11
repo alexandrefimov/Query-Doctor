@@ -112,7 +112,9 @@ def test_dev_sso_docs_are_indexed_and_warn_against_production_claims():
     docs_index = (REPO_DIR / "docs" / "README.md").read_text(encoding="utf-8")
     deployment = (REPO_DIR / "docs" / "owner-raw-d3-deployment.md").read_text(encoding="utf-8")
     test_matrix = (REPO_DIR / "docs" / "test-matrix.md").read_text(encoding="utf-8")
-    readme = (REPO_DIR / "README.md").read_text(encoding="utf-8")
+    support_boundary = (REPO_DIR / "docs" / "support-boundary.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "developer-only SSO front-door smoke" in doc
     assert "not production SSO support" in doc
@@ -128,4 +130,4 @@ def test_dev_sso_docs_are_indexed_and_warn_against_production_claims():
     assert "dev/sso/compose.yaml" in deployment
     assert "dev-sso-keycloak.md" in test_matrix
     assert "tests/test_dev_sso_keycloak*.py" in test_matrix
-    assert "dev-only Keycloak/oauth2-proxy smoke" in readme
+    assert "dev-only Keycloak/oauth2-proxy smoke" in support_boundary

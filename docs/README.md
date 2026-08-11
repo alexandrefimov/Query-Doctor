@@ -58,6 +58,12 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [../README.ru.md](../README.ru.md): Russian companion for the public project
   README. Longer Russian pages are limited to practical user/operator
   instructions under [i18n/ru/](i18n/ru/).
+- [first-path.md](first-path.md): the three entry paths in full — one exported
+  profile, synthetic demo, minimal Cloudera Manager scan — with setup options
+  and troubleshooting.
+- [support-boundary.md](support-boundary.md): surface-by-surface support
+  contract, what is deliberately out of scope, and the supported deployment
+  shape.
 - [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
   and public demo storyline.
 - [../deploy/kubernetes/README.md](../deploy/kubernetes/README.md): supported
@@ -200,6 +206,8 @@ Status legend:
 | [upstream-impala-ai-analyzer.md](upstream-impala-ai-analyzer.md) | active | Upstream Impala AI analyzer alignment and Query Doctor differentiation. |
 | [impala-profile-counter-caveats.md](impala-profile-counter-caveats.md) | active | Impala profile dialect and counter evidence-tier caveats. |
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
+| [support-boundary.md](support-boundary.md) | active | Surface-by-surface support contract, explicit non-scope, Trino/Spark detail, direct Impala history depth, and supported deployment shape. |
+| [first-path.md](first-path.md) | active | The three entry paths in full, with setup options and troubleshooting. |
 | [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | active | Current engine support status, normalized fact coverage, fixture/research boundaries, and second-engine support gaps. |
 | [customer-readiness-priorities.md](customer-readiness-priorities.md) | active | Near-term Impala-first customer-readiness backlog for demo, config, docs, UI, and validation focus. |
 | [trino-beta-ui-readiness.md](trino-beta-ui-readiness.md) | active | Acceptance gate for showing the local production Trino retained-list Recent, One Query ID, raw-free materialized Details, Python Report, and optimizer guidance UI surfaces while keeping Trino Beta as the legacy label. |

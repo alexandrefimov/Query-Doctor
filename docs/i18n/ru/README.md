@@ -32,6 +32,9 @@ architecture, audit, agent, contributor, release, research и engine deep-dive
 - [Локальные smoke-проверки](local-smoke.md): public-safe проверки package,
   analyzer, report, metadata и Recent scan; private targets остаются в ignored
   local notes.
+- [Границы поддержки](support-boundary.md): поверхности поддержки целиком,
+  Trino/Spark boundary и то, что сознательно вне области. Английский оригинал —
+  [../../support-boundary.md](../../support-boundary.md).
 - [Security model](security-model.md): публичная модель безопасности и
   privacy overview.
 - [Safety contract](safety-contract.md): пользовательски важные trust/redaction

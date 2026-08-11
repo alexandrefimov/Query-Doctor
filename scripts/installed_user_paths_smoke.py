@@ -318,7 +318,7 @@ def smoke_readme_quickstart(
         or summary.get("self_test_checked") is not True
         or summary.get("analyze_checked") is not True
         or summary.get("real_web_server") is not True
-        or summary.get("relative_profile_path_checked") != "./exported-impala-profile.txt"
+        or summary.get("relative_profile_path_checked") != "./your-profile.txt"
         or summary.get("relative_corpus_dir_checked") != "cases/cm-corpus"
     ):
         raise SystemExit("[installed-user-paths-smoke] README Quickstart smoke did not pass")

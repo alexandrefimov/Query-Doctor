@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Query Doctor — analyze an Impala profile in your browser</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #14171a; --muted: #5b6570; --line: #e3e7eb;
+    --accent: #1f6feb; --ok: #1a7f37; --warn: #9a6700; --code-bg: #f6f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #2a313a;
+      --accent: #4493f8; --ok: #3fb950; --warn: #d29922; --code-bg: #161b22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .privacy {
+    border: 1px solid var(--line); border-left: 3px solid var(--ok);
+    border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;
+    font-size: 14px; color: var(--muted);
+  }
+  .privacy b { color: var(--fg); font-weight: 600; }
+  #drop {
+    border: 2px dashed var(--line); border-radius: 10px; padding: 36px 20px;
+    text-align: center; transition: border-color .15s, background .15s; cursor: pointer;
+  }
+  #drop.over { border-color: var(--accent); background: var(--code-bg); }
+  #drop p { margin: 0 0 6px; font-size: 17px; }
+  #drop small { color: var(--muted); }
+  .row { display: flex; gap: 10px; align-items: center; margin: 16px 0 0; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { font-size: 14px; color: var(--muted); min-height: 22px; margin-top: 14px; }
+  #status.err { color: #cf222e; }
+  #out { margin-top: 28px; }
+  #out:empty { display: none; }
+  #out h1 { font-size: 22px; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-top: 32px; }
+  #out h2 { font-size: 18px; margin-top: 28px; }
+  #out h3 { font-size: 15px; margin-top: 20px; }
+  #out blockquote {
+    margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--line);
+    color: var(--muted); font-size: 14px;
+  }
+  #out table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 12px 0; }
+  #out th, #out td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  #out th { background: var(--code-bg); font-weight: 600; }
+  #out code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .scroll { overflow-x: auto; }
+  footer { margin-top: 60px; font-size: 13px; color: var(--muted); }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Analyze an Impala query profile</h1>
+  <p class="sub">Drop an exported text query profile and get a deterministic diagnosis.</p>
+
+  <div class="privacy">
+    <b>The profile never leaves your browser.</b> The Query Doctor analyzer runs here,
+    in WebAssembly. There is no server and no upload — open this page offline and it
+    keeps working.
+  </div>
+
+  <div id="drop" tabindex="0" role="button" aria-label="Load a profile">
+    <p>Drop a profile file here</p>
+    <small>or click to choose one — processed locally</small>
+    <input id="file" type="file" accept=".txt,text/plain" hidden>
+  </div>
+
+  <div class="row">
+    <button id="sample">Try the sample profile</button>
+    <button id="clear" disabled>Clear</button>
+  </div>
+
+  <div id="status">Loading the analysis runtime…</div>
+  <div id="out"></div>
+
+  <footer>
+    Synthetic demo data. Not performance evidence.
+    · <a href="https://github.com/alexandrefimov/Query-Doctor">GitHub</a>
+    · Apache-2.0
+  </footer>
+</div>
+
+<script src="vendor/pyodide.js"></script>
+<script>
+const statusEl = document.getElementById("status");
+const outEl = document.getElementById("out");
+const dropEl = document.getElementById("drop");
+const fileEl = document.getElementById("file");
+const sampleBtn = document.getElementById("sample");
+const clearBtn = document.getElementById("clear");
+
+let py = null;
+let ready = false;
+
+function say(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = isErr ? "err" : "";
+}
+
+const PY_SETUP = `
+import sys
+sys.path.insert(0, "/qd")
+
+from pathlib import Path
+from types import SimpleNamespace
+
+from query_doctor.analyzer.action_cards import DEFAULT_LARGE_BYTES_THRESHOLD
+from query_doctor.analyzer.facts_renderer import render_md
+from query_doctor.analyzer.service import analyze
+from query_doctor.safety.redaction import redact_profile_text
+
+_ARGS = SimpleNamespace(
+    top_n=10,
+    rows_ratio_threshold=10.0,
+    mem_ratio_threshold=4.0,
+    slow_operator_ms=10_000.0,
+    large_rows_threshold=1_000_000.0,
+    large_bytes_threshold=DEFAULT_LARGE_BYTES_THRESHOLD,
+    max_evidence_lines=30,
+)
+
+def diagnose(text):
+    # Same default redaction query-doctor-analyze applies before staging a case:
+    # users, pools, emails, secrets, local paths, and host identifiers.
+    redacted = redact_profile_text(text)
+    return render_md(analyze(redacted, _ARGS), Path("profile.txt"), verbose=False)
+`;
+
+async function boot() {
+  const t0 = performance.now();
+  py = await loadPyodide({ indexURL: "vendor/" });
+  say("Installing the analyzer…");
+  const buf = await (await fetch("query_doctor-0.11.0-py3-none-any.whl")).arrayBuffer();
+  py.FS.mkdir("/qd");
+  py.unpackArchive(buf, "zip", { extractDir: "/qd" });
+  await py.runPythonAsync(PY_SETUP);
+  ready = true;
+  const ms = Math.round(performance.now() - t0);
+  say(`Ready in ${ms} ms. Analysis runs locally in this tab.`);
+}
+
+async function diagnose(text, label) {
+  if (!ready) { say("The runtime is still loading, one moment…"); return; }
+  say(`Analyzing ${label} (${(text.length / 1024).toFixed(0)} KiB)…`);
+  outEl.innerHTML = "";
+  await new Promise((r) => setTimeout(r, 0));
+  const t0 = performance.now();
+  try {
+    py.globals.set("profile_text", text);
+    const md = await py.runPythonAsync("diagnose(profile_text)");
+    outEl.innerHTML = renderMarkdown(md);
+    clearBtn.disabled = false;
+    say(`Analyzed in ${Math.round(performance.now() - t0)} ms. Nothing was uploaded.`);
+  } catch (e) {
+    say("Could not analyze this file: " + String(e).split("\n").pop(), true);
+  }
+}
+
+// Minimal markdown renderer: headings, tables, lists, quotes, bold, code.
+function esc(s) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+}
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+function renderMarkdown(md) {
+  const lines = md.split("\n");
+  const html = [];
+  let i = 0;
+  const isRow = (l) => l.trim().startsWith("|");
+  while (i < lines.length) {
+    const line = lines[i];
+    if (isRow(line) && i + 1 < lines.length && /^\|[\s:|-]+\|$/.test(lines[i + 1].trim())) {
+      const cells = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const head = cells(line);
+      i += 2;
+      const body = [];
+      while (i < lines.length && isRow(lines[i])) body.push(cells(lines[i++]));
+      html.push(
+        '<div class="scroll"><table><thead><tr>' +
+          head.map((c) => `<th>${inline(c)}</th>`).join("") +
+          "</tr></thead><tbody>" +
+          body.map((r) => "<tr>" + r.map((c) => `<td>${inline(c)}</td>`).join("") + "</tr>").join("") +
+          "</tbody></table></div>",
+      );
+      continue;
+    }
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { html.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); i++; continue; }
+    if (line.startsWith("> ")) {
+      const buf = [];
+      while (i < lines.length && lines[i].startsWith("> ")) buf.push(lines[i++].slice(2));
+      html.push(`<blockquote>${inline(buf.join(" "))}</blockquote>`);
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) buf.push(lines[i++].replace(/^\s*[-*]\s+/, ""));
+      html.push("<ul>" + buf.map((b) => `<li>${inline(b)}</li>`).join("") + "</ul>");
+      continue;
+    }
+    if (line.trim() === "") { i++; continue; }
+    const buf = [];
+    while (i < lines.length && lines[i].trim() !== "" && !/^[#>|]|^\s*[-*]\s/.test(lines[i])) buf.push(lines[i++]);
+    html.push(`<p>${inline(buf.join(" "))}</p>`);
+  }
+  return html.join("\n");
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => diagnose(String(reader.result), file.name);
+  reader.onerror = () => say("Could not read the file", true);
+  reader.readAsText(file);
+}
+
+dropEl.addEventListener("click", () => fileEl.click());
+dropEl.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") fileEl.click(); });
+fileEl.addEventListener("change", () => { if (fileEl.files[0]) readFile(fileEl.files[0]); });
+["dragenter", "dragover"].forEach((ev) =>
+  dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) =>
+  dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.remove("over"); }));
+dropEl.addEventListener("drop", (e) => { if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); });
+
+sampleBtn.addEventListener("click", async () => {
+  const text = await (await fetch("sample-profile.txt")).text();
+  diagnose(text, "the sample profile");
+});
+clearBtn.addEventListener("click", () => {
+  outEl.innerHTML = "";
+  clearBtn.disabled = true;
+  say("Ready. Analysis runs locally in this tab.");
+});
+
+boot().catch((e) => say("Could not load the analysis runtime: " + e, true));
+</script>
+</body>
+</html>

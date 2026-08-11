@@ -42,7 +42,9 @@ def test_spark_support_matrix_records_package_handoff_without_support_claim() ->
 def test_spark_public_docs_index_package_code_under_experimental_boundary() -> None:
     code_map = _normalized(CODE_MAP)
     handoff = _normalized(CODEX_HANDOFF)
-    ru_readme = _normalized(README_RU)
+    ru_support_boundary = _normalized(
+        ROOT / "docs" / "i18n" / "ru" / "support-boundary.md"
+    )
     ru_docs_index = _normalized(RU_DOCS_INDEX)
 
     assert "Spark compact History Server intake and evidence packages" in code_map
@@ -93,8 +95,8 @@ def test_spark_public_docs_index_package_code_under_experimental_boundary() -> N
         in handoff
     )
 
-    assert "compact evidence-package build/validation" in ru_readme
-    assert "no public Spark engine support" in ru_readme
+    assert "compact evidence-package build/validation" in ru_support_boundary
+    assert "no public Spark engine support" in ru_support_boundary
     assert "engine deep-dive документы остаются English-only" in ru_docs_index
     assert "engine-support-gap-matrix.md" in ru_docs_index
 
