@@ -1,6 +1,7 @@
 import ast
 import importlib
 import inspect
+import re
 import runpy
 from pathlib import Path
 from unittest.mock import patch
@@ -34,6 +35,17 @@ def project_version() -> str:
     raise AssertionError("pyproject.toml project version is missing")
 
 
+def build_system_setuptools_floor() -> tuple[int, ...]:
+    text = (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(
+        r'^requires = \["setuptools>=([0-9]+(?:\.[0-9]+)*)", "wheel"\]$',
+        text,
+        re.MULTILINE,
+    )
+    assert match, "[build-system] must require setuptools with a version floor, plus wheel"
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
 def setup_py_metadata() -> dict[str, object]:
     captured: dict[str, object] = {}
 
@@ -58,7 +70,10 @@ def setup_py_text() -> str:
 def test_pyproject_declares_query_doctor_package_and_console_scripts():
     text = (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert 'requires = ["setuptools>=77", "wheel"]' in text
+    # setuptools 77 is the first release carrying PEP 639 license expressions,
+    # which test_project_license_metadata_is_consistent relies on. Dependabot
+    # moves this floor up; it must not move back below 77.
+    assert build_system_setuptools_floor() >= (77,)
     assert 'build-backend = "setuptools.build_meta"' in text
     assert 'name = "query-doctor"' in text
     assert 'include = ["query_doctor*"]' in text
