@@ -46,7 +46,7 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit>=3.5",
+    "pre-commit>=4.3.0",
     "pytest>=8",
     "ruff>=0.16.3",
 ]
