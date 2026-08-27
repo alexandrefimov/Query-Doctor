@@ -129,6 +129,8 @@ def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> Non
             settings.impala_profile_scheme,
             "--impala-profile-timeout-sec",
             str(settings.impala_profile_timeout_sec),
+            "--impala-query-list-max-bytes",
+            str(settings.impala_query_list_max_bytes),
         ]
     )
     for host in settings.impala_profile_hosts:
