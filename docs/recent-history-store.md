@@ -41,6 +41,12 @@ producer status/freshness, profile-worker jobs and materialized records,
 profile backlog health, optional retention deletes, and optional remediation
 dry-run/apply counts. It does not contact Postgres, Kubernetes, query engines,
 profile collectors, or remediation actions.
+`--max-evidence-age-minutes` turns the collector producer timestamp from a
+reported field into a gate: without it, a producer that stops writing keeps its
+last acceptable summary on disk and the audit keeps reading `ready`. Only the
+collector summary carries an observation time, so the option ages that one
+summary; the Postgres readiness and profile-worker summaries carry none and are
+still judged on contents alone.
 In Helm configured mode, `recentHistory.operatorReadiness.enabled=true` renders
 that audit as a separate CronJob after Postgres history, Postgres readiness, and
 the Recent profile worker are enabled. The chart has the Postgres readiness

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -14,6 +15,13 @@ from query_doctor.recent.operator_readiness import (
     format_recent_history_operator_readiness,
     operator_readiness_payload_json,
 )
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -52,6 +60,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Optional raw-free query-doctor-recent-profile-remediation summary JSON.",
     )
+    parser.add_argument(
+        "--max-evidence-age-minutes",
+        type=positive_int,
+        help=(
+            "Block unless the retained collector summary was observed within this many "
+            "minutes. Without it a producer that stopped writing still reads as ready, "
+            "because its last acceptable summary stays on disk."
+        ),
+    )
     parser.add_argument("--json", action="store_true", help="Print raw-free JSON.")
     parser.add_argument(
         "--summary-json",
@@ -87,6 +104,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         collector_summary=collector_summary,
         retention_summary=retention_summary,
         remediation_summary=remediation_summary,
+        max_evidence_age_minutes=args.max_evidence_age_minutes,
+        now=datetime.now(timezone.utc),
     )
     payload = result.payload()
     if args.summary_json:
