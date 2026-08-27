@@ -8833,3 +8833,38 @@ def test_run_subprocess_applies_runtime_metrics_refresh_timeout(monkeypatch, tmp
     assert calls[1][1]["timeout"] == (
         module.batch_case_processing.RUNTIME_METRICS_REFRESH_TIMEOUT_SEC
     )
+
+
+def test_direct_impala_onboarding_template_builds_bounded_history_config(tmp_path):
+    module = load_batch_module()
+    template = REPO_DIR / "query-doctor-config.direct-impala.example.json"
+    args = module.parse_args(
+        [
+            "--config",
+            str(template),
+            "--out",
+            str(tmp_path / "query-doctor-direct-impala-readiness"),
+            "--discover-only",
+            "--metadata-mode",
+            "off",
+            "--top-reports",
+            "0",
+        ]
+    )
+
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+    module.preflight(config, env={}, repo_root=REPO_DIR)
+
+    assert config.query_profile_source == "impala"
+    assert config.impala_profile_hosts == ("impalad-coordinator.example.com",)
+    assert config.impala_profile_scheme == "https"
+    assert config.include_running is True
+    assert config.discover_only is True
+    assert config.metadata_mode == "off"
+    assert config.top_reports == 0
+    assert config.recent_history_backend == "sqlite"
+    assert (
+        config.recent_history_db
+        == (tmp_path / "query-doctor-state" / "recent-history.sqlite3").resolve()
+    )
+    assert config.recent_history_summary_retention_days == 30
