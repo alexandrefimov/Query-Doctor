@@ -62,7 +62,7 @@ GUARDRAILS = (
 
 SHELL_BORDER_RE = re.compile(r"^\s*\+(?:-+\+)+\s*$")
 SUPPORTED_SIZE_UNIT = r"(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)"
-TOKEN_DELIMITER = r"(?=$|[\s,;)\]])"
+TOKEN_DELIMITER = r"(?=$|[\s,;)\]\(])"
 NODE_HEADER_RE = re.compile(
     r"^\s*(?P<prefix>(?:\|\s*)*(?:(?:\||\+)?-{2,}\s*)?)"
     r"(?P<id>\d{1,4})\s*:\s*(?P<label>[^|]+?)\s*$",
@@ -154,10 +154,23 @@ PIPELINE_DETAIL_RE = re.compile(
     r"(?:\s*,\s*\d{1,4}\((?:GETNEXT|OPEN)\))*\s*$",
     re.IGNORECASE,
 )
+# A cardinality estimate as Impala prints it: a scaled number or "unavailable".
+CARDINALITY_VALUE = r"\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?[KMBT]?|unavailable"
+# Impala names the source of a cardinality it took from historical statistics, and says
+# when the match ignored partition constants: " (from HBO)", " (from HBO, ...)".
+HBO_ANNOTATION = r"\s*\(from\s+HBO(?:,[^)]*)?\)"
+# A runtime filter makes the node print the filtered estimate first and the unfiltered
+# one in parentheses, with the HBO note (if any) inside them.
+FILTERED_CARDINALITY = (
+    rf"\(filtered\s+from\s+(?:{CARDINALITY_VALUE})(?:\s+from\s+HBO(?:,[^)]*)?)?\)"
+)
 TUPLE_DETAIL_RE = re.compile(
-    r"^tuple(?:-ids|\s+ids)\s*[:=]\s*\d{1,4}(?:\s*,\s*\d{1,4})*\s+"
+    # A tuple id carries an "N" suffix when the tuple is nullable, as in an outer join.
+    r"^tuple(?:-ids|\s+ids)\s*[:=]\s*\d{1,4}N?(?:\s*,\s*\d{1,4}N?)*\s+"
     rf"row-size=(?:\d[\d,]*(?:\.\d+)?(?:\s*{SUPPORTED_SIZE_UNIT})?)\s+"
-    r"cardinality=(?:\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?[KMBT]?|unavailable)"
+    rf"cardinality=(?:{CARDINALITY_VALUE})"
+    rf"(?:{FILTERED_CARDINALITY})?"
+    rf"(?:{HBO_ANNOTATION})?"
     r"(?:\s+cost=\d[\d,]*(?:\.\d+)?[KMBT]?)?\s*$",
     re.IGNORECASE,
 )
