@@ -2,6 +2,8 @@ import http.client
 import json
 import urllib.error
 
+import pytest
+
 from query_doctor.cli import collect_impala_profile
 from query_doctor.cm.models import CMAdapterError
 from query_doctor.impala.admission_context import (
@@ -427,6 +429,44 @@ def test_fetch_impala_query_summaries_warns_when_completed_log_is_full():
         "cccccccccccccccc:dddddddddddddddd",
     ]
     assert any("retained log size" in warning for warning in result.warnings)
+
+
+def test_fetch_impala_query_summaries_honours_a_raised_byte_limit():
+    # A coordinator with a large query_log_size answers /queries?json with far
+    # more than the default cap allows. The default must still refuse it, and a
+    # raised limit must let the same payload through.
+    payload = json.dumps(
+        {
+            "completed_queries": [
+                {
+                    "query_id": "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                    "stmt": "SELECT 1",
+                    "user": "analyst",
+                    "pool": "root.analytics",
+                    "duration_ms": 120000,
+                    "end_time": "2026-05-12 10:15:00",
+                    "padding": "x" * (6 * 1024 * 1024),
+                }
+            ],
+            "in_flight_queries": [],
+        }
+    )
+
+    def fake_opener(request, timeout):
+        return FakeResponse(payload)
+
+    with pytest.raises(CMAdapterError):
+        fetch_impala_query_summaries(hosts=["impalad-1.example.com"], opener=fake_opener)
+
+    result = fetch_impala_query_summaries(
+        hosts=["impalad-1.example.com"],
+        max_query_list_bytes=16 * 1024 * 1024,
+        opener=fake_opener,
+    )
+
+    assert [summary.query_id for summary in result.summaries] == [
+        "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"
+    ]
 
 
 def test_fetch_impala_query_summaries_skips_incomplete_read_endpoint():

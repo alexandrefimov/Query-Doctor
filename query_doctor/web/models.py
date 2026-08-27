@@ -33,6 +33,7 @@ DEFAULT_QUERY_PROFILE_SOURCE = "cm"
 DEFAULT_IMPALA_PROFILE_PORT = 25000
 DEFAULT_IMPALA_PROFILE_SCHEME = "http"
 DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC = 15
+DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
@@ -99,6 +100,7 @@ class WebClusterConfig:
     impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT
     impala_profile_scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+    impala_query_list_max_bytes: int = DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES
     impala_profile_prefer_json: bool = False
     impala_profile_collect_docs: bool = False
     impala_collect_admission_context: bool = False
@@ -182,6 +184,7 @@ class WebSettings:
     impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT
     impala_profile_scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+    impala_query_list_max_bytes: int = DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES
     impala_profile_prefer_json: bool = False
     impala_profile_collect_docs: bool = False
     impala_collect_admission_context: bool = False
