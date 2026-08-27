@@ -1,6 +1,6 @@
 # Brand Voice And Humor Policy
 
-Last reviewed: 2026-05-18
+Last reviewed: 2026-08-27
 
 Query Doctor should read like a serious enterprise diagnostic tool. A little dry
 engineering personality is allowed, but it must never compete with evidence,
