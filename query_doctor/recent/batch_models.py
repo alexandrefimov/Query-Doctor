@@ -73,6 +73,7 @@ class BatchConfig:
     impala_profile_port: int = 25000
     impala_profile_scheme: str = "http"
     impala_profile_timeout_sec: int = 15
+    impala_query_list_max_bytes: int = 5 * 1024 * 1024
     impala_profile_prefer_json: bool = False
     impala_profile_collect_docs: bool = False
     impala_collect_admission_context: bool = False

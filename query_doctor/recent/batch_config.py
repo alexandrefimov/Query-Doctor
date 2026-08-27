@@ -20,6 +20,7 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_scheme,
 )
 from query_doctor.impala.kerberos_preflight import check_kerberos_ticket_cache
+from query_doctor.impala.query_discovery import DEFAULT_MAX_QUERY_LIST_BYTES
 from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
     DEFAULT_PROMETHEUS_STEP_SEC,
@@ -42,6 +43,7 @@ from query_doctor.source_visibility import (
 MAX_CM_INSPECT_LIMIT = 5000
 MAX_RAW_CM_SUMMARY_SCAN_LIMIT = 20000
 MAX_TRIAGE_PROFILE_LIMIT = 5000
+MAX_IMPALA_QUERY_LIST_BYTES = 256 * 1024 * 1024
 MAX_METADATA_TOP_LIMIT = 200
 DEFAULT_CM_TIMESERIES_TOP_LIMIT = 10
 MAX_CM_TIMESERIES_TOP_LIMIT = 200
@@ -222,6 +224,11 @@ def build_batch_config(
         config_values.get("impala_profile_timeout_sec"),
         default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     )
+    impala_query_list_max_bytes = first_int(
+        getattr(args, "impala_query_list_max_bytes", None),
+        config_values.get("impala_query_list_max_bytes"),
+        default=DEFAULT_MAX_QUERY_LIST_BYTES,
+    )
     impala_profile_prefer_json = first_bool(
         getattr(args, "impala_profile_prefer_json", None),
         config_values.get("impala_profile_prefer_json"),
@@ -346,6 +353,8 @@ def build_batch_config(
         raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
     if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
         raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
+    if impala_query_list_max_bytes > MAX_IMPALA_QUERY_LIST_BYTES:
+        raise ValueError(f"--impala-query-list-max-bytes must be <= {MAX_IMPALA_QUERY_LIST_BYTES}")
     if validate_scan_selection_limits and triage_profile_limit > cm_inspect_limit:
         raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
     if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
@@ -649,6 +658,9 @@ def build_batch_config(
         impala_profile_scheme=impala_profile_scheme,
         impala_profile_timeout_sec=int(
             impala_profile_timeout_sec or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+        ),
+        impala_query_list_max_bytes=int(
+            impala_query_list_max_bytes or DEFAULT_MAX_QUERY_LIST_BYTES
         ),
         impala_profile_prefer_json=impala_profile_prefer_json,
         impala_profile_collect_docs=impala_profile_collect_docs,
