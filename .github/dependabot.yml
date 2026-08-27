@@ -38,3 +38,8 @@ updates:
         versions: [">=83"]
       - dependency-name: "pre-commit"
         versions: [">=4.4"]
+      # Same 3.10 floor, but no CI job installs the postgres extra, so a bump
+      # here goes green and only shows up as `pip install query-doctor[postgres]`
+      # failing to resolve on 3.9. Drop with the entries above.
+      - dependency-name: "psycopg"
+        versions: [">=3.3"]
