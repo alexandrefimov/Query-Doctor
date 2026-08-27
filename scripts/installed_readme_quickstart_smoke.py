@@ -41,8 +41,10 @@ REQUIRED_SELF_TEST_CHECKS = frozenset(
     {
         "console_scripts",
         "demo",
+        "direct_impala_discovery",
         "profile_analysis",
         "filename_fallback_profile",
+        "recent_history_restart",
         "web_rendering",
         "report",
         "corpus_smoke",

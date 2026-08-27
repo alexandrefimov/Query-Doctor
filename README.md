@@ -88,6 +88,8 @@ Local JSON configuration is documented in
 local env files. Start from `query-doctor-config.minimal.example.json` for a
 Cloudera Manager workflow; `query-doctor-config.example.json` adds the advanced
 direct-Impala, Prometheus, metadata, and LLM fields.
+`query-doctor-config.direct-impala.example.json` covers a direct Impala cluster
+without Cloudera Manager.
 
 For development from a checkout:
 

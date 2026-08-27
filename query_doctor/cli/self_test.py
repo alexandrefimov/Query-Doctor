@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import quote
 
+from query_doctor.cm.models import RecentQueryCandidate
+from query_doctor.impala.query_discovery import parse_impala_query_list_payload
+from query_doctor.recent.history_store import history_record_from_candidate
+from query_doctor.recent.sqlite_history_store import SqliteRecentHistoryStore
+
 
 DEFAULT_QUERY_ID = "1111111111111111:2222222222222222"
 FILENAME_FALLBACK_QUERY_ID = "3333333333333333:4444444444444444"
@@ -24,10 +29,13 @@ SELF_TEST_CORPUS_NAME = "query-doctor-self-test-corpus"
 SELF_TEST_DEMO_NAME = "query-doctor-self-test-demo"
 SELF_TEST_REPORT_NAME = "diagnosis_self_test.md"
 SELF_TEST_CORPUS_SMOKE_NAME = "corpus_self_test.json"
+SELF_TEST_RECENT_HISTORY_NAME = "direct-impala-recent-history.sqlite3"
 SELF_TEST_EXPECTED_CASE_COUNT = 2
+SELF_TEST_DIRECT_RUNNING_QUERY_ID = "5555555555555555:6666666666666666"
 INSTALLED_CORE_COMMANDS = (
     "query-doctor-self-test",
     "query-doctor-analyze",
+    "query-doctor-batch-recent",
     "query-doctor-web",
     "query-doctor-deployment-readiness",
     "query-doctor-demo",
@@ -210,6 +218,31 @@ TotalBytesSent: 2.00 GiB
     )
 
 
+def synthetic_direct_impala_query_list() -> dict[str, object]:
+    return {
+        "completed_queries": [
+            {
+                "query_id": DEFAULT_QUERY_ID,
+                "start_time": "2026-06-14T10:00:00Z",
+                "end_time": "2026-06-14T10:05:00Z",
+                "duration_ms": 300_000,
+                "state": "FINISHED",
+                "stmt_type": "QUERY",
+                "stmt": "SELECT secret_value FROM private_table",
+            }
+        ],
+        "in_flight_queries": [
+            {
+                "query_id": SELF_TEST_DIRECT_RUNNING_QUERY_ID,
+                "start_time": "2026-06-14T10:06:00Z",
+                "state": "RUNNING",
+                "stmt_type": "QUERY",
+                "stmt": "SELECT live_secret FROM private_stream",
+            }
+        ],
+    }
+
+
 def write_profile(work_dir: Path) -> Path:
     profile_path = work_dir / SELF_TEST_PROFILE_NAME
     profile_path.write_text(synthetic_profile_text(), encoding="utf-8")
@@ -276,6 +309,68 @@ def check_demo_generation(
     if summary.get("demo_mode") is not True:
         raise SelfTestFailure("synthetic demo summary did not declare demo mode")
     return SelfTestCheck("demo", "Synthetic demo generation", "OK")
+
+
+def check_direct_impala_recent_history(
+    *,
+    work_dir: Path,
+) -> tuple[SelfTestCheck, SelfTestCheck]:
+    summaries = parse_impala_query_list_payload(synthetic_direct_impala_query_list())
+    summaries_by_id = {summary.query_id: summary for summary in summaries}
+    if set(summaries_by_id) != {DEFAULT_QUERY_ID, SELF_TEST_DIRECT_RUNNING_QUERY_ID}:
+        raise SelfTestFailure("direct Impala fixture did not expose finished and running queries")
+    if summaries_by_id[DEFAULT_QUERY_ID].status != "FINISHED":
+        raise SelfTestFailure("direct Impala fixture did not preserve the finished query state")
+    running_summary = summaries_by_id[SELF_TEST_DIRECT_RUNNING_QUERY_ID]
+    if running_summary.status != "running" or running_summary.query_state != "running":
+        raise SelfTestFailure("direct Impala fixture did not normalize the running query state")
+
+    recorded_at_iso = "2026-06-14T10:07:00+00:00"
+    records = [
+        history_record_from_candidate(
+            RecentQueryCandidate(
+                summary=summary,
+                selected=True,
+                reason="selected: self-test direct Impala query",
+                sql_verb="SELECT",
+            ),
+            engine="impala",
+            source_kind="impala",
+            source_key="impala-daemon:1-hosts",
+            recorded_at_iso=recorded_at_iso,
+        )
+        for summary in summaries
+    ]
+    history_path = work_dir / SELF_TEST_RECENT_HISTORY_NAME
+    writer = SqliteRecentHistoryStore(history_path)
+    if writer.upsert_summaries(records) != 2:
+        raise SelfTestFailure("direct Impala fixture history did not record both summaries")
+
+    reopened = SqliteRecentHistoryStore(history_path)
+    payloads = reopened.load_payloads()
+    if reopened.count_summaries() != 2 or len(payloads) != 2:
+        raise SelfTestFailure("Recent history did not survive a fresh SQLite store instance")
+    if {payload.get("source_kind") for payload in payloads} != {"impala"}:
+        raise SelfTestFailure("Recent history did not retain direct Impala source provenance")
+    if {payload.get("status") for payload in payloads} != {"finished", "running"}:
+        raise SelfTestFailure("Recent history did not retain finished and running states")
+    payload_text = json.dumps(payloads, sort_keys=True)
+    for raw_marker in ("secret_value", "private_table", "live_secret", "private_stream"):
+        if raw_marker in payload_text:
+            raise SelfTestFailure("Recent history retained raw statement content")
+
+    return (
+        SelfTestCheck(
+            "direct_impala_discovery",
+            "Direct Impala Recent and Running fixture",
+            "OK",
+        ),
+        SelfTestCheck(
+            "recent_history_restart",
+            "Raw-free Recent history restart",
+            "OK",
+        ),
+    )
 
 
 def check_profile_analysis(
@@ -493,6 +588,11 @@ def run_self_test(args: argparse.Namespace, work_dir: Path) -> list[SelfTestChec
     )
     checks.append(check)
     output_check(check, json_mode=args.json)
+
+    direct_check, history_check = check_direct_impala_recent_history(work_dir=work_dir)
+    for check in (direct_check, history_check):
+        checks.append(check)
+        output_check(check, json_mode=args.json)
 
     check, corpus_dir, case_dir = check_profile_analysis(
         bin_dir=bin_dir,

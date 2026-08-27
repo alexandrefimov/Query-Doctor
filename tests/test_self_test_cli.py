@@ -14,6 +14,7 @@ from query_doctor.cli import self_test
 REPO_DIR = Path(__file__).resolve().parents[1]
 SCRIPT_MODULES = {
     "query-doctor-analyze": "query_doctor.cli.analyze_profile",
+    "query-doctor-batch-recent": "query_doctor.cli.batch_recent",
     "query-doctor-corpus-smoke": "query_doctor.cli.corpus_smoke",
     "query-doctor-demo": "query_doctor.cli.demo_data",
     "query-doctor-deployment-readiness": "query_doctor.cli.deployment_readiness",
@@ -137,6 +138,8 @@ def test_self_test_runs_through_console_script_wrappers(tmp_path, capsys):
     summary = json.loads(capsys.readouterr().out)
     check_ids = {check["id"] for check in summary["checks"]}
     assert "filename_fallback_profile" in check_ids
+    assert "direct_impala_discovery" in check_ids
+    assert "recent_history_restart" in check_ids
     assert (work_dir / self_test.SELF_TEST_DEMO_NAME / "batch_summary.json").is_file()
     case_dir = (
         work_dir
@@ -158,6 +161,16 @@ def test_self_test_runs_through_console_script_wrappers(tmp_path, capsys):
     assert (fallback_case_dir / "analysis_facts.md").is_file()
     corpus_summary = json.loads((work_dir / self_test.SELF_TEST_CORPUS_SMOKE_NAME).read_text())
     assert corpus_summary["totals"]["cases_scanned"] == self_test.SELF_TEST_EXPECTED_CASE_COUNT
+
+    from query_doctor.recent.sqlite_history_store import SqliteRecentHistoryStore
+
+    history_store = SqliteRecentHistoryStore(work_dir / self_test.SELF_TEST_RECENT_HISTORY_NAME)
+    payloads = history_store.load_payloads()
+    assert history_store.count_summaries() == 2
+    assert {payload["status"] for payload in payloads} == {"finished", "running"}
+    payload_text = json.dumps(payloads, sort_keys=True)
+    assert "private_table" not in payload_text
+    assert "private_stream" not in payload_text
 
 
 def _write_wrapper(path: Path, module_name: str) -> None:
