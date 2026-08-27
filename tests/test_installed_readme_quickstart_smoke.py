@@ -34,6 +34,8 @@ def test_installed_readme_quickstart_smoke_uses_installed_cli_and_real_server() 
     text = (ROOT / SCRIPT).read_text(encoding="utf-8")
 
     assert 'installed_executable(bin_dir, "query-doctor-self-test")' in text
+    assert '"direct_impala_discovery"' in text
+    assert '"recent_history_restart"' in text
     assert 'installed_executable(bin_dir, "query-doctor-analyze")' in text
     assert 'installed_executable(bin_dir, "query-doctor-web")' in text
     assert '"--profile-text"' in text

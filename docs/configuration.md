@@ -17,6 +17,11 @@ CM, direct Impala, Prometheus, metadata, and LLM routing fields in one
 advanced template. Add optional fields from the reference below only when you
 need to override a built-in default.
 
+A third template,
+[query-doctor-config.direct-impala.example.json](../query-doctor-config.direct-impala.example.json),
+drops Cloudera Manager entirely: one direct Impala cluster, SQLite Recent
+history with a 30-day retention, running queries included, and no LLM.
+
 ## Config Location
 
 Preferred local path:

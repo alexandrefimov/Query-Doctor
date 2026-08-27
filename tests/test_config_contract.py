@@ -835,6 +835,32 @@ def test_minimal_template_parses_is_accepted_and_has_no_secret_fields():
     )
 
 
+def test_direct_impala_template_is_bounded_history_ready_and_has_no_secret_fields():
+    template_path = REPO_DIR / "query-doctor-config.direct-impala.example.json"
+    template = json.loads(template_path.read_text(encoding="utf-8"))
+
+    loaded = config_contract.load_local_config(template_path, cwd=REPO_DIR)
+
+    assert loaded["active_cluster_key"] == "kubernetes-impala"
+    assert loaded["source_visibility"] == "safe"
+    assert loaded["no_llm"] is True
+    assert loaded["recent_history_backend"] == "sqlite"
+    assert loaded["recent_history_summary_retention_days"] == 30
+    assert loaded["recent_include_running"] is True
+    assert loaded["recent_profile_analysis_limit"] == 10
+    assert loaded["recent_metadata_top_limit"] == 0
+    assert len(loaded["clusters"]) == 1
+    direct_cluster = loaded["clusters"][0]
+    assert direct_cluster["query_profile_source"] == "impala"
+    assert direct_cluster["impala_profile_scheme"] == "https"
+    assert "impala_kerberos_service_name" not in direct_cluster
+    assert not any(
+        secret in key.lower()
+        for key in template
+        for secret in ("password", "passwd", "token", "cookie", "authorization", "keytab")
+    )
+
+
 def test_kerberos_env_override_and_config_env_merge():
     with_env = config_contract.merge_kerberos_cache_env(
         {"KRB5CCNAME": "FILE:/tmp/env_cache"},

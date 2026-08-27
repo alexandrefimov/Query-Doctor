@@ -1,0 +1,25 @@
+{
+  "clusters": [
+    {
+      "id": "kubernetes-impala",
+      "label": "Kubernetes Impala",
+      "cluster_type": "impala",
+      "impala_profile_hosts": [
+        "impalad-coordinator.example.com"
+      ],
+      "impala_profile_scheme": "https"
+    }
+  ],
+  "active_cluster_key": "kubernetes-impala",
+  "language": "en",
+  "source_visibility": "safe",
+  "no_llm": true,
+  "recent_history_backend": "sqlite",
+  "recent_history_db": "./query-doctor-state/recent-history.sqlite3",
+  "recent_history_summary_retention_days": 30,
+  "recent_scan_timezone": "UTC",
+  "recent_window_minutes": 60,
+  "recent_include_running": true,
+  "recent_profile_analysis_limit": 10,
+  "recent_metadata_top_limit": 0
+}
