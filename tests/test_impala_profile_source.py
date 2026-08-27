@@ -22,7 +22,11 @@ from query_doctor.impala.profile_source import (
     fetch_impala_profile_text,
     impala_profile_urls,
 )
-from query_doctor.impala.query_discovery import fetch_impala_query_summaries, impala_query_list_urls
+from query_doctor.impala.query_discovery import (
+    fetch_impala_query_summaries,
+    impala_query_list_urls,
+    parse_duration_text,
+)
 
 
 class FakeResponse:
@@ -429,6 +433,71 @@ def test_fetch_impala_query_summaries_warns_when_completed_log_is_full():
         "cccccccccccccccc:dddddddddddddddd",
     ]
     assert any("retained log size" in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_ms"),
+    [
+        # What the daemon actually prints. Anything under a second is one term;
+        # anything longer is a run, which is why the runs matter most here.
+        ("214.305ms", 214),
+        ("5s830ms", 5830),
+        ("30s470ms", 30470),
+        ("1m23s", 83_000),
+        ("1h2m", 3_720_000),
+        ("1h2m3s456ms", 3_723_456),
+        # Single terms and spacing, unchanged from before.
+        ("5s", 5_000),
+        ("2m", 120_000),
+        ("3 seconds", 3_000),
+        ("  7s 250ms ", 7_250),
+        # A bare number still means milliseconds.
+        ("1234", 1_234),
+        # Not durations.
+        ("", None),
+        ("abc", None),
+        ("12x", None),
+        ("5s abc", None),
+        ("1m 2 3s", None),
+    ],
+)
+def test_parse_duration_text_reads_impala_duration_runs(text, expected_ms):
+    assert parse_duration_text(text) == expected_ms
+
+
+def test_impala_query_list_keeps_the_duration_of_slow_queries():
+    # Regression: reading only single-term durations dropped every query slower
+    # than a second, because those are exactly the ones printed as runs. The
+    # duration filter then discarded them, so a scan selected no candidates at
+    # all while looking healthy.
+    def fake_opener(request, timeout):
+        return FakeResponse(
+            json.dumps(
+                {
+                    "completed_queries": [
+                        {
+                            "query_id": "aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+                            "stmt": "SELECT 1",
+                            "effective_user": "analyst",
+                            "duration": "1m23s",
+                            "end_time": "2026-05-12 10:15:00",
+                        },
+                        {
+                            "query_id": "cccccccccccccccc:dddddddddddddddd",
+                            "stmt": "SELECT 2",
+                            "effective_user": "analyst",
+                            "duration": "214.305ms",
+                            "end_time": "2026-05-12 10:16:00",
+                        },
+                    ],
+                    "in_flight_queries": [],
+                }
+            )
+        )
+
+    result = fetch_impala_query_summaries(hosts=["impalad-1.example.com"], opener=fake_opener)
+
+    assert [summary.duration_ms for summary in result.summaries] == [83_000, 214]
 
 
 def test_fetch_impala_query_summaries_honours_a_raised_byte_limit():
