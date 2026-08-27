@@ -1015,9 +1015,9 @@ WITH claimable AS (
     SELECT engine, source_kind, source_key, query_id
     FROM recent_profile_job
     WHERE
-        (%(engine_filter)s IS NULL OR engine = %(engine_filter)s)
-        AND (%(source_kind_filter)s IS NULL OR source_kind = %(source_kind_filter)s)
-        AND (%(source_key_filter)s IS NULL OR source_key = %(source_key_filter)s)
+        (%(engine_filter)s::text IS NULL OR engine = %(engine_filter)s)
+        AND (%(source_kind_filter)s::text IS NULL OR source_kind = %(source_kind_filter)s)
+        AND (%(source_key_filter)s::text IS NULL OR source_key = %(source_key_filter)s)
         AND (
             status = %(pending_status)s
             OR (
@@ -1104,9 +1104,9 @@ POSTGRES_RECENT_PROFILE_JOB_REQUEUE_COUNT = """
 SELECT COUNT(*)
 FROM recent_profile_job
 WHERE
-    (%(engine_filter)s IS NULL OR engine = %(engine_filter)s)
-    AND (%(source_kind_filter)s IS NULL OR source_kind = %(source_kind_filter)s)
-    AND (%(source_key_filter)s IS NULL OR source_key = %(source_key_filter)s)
+    (%(engine_filter)s::text IS NULL OR engine = %(engine_filter)s)
+    AND (%(source_kind_filter)s::text IS NULL OR source_kind = %(source_kind_filter)s)
+    AND (%(source_key_filter)s::text IS NULL OR source_key = %(source_key_filter)s)
     AND status = %(failed_status)s
 """
 
@@ -1114,9 +1114,9 @@ POSTGRES_RECENT_PROFILE_JOB_REQUEUE_SELECT = f"""
 SELECT {POSTGRES_PROFILE_JOB_REQUEUE_KEY_SELECT}
 FROM recent_profile_job AS job
 WHERE
-    (%(engine_filter)s IS NULL OR job.engine = %(engine_filter)s)
-    AND (%(source_kind_filter)s IS NULL OR job.source_kind = %(source_kind_filter)s)
-    AND (%(source_key_filter)s IS NULL OR job.source_key = %(source_key_filter)s)
+    (%(engine_filter)s::text IS NULL OR job.engine = %(engine_filter)s)
+    AND (%(source_kind_filter)s::text IS NULL OR job.source_kind = %(source_kind_filter)s)
+    AND (%(source_key_filter)s::text IS NULL OR job.source_key = %(source_key_filter)s)
     AND job.status = %(failed_status)s
 ORDER BY job.priority_score DESC, job.updated_at_iso, job.query_id
 LIMIT %(limit)s
@@ -1127,9 +1127,9 @@ WITH selected AS (
     SELECT engine, source_kind, source_key, query_id
     FROM recent_profile_job
     WHERE
-        (%(engine_filter)s IS NULL OR engine = %(engine_filter)s)
-        AND (%(source_kind_filter)s IS NULL OR source_kind = %(source_kind_filter)s)
-        AND (%(source_key_filter)s IS NULL OR source_key = %(source_key_filter)s)
+        (%(engine_filter)s::text IS NULL OR engine = %(engine_filter)s)
+        AND (%(source_kind_filter)s::text IS NULL OR source_kind = %(source_kind_filter)s)
+        AND (%(source_key_filter)s::text IS NULL OR source_key = %(source_key_filter)s)
         AND status = %(failed_status)s
     ORDER BY priority_score DESC, updated_at_iso, query_id
     FOR UPDATE SKIP LOCKED
@@ -1186,9 +1186,9 @@ LEFT JOIN recent_query_summary AS summary
     AND summary.source_key = job.source_key
     AND summary.query_id = job.query_id
 WHERE
-    (%(engine_filter)s IS NULL OR job.engine = %(engine_filter)s)
-    AND (%(source_kind_filter)s IS NULL OR job.source_kind = %(source_kind_filter)s)
-    AND (%(source_key_filter)s IS NULL OR job.source_key = %(source_key_filter)s)
+    (%(engine_filter)s::text IS NULL OR job.engine = %(engine_filter)s)
+    AND (%(source_kind_filter)s::text IS NULL OR job.source_kind = %(source_kind_filter)s)
+    AND (%(source_key_filter)s::text IS NULL OR job.source_key = %(source_key_filter)s)
 """
 
 POSTGRES_RECENT_ANALYSIS_CACHE_UPSERT = """
