@@ -13,7 +13,7 @@ from query_doctor.recent.summary_suspicion import (
     SummarySuspicionScore,
     score_recent_summary_suspicion,
 )
-from query_doctor.safety.redaction import sanitize_text_for_log
+from query_doctor.safety.redaction import sanitize_identifier_for_log, sanitize_text_for_log
 
 
 SCHEMA_VERSION = 1
@@ -171,7 +171,7 @@ def history_record_from_summary(
         engine=safe_label(engine, default="unknown"),
         source_kind=safe_label(source_kind, default="unknown"),
         source_key=safe_source_key(source_key),
-        query_id=safe_text(summary.query_id),
+        query_id=safe_query_id(summary.query_id),
         recorded_at_iso=safe_text(recorded_at_iso),
         start_time=safe_optional_text(summary.start_time),
         end_time=safe_optional_text(summary.end_time),
@@ -421,6 +421,10 @@ def safe_optional_text(value: object) -> str | None:
 
 def safe_text(value: object) -> str:
     return sanitize_text_for_log(str(value or ""))
+
+
+def safe_query_id(value: object) -> str:
+    return sanitize_identifier_for_log(str(value or ""))
 
 
 def safe_retention_cutoff(value: object) -> str | None:
