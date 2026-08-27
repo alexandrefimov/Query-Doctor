@@ -27,6 +27,34 @@ def node(facts: dict, operator_kind: str) -> dict:
     return next(item for item in facts["nodes"] if item["operator_kind"] == operator_kind)
 
 
+def test_reads_cardinality_through_impala_annotations():
+    """Impala decorates the cardinality line, and the node must survive it.
+
+    A tuple id gains an "N" when the tuple is nullable, a runtime filter prints the
+    filtered estimate ahead of the unfiltered one, and a cardinality taken from
+    historical statistics is followed by "(from HBO)" - with a caveat inside the
+    parentheses when the match ignored partition constants. Each of these used to make
+    the line unrecognisable, which dropped the node's cardinality and row size.
+    """
+    facts = parse_impala_explain(fixture_text("annotated_cardinality.txt"))
+
+    assert facts["status"] == "supported"
+    assert facts["detail_hint"] == "extended_like"
+
+    aggregate = node(facts, "aggregate")
+    assert aggregate["estimated_cardinality"] == 1.0
+    assert aggregate["estimated_row_size_bytes"] == 8.0
+
+    join = node(facts, "hash_join")
+    assert join["estimated_cardinality"] == 31.0
+    assert join["estimated_row_size_bytes"] == 29.0
+
+    # The filtered estimate is the one the node actually produces, so it is the one kept.
+    scan = node(facts, "hdfs_scan")
+    assert scan["estimated_cardinality"] == 37_880.0
+    assert scan["estimated_row_size_bytes"] == 21.0
+
+
 def test_parses_standard_explain_into_raw_free_typed_facts():
     facts = parse_impala_explain(fixture_text("standard.txt"))
 
