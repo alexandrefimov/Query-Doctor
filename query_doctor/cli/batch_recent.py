@@ -305,6 +305,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--impala-profile-port", type=positive_int)
     parser.add_argument("--impala-profile-scheme", choices=("http", "https"))
     parser.add_argument("--impala-profile-timeout-sec", type=positive_int)
+    parser.add_argument("--impala-query-list-max-bytes", type=positive_int)
     parser.add_argument(
         "--impala-profile-prefer-json",
         action="store_true",
@@ -984,6 +985,7 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
             port=config.impala_profile_port,
             scheme=config.impala_profile_scheme,
             timeout_sec=config.impala_profile_timeout_sec,
+            max_query_list_bytes=config.impala_query_list_max_bytes,
         )
         summaries = filter_impala_summaries_for_window(config, result.summaries)
         summaries = filter_impala_summaries_for_owner(config, summaries)

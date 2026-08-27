@@ -32,6 +32,7 @@ from query_doctor.web.models import (
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
     DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES,
     DEFAULT_LANGUAGE,
     DEFAULT_METADATA_AUTH,
     DEFAULT_METADATA_PROTOCOL,
@@ -1028,6 +1029,11 @@ def build_web_settings(
             default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         )
         or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+        impala_query_list_max_bytes=first_int_value(
+            optional_config_int(config_values, "impala_query_list_max_bytes"),
+            default=DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES,
+        )
+        or DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES,
         impala_profile_prefer_json=optional_config_bool(config_values, "impala_profile_prefer_json")
         is True,
         impala_profile_collect_docs=optional_config_bool(

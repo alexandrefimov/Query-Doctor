@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools>=82.0.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -46,15 +46,15 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit>=3.5",
-    "pytest>=8",
-    "ruff>=0.8",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "ruff>=0.16.4",
 ]
 e2e = [
-    "playwright>=1.48",
+    "playwright>=1.62.0",
 ]
 postgres = [
-    "psycopg[binary]>=3.1,<4",
+    "psycopg[binary]>=3.2.13,<4",
 ]
 
 [project.scripts]

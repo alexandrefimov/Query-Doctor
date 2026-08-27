@@ -31,3 +31,17 @@ updates:
       - dependency-name: "prettytable"
       - dependency-name: "six"
       - dependency-name: "thrift"
+      # requires-python is ">=3.9" and CI runs a 3.9 job. These releases need
+      # 3.10, so the bumps cannot be taken until the floor moves. Drop these
+      # entries in the same change that raises requires-python.
+      - dependency-name: "setuptools"
+        versions: [">=83"]
+      - dependency-name: "pre-commit"
+        versions: [">=4.4"]
+      - dependency-name: "pytest"
+        versions: [">=9"]
+      # Same 3.10 floor, but no CI job installs the postgres extra, so a bump
+      # here goes green and only shows up as `pip install query-doctor[postgres]`
+      # failing to resolve on 3.9. Drop with the entries above.
+      - dependency-name: "psycopg"
+        versions: [">=3.3"]

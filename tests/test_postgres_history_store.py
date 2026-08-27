@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -200,6 +201,25 @@ def test_postgres_history_store_enqueues_profile_jobs_raw_free():
     payload_text = json.dumps(rows[0], sort_keys=True)
     assert "SELECT secret_column" not in payload_text
     assert "sensitive_table" not in payload_text
+
+
+def test_optional_filter_parameters_are_typed_for_postgres():
+    # A parameter whose only other use is `IS NULL` gives Postgres nothing to
+    # infer a type from, and it refuses the statement:
+    #
+    #   AmbiguousParameter: could not determine data type of parameter $1
+    #   LINE 6:  ($1 IS NULL OR engine = $1)
+    #
+    # The fake cursor these tests use does not parse SQL, so the whole optional
+    # filter path passed here while failing against a real database.
+    statements = {
+        "POSTGRES_RECENT_PROFILE_JOB_CLAIM": POSTGRES_RECENT_PROFILE_JOB_CLAIM,
+        "POSTGRES_RECENT_PROFILE_BACKLOG_HEALTH": POSTGRES_RECENT_PROFILE_BACKLOG_HEALTH,
+    }
+    untyped = re.compile(r"%\((\w+_filter)\)s\s+IS NULL")
+    for name, sql in statements.items():
+        assert not untyped.search(sql), f"{name} compares a bare parameter with IS NULL"
+        assert "::text IS NULL" in sql, f"{name} lost its optional filter casts"
 
 
 def test_postgres_history_store_claims_profile_jobs_with_skip_locked():

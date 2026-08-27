@@ -27,6 +27,36 @@ from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 DEFAULT_MAX_QUERY_LIST_BYTES = 5 * 1024 * 1024
 IMPALA_QUERY_LIST_PATHS = ("/queries?json", "/queries?json=true")
+DURATION_UNIT_MS = {
+    "ns": 0.000_001,
+    "us": 0.001,
+    "µs": 0.001,
+    "ms": 1.0,
+    "millis": 1.0,
+    "milliseconds": 1.0,
+    "s": 1_000.0,
+    "sec": 1_000.0,
+    "secs": 1_000.0,
+    "second": 1_000.0,
+    "seconds": 1_000.0,
+    "m": 60_000.0,
+    "min": 60_000.0,
+    "mins": 60_000.0,
+    "minute": 60_000.0,
+    "minutes": 60_000.0,
+    "h": 3_600_000.0,
+    "hr": 3_600_000.0,
+    "hrs": 3_600_000.0,
+    "hour": 3_600_000.0,
+    "hours": 3_600_000.0,
+}
+# Longest spellings first, so that `ms` is not read as `m` and `min` is not read
+# as `m` either. A missing unit is only valid for a lone number.
+DURATION_TERM_RE = re.compile(
+    r"\s*([0-9]+(?:\.[0-9]+)?)\s*"
+    r"(milliseconds|minutes|seconds|millis|minute|second|hours|hour|mins|secs|"
+    r"min|sec|hrs|ms|us|µs|ns|hr|h|m|s)?"
+)
 QUERY_ID_RE = re.compile(r"\b[0-9a-f]{16}:[0-9a-f]{16}\b", re.IGNORECASE)
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 
@@ -349,22 +379,35 @@ def parse_duration_ms(raw: dict[str, Any]) -> int | None:
 
 
 def parse_duration_text(value: str) -> int | None:
+    """Read one Impala duration, which may be a run of terms.
+
+    The daemon prints anything under a second as a single term, ``214.305ms``,
+    and anything longer as a run: ``5s830ms``, ``1m23s``, ``1h2m``. Reading only
+    the single-term form is worse than failing loudly, because the terms that do
+    not parse are exactly the slow queries, and a candidate whose duration is
+    unknown is dropped by the duration filter. A bare number keeps its previous
+    meaning of milliseconds.
+    """
     text = value.strip().lower()
     if not text:
         return None
-    match = re.fullmatch(
-        r"([0-9]+(?:\.[0-9]+)?)\s*(ms|millis|milliseconds|s|sec|secs|seconds|m|min|mins|minutes)?",
-        text,
-    )
-    if not match:
-        return None
-    number = float(match.group(1))
-    unit = match.group(2) or "ms"
-    if unit.startswith("m") and unit != "ms":
-        number *= 60_000
-    elif unit.startswith("s"):
-        number *= 1000
-    return max(0, int(number))
+    total_ms = 0.0
+    position = 0
+    while position < len(text):
+        match = DURATION_TERM_RE.match(text, position)
+        if match is None:
+            return None
+        unit = match.group(2)
+        if unit is None:
+            # A bare number means milliseconds only on its own. Inside a run it
+            # is a term this parser does not understand, not a defaulted one.
+            if position != 0 or match.end() != len(text):
+                return None
+            total_ms += float(match.group(1))
+        else:
+            total_ms += float(match.group(1)) * DURATION_UNIT_MS[unit]
+        position = match.end()
+    return max(0, int(total_ms))
 
 
 def normalize_impala_timestamp(value: Any) -> str | None:
