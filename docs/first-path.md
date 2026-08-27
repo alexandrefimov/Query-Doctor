@@ -10,6 +10,7 @@ one-line version; this page has the full setup, options, and troubleshooting.
 | One exported profile | You can get one Impala Web UI text profile, but cannot grant live access yet. | `query-doctor-analyze --profile-text`, `query-doctor-web` upload, or `query-doctor-web` with `manual_profile_dir` |
 | Synthetic demo | You want a read-only local click-through with no real data. | `query-doctor-web --public-demo` |
 | Minimal CM scan | You have read-only Cloudera Manager access for an Impala service. | `query-doctor-web` or `query-doctor-batch-recent` |
+| Direct Impala scan | You can reach the debug Web UI endpoints of Kubernetes Impala coordinators. | `query-doctor-batch-recent --discover-only`, then `query-doctor-web` |
 
 ## Door 1: Analyze One Exported Profile
 
@@ -181,3 +182,104 @@ settings only after this basic scan path works. See
 For repeated safe local runs, `--reuse-analyzed-profiles-from <cache-root>` can
 reuse completed analyzed cases from direct child `query-doctor-*` batch outputs
 when the Query ID and explicit profile reuse contract match.
+
+## Door 4: Connect Directly To Kubernetes Impala
+
+Use this when Cloudera Manager is not the query source and the Query Doctor
+runtime can reach the debug Web UI endpoint of every Impala coordinator that
+accepts user queries. Direct collection is read-only and bounded. It reads the
+configured `/queries` and profile endpoints; it does not submit SQL.
+
+First verify the installed package without contacting the cluster:
+
+```bash
+query-doctor-self-test
+```
+
+The self-test includes a synthetic direct-Impala query-list dialect with one
+finished and one running query. It also writes raw-free summaries to SQLite and
+opens them through a fresh store instance. This proves the installed parser and
+local history restart contract, not connectivity or compatibility with a real
+Impala deployment.
+
+Save the following as `~/.qdcreds/query-doctor-config.json`, replacing only the
+example coordinator host and scheme. Keep credentials outside JSON. The same
+shape is committed as `query-doctor-config.direct-impala.example.json` for
+checkout-based installs.
+
+```json
+{
+  "clusters": [
+    {
+      "id": "kubernetes-impala",
+      "label": "Kubernetes Impala",
+      "cluster_type": "impala",
+      "impala_profile_hosts": ["impalad-coordinator.example.com"],
+      "impala_profile_scheme": "https"
+    }
+  ],
+  "active_cluster_key": "kubernetes-impala",
+  "language": "en",
+  "source_visibility": "safe",
+  "no_llm": true,
+  "recent_history_backend": "sqlite",
+  "recent_history_db": "./query-doctor-state/recent-history.sqlite3",
+  "recent_history_summary_retention_days": 30,
+  "recent_scan_timezone": "UTC",
+  "recent_window_minutes": 60,
+  "recent_include_running": true,
+  "recent_profile_analysis_limit": 10,
+  "recent_metadata_top_limit": 0
+}
+```
+
+Run one bounded discovery-only acceptance. It records finished and currently
+running summaries in the configured SQLite history without collecting profiles,
+metadata, reports, optimizer output, or raw SQL:
+
+```bash
+query-doctor-batch-recent \
+  --config ~/.qdcreds/query-doctor-config.json \
+  --out "${TMPDIR:-/tmp}/query-doctor-direct-impala-readiness" \
+  --overwrite \
+  --discover-only \
+  --include-running \
+  --metadata-mode off \
+  --top-reports 0
+```
+
+Review only the aggregate summary first. A successful run should report direct
+Impala discovery and a non-warning Recent history status. Zero running queries
+is a valid result; it means none were retained by the configured coordinators at
+that moment. Query-log depth is limited by each coordinator's retention.
+
+Start the private local UI with the same config, open Online History, then stop
+and restart the process. The retained summaries should remain available after
+restart:
+
+```bash
+query-doctor-web \
+  --config ~/.qdcreds/query-doctor-config.json \
+  --host 127.0.0.1 \
+  --port 8765
+```
+
+If multiple coordinators accept queries, list each one explicitly in
+`impala_profile_hosts`; a single load-balanced endpoint may not retain every
+query or profile. For a shared Kubernetes deployment, use the configured Helm
+mode, external Secret references, persistent storage, and a trusted auth front
+door. Do not copy workstation paths or credentials into chart values.
+
+### Troubleshooting
+
+- `did not find a readable query list`: verify network policy, DNS, TLS, and the
+  configured scheme from the Query Doctor runtime. Treat this as an environment
+  failure until the endpoint is reachable.
+- Recent is empty after known traffic: query retention may be too short, or the
+  configured coordinator set may be incomplete. Use a fresh query and check the
+  aggregate discovery warnings.
+- Finished works but Running is empty: an empty Running set is valid. Validate
+  again while a bounded test query is active if an operator-approved workload is
+  available.
+- History does not survive restart: keep `recent_history_db` on persistent
+  storage and confirm the process can read and write its parent directory.
