@@ -1,6 +1,6 @@
 # Impala Profile Counter Caveats
 
-Last reviewed: 2026-05-25
+Last reviewed: 2026-08-27
 
 This document defines the roadmap contract for interpreting Apache Impala
 profile counters and profile dialects in Query Doctor. It is planning guidance,
@@ -263,9 +263,10 @@ Client fetch tail:
   fetch-tail finding when they are a large share of selected-query duration.
 - Query Doctor currently promotes these counters only when a mapped
   query-specific wait counter is strong evidence: the wait is at least 10s,
-  at least 30% of the selected-query duration. It promotes client fetch to the
-  primary bottleneck only when that fetch-tail finding is the top elapsed
-  runtime finding.
+  at least 30% of the selected-query duration. A wait of at least 5s, and at
+  least 10% of the duration where the share is known, carries medium evidence
+  instead. It promotes client fetch to the primary bottleneck only when that
+  fetch-tail finding is the top elapsed runtime finding.
 - A long Query Timeline fetch phase without a mapped client-fetch wait counter
   remains context-only.
 - It is not by itself proof of a Hue, network, BI tool, or end-user client root
