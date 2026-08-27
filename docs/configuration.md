@@ -137,7 +137,10 @@ Direct Impala history can grow through several distinct options:
   `--query_log_size` and, if needed, `--query_log_size_in_bytes` in Impala daemon
   configuration on every coordinator. This keeps Query Doctor on the existing
   daemon `/queries` and `/profile` endpoints, but the history is still
-  coordinator-local and can increase Web UI response cost.
+  coordinator-local and can increase Web UI response cost. Raise
+  `impala_query_list_max_bytes` to match: `/queries?json` grows with the retained
+  log, and a response over that ceiling is refused rather than truncated, which
+  leaves Recent and Running scans with nothing to read.
 - **Profile-log directory ingestion** is a future source option, not current
   support. Impala can write completed profile logs separately from the online
   query log. If Query Doctor adds this source, it must read an
@@ -498,6 +501,7 @@ Minimal manual-only web config:
 | `impala_profile_port` | positive integer | global or cluster | Default daemon web port for hosts without a port. |
 | `impala_profile_scheme` | string | global or cluster | `http` or `https`. |
 | `impala_profile_timeout_sec` | positive integer | global or cluster | Per-request timeout. |
+| `impala_query_list_max_bytes` | positive integer | global or cluster | Byte ceiling for one `/queries?json` response, default 5242880, hard cap 268435456. A coordinator with a large `--query_log_size` can answer with far more than the default allows, and an over-sized response is refused rather than truncated, so Recent and Running scans on that cluster return nothing until this is raised to match. Raising it also raises the memory one scan holds. |
 | `impala_profile_prefer_json` | boolean | global or cluster | Optional compatibility probe. When true, direct Impala collection tries a JSON profile endpoint first and falls back to text endpoints for older Impala versions. Default is false. |
 | `impala_profile_collect_docs` | boolean | global or cluster | Optional `/profile_docs/?json` counter-stability probe with `/profile_docs` HTML fallback. When true, direct Impala collection writes a safe allowlisted counter registry context when the endpoint is available as JSON-style docs or a Web UI HTML table. Missing endpoints are non-fatal. Default is false. |
 | `impala_collect_admission_context` | boolean | global or cluster | Optional `/admission?json` aggregate pool-context probe. When true, direct Impala collection writes only bounded safe summaries such as queue presence, queue-time bucket, pool pressure, and freshness. Missing endpoints are non-fatal. Default is false. |
