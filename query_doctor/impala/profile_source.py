@@ -32,6 +32,11 @@ PROFILE_NOT_FOUND_MARKERS = (
     "No profile available",
 )
 PROFILE_CONTENT_MARKERS = (
+    # The daemon opens a text profile with its own header, at offset zero, so
+    # this holds however long the summary and plan that follow turn out to be.
+    # The section headings below can sit past the scan window on a large plan,
+    # which is exactly the profile worth reading.
+    "query (id=",
     "query runtime profile",
     "query timeline",
     "planner timeline",

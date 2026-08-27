@@ -18,9 +18,11 @@ from query_doctor.impala.profile_docs import (
     profile_docs_counter_labels,
 )
 from query_doctor.impala.profile_source import (
+    PROFILE_MARKER_SCAN_CHARS,
     extract_profile_text_from_response,
     fetch_impala_profile_text,
     impala_profile_urls,
+    profile_text_looks_like_runtime_profile,
 )
 from query_doctor.impala.query_discovery import (
     fetch_impala_query_summaries,
@@ -433,6 +435,26 @@ def test_fetch_impala_query_summaries_warns_when_completed_log_is_full():
         "cccccccccccccccc:dddddddddddddddd",
     ]
     assert any("retained log size" in warning for warning in result.warnings)
+
+
+def test_large_profile_is_recognised_when_sections_sit_past_the_scan_window():
+    # The recogniser reads only the first PROFILE_MARKER_SCAN_CHARS. On a large
+    # plan the section headings it looked for land beyond that, so the profile
+    # was rejected as "non-profile content" -- and the profiles large enough to
+    # do that are the ones worth reading. The daemon's own header is at offset
+    # zero, whatever follows it.
+    header = "Query (id=2441d737c62be331:bee9b5a300000000):\n  Summary:\n"
+    padding = "    Filler: value\n" * 40_000
+    profile = header + padding + "  Query Timeline:\n    Query submitted: 1ms\n"
+
+    assert profile.lower().find("query timeline") > PROFILE_MARKER_SCAN_CHARS
+    assert profile_text_looks_like_runtime_profile(profile)
+
+
+def test_non_profile_content_is_still_rejected():
+    assert not profile_text_looks_like_runtime_profile("<html><body>Not here</body></html>")
+    assert not profile_text_looks_like_runtime_profile("")
+    assert not profile_text_looks_like_runtime_profile("Could not find query")
 
 
 @pytest.mark.parametrize(
