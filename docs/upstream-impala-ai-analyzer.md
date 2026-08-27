@@ -1,6 +1,6 @@
 # Upstream Impala AI Analyzer Alignment
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-08-27
 
 Apache Impala has upstream work tracked in
 [IMPALA-14953](https://issues.apache.org/jira/browse/IMPALA-14953) for native
