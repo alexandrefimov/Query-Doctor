@@ -231,6 +231,36 @@ def test_pipeline_run_cmd_uses_timeout_and_safe_timeout_exit(monkeypatch, tmp_pa
     assert "query_doctor.cli.analyze_profile" not in stderr
 
 
+def test_pipeline_report_command_carries_api_key_env_name_not_the_token(
+    tmp_path, monkeypatch, capsys
+):
+    module = load_pipeline_module()
+    case_dir = make_case(tmp_path)
+    token = "sk-pipeline-must-not-log-this"
+    monkeypatch.setenv("QD_REPORT_LLM_API_KEY", token)
+    commands: list[list[str]] = []
+
+    class CompletedProcess:
+        returncode = 0
+
+    def fake_subprocess_run(command, **kwargs):
+        parts = [str(part) for part in command]
+        commands.append(parts)
+        if command_uses_role(parts, "analyze"):
+            write_facts(case_dir, ["db.table_a"])
+        return CompletedProcess()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_subprocess_run)
+
+    assert module.main([str(case_dir), "--metadata-mode", "off"]) == 0
+
+    report_cmd = next(cmd for cmd in commands if command_uses_role(cmd, "report"))
+    report_args = command_args(report_cmd, "report")
+    assert report_args[report_args.index("--llm-api-key-env") + 1] == "QD_REPORT_LLM_API_KEY"
+    assert all(token not in part for cmd in commands for part in cmd)
+    assert token not in capsys.readouterr().out
+
+
 def test_pipeline_rejects_invalid_mode():
     module = load_pipeline_module()
 
