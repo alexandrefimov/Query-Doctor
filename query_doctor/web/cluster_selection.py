@@ -24,6 +24,7 @@ from query_doctor.web.models import (
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
     DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES,
     DEFAULT_METADATA_AUTH,
     DEFAULT_METADATA_PROTOCOL,
     DEFAULT_METADATA_TIMEOUT_SEC,
@@ -172,6 +173,12 @@ def build_web_cluster_config(
             defaults,
             "impala_profile_timeout_sec",
             default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+        ),
+        impala_query_list_max_bytes=first_int(
+            values,
+            defaults,
+            "impala_query_list_max_bytes",
+            default=DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES,
         ),
         impala_profile_prefer_json=first_bool(
             values, defaults, "impala_profile_prefer_json", default=False
@@ -493,6 +500,7 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 impala_profile_port=cluster.impala_profile_port,
                 impala_profile_scheme=cluster.impala_profile_scheme,
                 impala_profile_timeout_sec=cluster.impala_profile_timeout_sec,
+                impala_query_list_max_bytes=cluster.impala_query_list_max_bytes,
                 impala_profile_prefer_json=cluster.impala_profile_prefer_json,
                 impala_profile_collect_docs=cluster.impala_profile_collect_docs,
                 impala_collect_admission_context=cluster.impala_collect_admission_context,

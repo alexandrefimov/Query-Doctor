@@ -2581,6 +2581,53 @@ def test_triage_profile_limit_hard_cap_is_5000(tmp_path, capsys):
     assert "--triage-profile-limit must be <= 5000" in capsys.readouterr().err
 
 
+def test_impala_query_list_max_bytes_reaches_the_batch_config(tmp_path):
+    # The discovery fetch takes this bound as an argument. Without it wired
+    # through the config, a coordinator whose /queries?json is larger than the
+    # default cap can never be scanned at all.
+    module = load_batch_module()
+
+    default_config = module.build_batch_config(
+        module.parse_args(direct_impala_args(tmp_path)),
+        env=auth_env(),
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+
+    assert default_config.impala_query_list_max_bytes == 5 * 1024 * 1024
+
+    raised_config = module.build_batch_config(
+        module.parse_args(
+            direct_impala_args(
+                tmp_path,
+                "--impala-query-list-max-bytes",
+                str(64 * 1024 * 1024),
+            )
+        ),
+        env=auth_env(),
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+
+    assert raised_config.impala_query_list_max_bytes == 64 * 1024 * 1024
+
+
+def test_impala_query_list_max_bytes_hard_cap(tmp_path, capsys):
+    module = load_batch_module()
+
+    result = module.main(
+        direct_impala_args(
+            tmp_path,
+            "--impala-query-list-max-bytes",
+            str(256 * 1024 * 1024 + 1),
+        ),
+        env=auth_env(),
+    )
+
+    assert result == 2
+    assert "--impala-query-list-max-bytes must be <= 268435456" in capsys.readouterr().err
+
+
 def test_high_jobs_require_explicit_safe_mode(tmp_path, monkeypatch):
     module = load_batch_module()
 

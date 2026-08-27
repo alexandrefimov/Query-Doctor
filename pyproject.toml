@@ -51,7 +51,7 @@ dev = [
     "ruff>=0.16.3",
 ]
 e2e = [
-    "playwright>=1.48",
+    "playwright>=1.62.0",
 ]
 postgres = [
     "psycopg[binary]>=3.1,<4",
