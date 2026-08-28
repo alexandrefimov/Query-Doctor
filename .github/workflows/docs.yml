@@ -2,6 +2,7 @@ name: Docs CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches:
       - main
@@ -30,7 +31,7 @@ jobs:
           # A doc ageing past the review window is worth fixing, but it is not this
           # pull request's fault and must not block it. On main and on manual runs
           # the age check still fails, so the rot stays visible.
-          AGE_MODE: ${{ github.event_name == 'pull_request' && 'warn' || 'enforce' }}
+          AGE_MODE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'enforce' || 'warn' }}
         run: python scripts/check_active_docs.py --age-mode "${AGE_MODE}"
 
       - name: Audit public docs for local-only notes

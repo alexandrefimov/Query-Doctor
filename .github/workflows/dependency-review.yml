@@ -2,6 +2,7 @@ name: Dependency Review
 
 on:
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
@@ -21,3 +22,8 @@ jobs:
         uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
+          # The action derives these from the pull request itself. A merge group
+          # has no pull request, so hand it the group's own base and head; the
+          # expressions are empty on pull_request and the defaults apply.
+          base-ref: ${{ github.event.merge_group.base_sha }}
+          head-ref: ${{ github.event.merge_group.head_sha }}
