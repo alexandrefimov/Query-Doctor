@@ -24,6 +24,16 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Sanitizing a string for a log or a retained record is now remembered.
+  Retained history is overwhelmingly repetition — reason codes, severities,
+  field names, statuses — and every page that reads a batch of records
+  re-derives the same answers. One production Online History render passed
+  93698 strings through the sanitizer drawn from 701 distinct values, and
+  spent 14.7 of its 40 profiled seconds inside the host redactor. The result
+  is a pure function of the input, so it is cached, bounded, and skipped
+  entirely when a caller supplies secrets, since those change the answer
+  without changing the text. On a corpus shaped like that page the sanitizer
+  runs 33 times faster from cold.
 - Recent history reads an Impala `exception` as the failure it is. Impala
   reports a failed query with that status, and the Recent path knew only
   `failed` and `error`, so such queries scored nothing for having failed and

@@ -169,3 +169,29 @@ def test_sanitize_identifier_for_log_still_redacts_secrets_and_credentials():
 
     assert "hunter2" not in safe
     assert query_id in safe
+
+
+def test_sanitize_text_for_log_cache_does_not_change_the_answer():
+    text = "failed on prod-" + "worker-01 with Host: edge-" + "daemon-02"
+
+    redaction.sanitized_text_for_log.cache_clear()
+    cold = redaction.sanitize_text_for_log(text)
+    warm = redaction.sanitize_text_for_log(text)
+    uncached = redaction.redact_host_identifiers(redaction.sanitize_identifier_for_log(text))
+
+    assert cold == warm == uncached
+    assert redaction.sanitized_text_for_log.cache_info().hits >= 1
+
+
+def test_sanitize_text_for_log_never_caches_a_call_carrying_secrets():
+    secret = "hunter" + "2"
+    text = f"password={secret} on prod-" + "worker-01"
+
+    redaction.sanitized_text_for_log.cache_clear()
+    safe = redaction.sanitize_text_for_log(text, secrets=(secret,))
+
+    assert secret not in safe
+    # The result depends on the secrets as well as the text, so it must not have
+    # been served from or written to a cache keyed by text alone.
+    assert redaction.sanitized_text_for_log.cache_info().misses == 0
+    assert redaction.sanitized_text_for_log.cache_info().hits == 0
