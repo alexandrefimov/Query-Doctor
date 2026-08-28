@@ -36,6 +36,25 @@ def collector_observed_at(now: datetime | None = None) -> str:
     return observed.replace(microsecond=0).isoformat()
 
 
+def parse_collector_observed_at(value: object) -> datetime | None:
+    """Read back a collector observation time, or None when it is unusable."""
+
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def collector_status(
     *,
     discovery_failed: bool,
