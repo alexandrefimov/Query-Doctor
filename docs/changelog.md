@@ -24,6 +24,14 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- One Online History render now reads the retained history once instead of
+  three times. The case detail context, the scan results and the inbox status
+  each asked for the same summary, and each read loaded and sanitized every
+  materialized record again: against a day of production history the page
+  spent 30.7 of its 40 profiled seconds inside three identical loads. The
+  memo is scoped to the render rather than to a span of wall-clock time, so
+  it cannot serve a stale answer to a later request, and a caller that has
+  not opted into the scope loads exactly as before.
 - Sanitizing a string for a log or a retained record is now remembered.
   Retained history is overwhelmingly repetition — reason codes, severities,
   field names, statuses — and every page that reads a batch of records

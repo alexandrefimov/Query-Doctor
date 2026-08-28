@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -41,7 +43,47 @@ MATERIALIZED_ANALYSIS_FIELDS = ANALYSIS_CACHE_SUMMARY_FIELDS
 COLLECTOR_FRESHNESS_STALE_AFTER_MINUTES = 120
 
 
+_SHARED_INBOX_SUMMARY: ContextVar[dict[object, object] | None] = ContextVar(
+    "recent_history_inbox_shared_summary",
+    default=None,
+)
+
+
+@contextmanager
+def shared_recent_history_inbox_summary():
+    """Let one page render read the retained history once.
+
+    Three independent parts of a page ask for this summary — the case detail
+    context, the scan results and the inbox status — and each read loaded and
+    sanitized every materialized record again. Rendering Online History against
+    a day of production history did that work three times over and took sixteen
+    seconds to produce thirty kilobytes.
+
+    The memo lives for the render rather than for a span of wall-clock time, so
+    it cannot serve a stale answer to a later request. Outside the scope nothing
+    is remembered and every call loads, which is what the tests and any caller
+    that has not opted in still get.
+    """
+    token = _SHARED_INBOX_SUMMARY.set({})
+    try:
+        yield
+    finally:
+        _SHARED_INBOX_SUMMARY.reset(token)
+
+
 def recent_history_inbox_summary_from_settings(settings: WebSettings) -> dict[str, object] | None:
+    memo = _SHARED_INBOX_SUMMARY.get()
+    if memo is None:
+        return load_recent_history_inbox_summary(settings)
+
+    # Only the config path and the demo flag decide what is read.
+    key = (bool(settings.public_demo), str(settings.config))
+    if key not in memo:
+        memo[key] = load_recent_history_inbox_summary(settings)
+    return memo[key]
+
+
+def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object] | None:
     if settings.public_demo:
         return None
     try:
