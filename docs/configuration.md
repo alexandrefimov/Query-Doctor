@@ -20,7 +20,9 @@ need to override a built-in default.
 A third template,
 [query-doctor-config.direct-impala.example.json](../query-doctor-config.direct-impala.example.json),
 drops Cloudera Manager entirely: one direct Impala cluster, SQLite Recent
-history with a 30-day retention, running queries included, and no LLM.
+history with a 30-day retention, running queries included, and no LLM. The
+end-to-end install and restart check that uses it is
+[Door 4](first-path.md#door-4-connect-directly-to-kubernetes-impala).
 
 ## Config Location
 
