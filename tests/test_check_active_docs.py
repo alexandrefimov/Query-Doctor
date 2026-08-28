@@ -99,3 +99,55 @@ def test_current_docs_require_status_index_entry(tmp_path):
         check_active_docs.ACTIVE_DOCS = original_active_docs
 
     assert failures == ["docs/README.md: current docs missing from status index: docs/ui/notes.md"]
+
+
+def stale_active_doc_tree(tmp_path):
+    """An active doc long past the review window that also carries a broken link."""
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    index = docs_dir / "README.md"
+    active = tmp_path / "active.md"
+    active.write_text(
+        "# Active\n\nLast reviewed: 2000-01-01\n\nSee [gone](missing-target.md).\n",
+        encoding="utf-8",
+    )
+    index.write_text(
+        "# Docs\n\n"
+        "Last reviewed: 2099-01-01\n\n"
+        "| Document | Status | Use |\n"
+        "| --- | --- | --- |\n"
+        "| [../active.md](../active.md) | active | test |\n",
+        encoding="utf-8",
+    )
+    return active, index
+
+
+def find_with_active_docs(paths, tmp_path, **kwargs):
+    original = check_active_docs.ACTIVE_DOCS
+    check_active_docs.ACTIVE_DOCS = ("active.md", "docs/README.md")
+    try:
+        return check_active_docs.find_failures(paths, tmp_path, **kwargs)
+    finally:
+        check_active_docs.ACTIVE_DOCS = original
+
+
+def test_stale_review_header_fails_in_the_default_mode(tmp_path):
+    active, index = stale_active_doc_tree(tmp_path)
+
+    failures = find_with_active_docs([active, index], tmp_path)
+
+    assert any("active doc review is older than" in failure for failure in failures)
+
+
+def test_warn_mode_reports_the_stale_review_without_failing(tmp_path):
+    active, index = stale_active_doc_tree(tmp_path)
+    age_warnings: list[str] = []
+
+    failures = find_with_active_docs(
+        [active, index], tmp_path, age_mode="warn", age_warnings=age_warnings
+    )
+
+    assert not any("active doc review is older than" in failure for failure in failures)
+    assert any("active doc review is older than" in warning for warning in age_warnings)
+    # Warn mode loosens the calendar check and nothing else.
+    assert any("missing local link target: missing-target.md" in failure for failure in failures)
