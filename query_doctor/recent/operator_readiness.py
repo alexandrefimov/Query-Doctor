@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from query_doctor.recent.collector_summary import (
@@ -12,6 +13,7 @@ from query_doctor.recent.collector_summary import (
     STATUS_IDLE as COLLECTOR_STATUS_IDLE,
     STATUS_RECORDED as COLLECTOR_STATUS_RECORDED,
     SUMMARY_KIND as COLLECTOR_SUMMARY_KIND,
+    parse_collector_observed_at,
 )
 from query_doctor.recent.history_store import safe_label
 from query_doctor.recent.postgres_readiness import SUMMARY_KIND as POSTGRES_READINESS_SUMMARY_KIND
@@ -104,6 +106,8 @@ def audit_recent_history_operator_readiness(
     collector_summary: Mapping[str, Any] | None = None,
     retention_summary: Mapping[str, Any] | None = None,
     remediation_summary: Mapping[str, Any] | None = None,
+    max_evidence_age_minutes: int | None = None,
+    now: datetime | None = None,
 ) -> RecentHistoryOperatorReadinessResult:
     checks: list[dict[str, str]] = []
     issues: list[str] = []
@@ -164,6 +168,14 @@ def audit_recent_history_operator_readiness(
                 "Optional collector summary absent",
             )
         )
+    if max_evidence_age_minutes is not None:
+        audit_collector_summary_freshness(
+            checks,
+            issues,
+            collector_summary,
+            max_age_minutes=max_evidence_age_minutes,
+            now=now,
+        )
     retention_present = retention_summary is not None
     if retention_present:
         retention_accepted = audit_required_summary(
@@ -221,6 +233,67 @@ def audit_recent_history_operator_readiness(
         retention_summary_present=retention_present,
         remediation_summary_present=remediation_present,
         operations_summary=operations_summary,
+    )
+
+
+def audit_collector_summary_freshness(
+    checks: list[dict[str, str]],
+    issues: list[str],
+    summary: Mapping[str, Any] | None,
+    *,
+    max_age_minutes: int,
+    now: datetime | None = None,
+) -> None:
+    """Block on evidence that has stopped moving.
+
+    Every other check reads a retained payload and asks whether its contents are
+    acceptable. A producer that stops writing keeps the last acceptable payload
+    on disk, so those checks keep passing while nothing is being collected. This
+    is the one check that compares the evidence against the clock.
+    """
+
+    check_id = "collector_summary_freshness"
+    if summary is None:
+        checks.append(
+            readiness_check(
+                check_id,
+                CHECK_BLOCKED,
+                "No collector summary to age-check against the accepted evidence age",
+            )
+        )
+        issues.append(f"{check_id}_absent")
+        return
+    observed_at = parse_collector_observed_at(summary.get("observed_at_iso"))
+    if observed_at is None:
+        checks.append(
+            readiness_check(
+                check_id,
+                CHECK_BLOCKED,
+                "Retained collector summary carries no readable observation time",
+            )
+        )
+        issues.append(f"{check_id}_observed_at_unreadable")
+        return
+    effective_now = now or datetime.now(timezone.utc)
+    if effective_now.tzinfo is None:
+        effective_now = effective_now.replace(tzinfo=timezone.utc)
+    else:
+        effective_now = effective_now.astimezone(timezone.utc)
+    age_minutes = (effective_now - observed_at).total_seconds() / 60
+    if age_minutes > max_age_minutes:
+        checks.append(
+            readiness_check(
+                check_id,
+                CHECK_BLOCKED,
+                "Retained collector summary is older than the accepted evidence age",
+            )
+        )
+        issues.append(f"{check_id}_stale")
+        return
+    checks.append(
+        readiness_check(
+            check_id, CHECK_READY, "Retained collector summary is within the accepted age"
+        )
     )
 
 

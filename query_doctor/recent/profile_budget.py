@@ -8,7 +8,12 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Protocol, Sequence
 
-from query_doctor.recent.history_store import RecentSummaryHistoryRecord, safe_label, safe_text
+from query_doctor.recent.history_store import (
+    RecentSummaryHistoryRecord,
+    safe_label,
+    safe_query_id,
+    safe_text,
+)
 from query_doctor.recent.profile_artifact_storage import (
     PROFILE_ARTIFACT_STORAGE_KIND_FINGERPRINT_ONLY,
     canonical_profile_artifact_storage_kind,
@@ -429,7 +434,7 @@ def profile_job_is_eligible(
     min_suspicion_score: int,
     include_selected: bool,
 ) -> bool:
-    if not safe_text(summary.query_id):
+    if not safe_query_id(summary.query_id):
         return False
     profile_status = safe_label(summary.profile_status, default="not_collected")
     if profile_status in COLLECTED_PROFILE_STATUSES:
@@ -445,7 +450,7 @@ def profile_job_rank_key(summary: RecentSummaryHistoryRecord) -> tuple[object, .
         not bool(summary.selected),
         -(summary.duration_ms or 0),
         safe_text(summary.end_time or ""),
-        safe_text(summary.query_id),
+        safe_query_id(summary.query_id),
     )
 
 
@@ -460,7 +465,7 @@ def profile_job_from_summary(
         engine=safe_label(summary.engine, default="unknown"),
         source_kind=safe_label(summary.source_kind, default="unknown"),
         source_key=safe_text(summary.source_key)[:256] or "default",
-        query_id=safe_text(summary.query_id),
+        query_id=safe_query_id(summary.query_id),
         created_at_iso=planned_at_iso,
         updated_at_iso=planned_at_iso,
         summary_recorded_at_iso=safe_text(summary.recorded_at_iso),
@@ -546,7 +551,7 @@ def normalize_profile_job_key(
         safe_label(engine, default="unknown"),
         safe_label(source_kind, default="unknown"),
         safe_text(source_key)[:256] or "default",
-        safe_text(query_id),
+        safe_query_id(query_id),
     )
 
 
@@ -673,7 +678,7 @@ def profile_job_record_from_storage_values(
         engine=safe_label(row.get("engine"), default="unknown"),
         source_kind=safe_label(row.get("source_kind"), default="unknown"),
         source_key=safe_text(row.get("source_key"))[:256] or "default",
-        query_id=safe_text(row.get("query_id")),
+        query_id=safe_query_id(row.get("query_id")),
         created_at_iso=safe_text(row.get("created_at_iso")),
         updated_at_iso=safe_text(row.get("updated_at_iso")),
         summary_recorded_at_iso=safe_text(row.get("summary_recorded_at_iso")),
@@ -699,7 +704,7 @@ def analysis_cache_record_from_storage_values(
         engine=safe_label(row.get("engine"), default="unknown"),
         source_kind=safe_label(row.get("source_kind"), default="unknown"),
         source_key=safe_text(row.get("source_key"))[:256] or "default",
-        query_id=safe_text(row.get("query_id")),
+        query_id=safe_query_id(row.get("query_id")),
         profile_fingerprint=normalize_analysis_cache_fingerprint(row.get("profile_fingerprint")),
         analyzer_contract=normalize_analysis_cache_contract(row.get("analyzer_contract")),
         recorded_at_iso=safe_text(row.get("recorded_at_iso")),
@@ -717,7 +722,7 @@ def profile_artifact_record_from_storage_values(
         engine=safe_label(row.get("engine"), default="unknown"),
         source_kind=safe_label(row.get("source_kind"), default="unknown"),
         source_key=safe_text(row.get("source_key"))[:256] or "default",
-        query_id=safe_text(row.get("query_id")),
+        query_id=safe_query_id(row.get("query_id")),
         profile_fingerprint=normalize_analysis_cache_fingerprint(row.get("profile_fingerprint")),
         artifact_contract=normalize_profile_artifact_contract(row.get("artifact_contract")),
         recorded_at_iso=safe_text(row.get("recorded_at_iso")),

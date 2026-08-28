@@ -133,6 +133,16 @@ def summary_history_record(query_id: str, *, recorded_at_iso: str):
     )
 
 
+def test_recent_history_keeps_query_id_that_reads_as_host_port():
+    query_id = "db4d1e2f3a4b5c6d:7a8b9c0d00000000"
+
+    record = summary_history_record(query_id, recorded_at_iso="2026-07-03T10:05:00+00:00")
+    job = profile_budget_job(query_id)
+
+    assert record.query_id == query_id
+    assert job.query_id == query_id
+
+
 def test_summary_suspicion_scores_failed_long_expensive_summary():
     score = score_recent_summary_suspicion(
         CMQuerySummary(

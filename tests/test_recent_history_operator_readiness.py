@@ -1,4 +1,7 @@
 import json
+from datetime import datetime, timezone
+
+import pytest
 
 from query_doctor.cli import recent_history_operator_readiness as cli
 from query_doctor.recent.operator_readiness import (
@@ -442,3 +445,118 @@ def test_recent_history_operator_readiness_cli_fail_on_warning_without_path_echo
     assert "Recent history operator readiness: blocked" in output
     assert str(missing_path) not in output
     assert "missing-postgres-summary" not in output
+
+
+def test_recent_history_operator_readiness_ignores_evidence_age_without_the_option():
+    result = audit_recent_history_operator_readiness(
+        postgres_readiness_summary=postgres_summary(),
+        profile_worker_summary=worker_summary(),
+        collector_summary=collector_summary(),
+        now=datetime(2026, 7, 16, 10, 0, tzinfo=timezone.utc),
+    )
+    payload = result.payload()
+
+    assert payload["status"] == "ready"
+    assert not any(check["id"] == "collector_summary_freshness" for check in payload["checks"])
+
+
+def test_recent_history_operator_readiness_accepts_collector_summary_within_the_age():
+    result = audit_recent_history_operator_readiness(
+        postgres_readiness_summary=postgres_summary(),
+        profile_worker_summary=worker_summary(),
+        collector_summary=collector_summary(),
+        max_evidence_age_minutes=30,
+        now=datetime(2026, 7, 9, 10, 25, tzinfo=timezone.utc),
+    )
+    payload = result.payload()
+
+    assert payload["status"] == "ready"
+    assert payload["issue_codes"] == []
+    assert {
+        "id": "collector_summary_freshness",
+        "status": "ready",
+        "summary": "Retained collector summary is within the accepted age",
+    } in payload["checks"]
+
+
+def test_recent_history_operator_readiness_blocks_a_collector_summary_that_stopped_moving():
+    result = audit_recent_history_operator_readiness(
+        postgres_readiness_summary=postgres_summary(),
+        profile_worker_summary=worker_summary(),
+        collector_summary=collector_summary("idle"),
+        max_evidence_age_minutes=30,
+        now=datetime(2026, 7, 16, 10, 0, tzinfo=timezone.utc),
+    )
+    payload = result.payload()
+
+    assert payload["status"] == "blocked"
+    assert payload["issue_codes"] == ["collector_summary_freshness_stale"]
+
+
+def test_recent_history_operator_readiness_blocks_unreadable_and_absent_observation_time():
+    unreadable = collector_summary()
+    unreadable["observed_at_iso"] = "not a timestamp"
+
+    unreadable_result = audit_recent_history_operator_readiness(
+        postgres_readiness_summary=postgres_summary(),
+        profile_worker_summary=worker_summary(),
+        collector_summary=unreadable,
+        max_evidence_age_minutes=30,
+        now=datetime(2026, 7, 9, 10, 25, tzinfo=timezone.utc),
+    )
+    absent_result = audit_recent_history_operator_readiness(
+        postgres_readiness_summary=postgres_summary(),
+        profile_worker_summary=worker_summary(),
+        max_evidence_age_minutes=30,
+        now=datetime(2026, 7, 9, 10, 25, tzinfo=timezone.utc),
+    )
+
+    assert unreadable_result.payload()["issue_codes"] == [
+        "collector_summary_freshness_observed_at_unreadable"
+    ]
+    assert absent_result.payload()["issue_codes"] == ["collector_summary_freshness_absent"]
+
+
+def test_recent_history_operator_readiness_cli_blocks_on_stale_evidence(tmp_path, capsys):
+    postgres_path = tmp_path / "postgres.json"
+    worker_path = tmp_path / "worker.json"
+    collector_path = tmp_path / "collector.json"
+    postgres_path.write_text(json.dumps(postgres_summary()), encoding="utf-8")
+    worker_path.write_text(json.dumps(worker_summary()), encoding="utf-8")
+    collector_path.write_text(json.dumps(collector_summary()), encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "--postgres-readiness-summary-json",
+            str(postgres_path),
+            "--profile-worker-summary-json",
+            str(worker_path),
+            "--collector-summary-json",
+            str(collector_path),
+            "--max-evidence-age-minutes",
+            "30",
+            "--fail-on-warning",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "collector_summary_freshness" in out
+    assert str(collector_path) not in out
+
+
+def test_recent_history_operator_readiness_cli_takes_a_positive_evidence_age_only():
+    required = [
+        "--postgres-readiness-summary-json",
+        "postgres.json",
+        "--profile-worker-summary-json",
+        "worker.json",
+    ]
+
+    assert cli.parse_args(required).max_evidence_age_minutes is None
+    assert (
+        cli.parse_args(required + ["--max-evidence-age-minutes", "30"]).max_evidence_age_minutes
+        == 30
+    )
+    with pytest.raises(SystemExit):
+        cli.parse_args(required + ["--max-evidence-age-minutes", "0"])

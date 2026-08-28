@@ -24,6 +24,26 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- `query-doctor-recent-history-operator-readiness` can now age the evidence it
+  reads. Every other check asks whether a retained payload's contents are
+  acceptable, which a producer that stopped writing keeps satisfying: its last
+  good summary stays on disk and the audit keeps reporting `ready`.
+  `--max-evidence-age-minutes` blocks when the collector summary was observed
+  longer ago than that, when its observation time is unreadable, and when no
+  collector summary was supplied at all. Without the option the audit behaves
+  exactly as before. Only the collector summary carries an observation time, so
+  the Postgres readiness and profile-worker summaries are still judged on
+  contents alone.
+- Recent history keeps the query id the engine assigned instead of running
+  it through host redaction. The host pass reads the colon in an Impala id
+  as a host/port separator, so an id whose low half starts with a digit and
+  whose high half starts with a short role prefix was stored as
+  `host_NN:<low half>`. Nothing can be fetched under that id, and the
+  profile worker retried it until its attempts ran out.
+  `sanitize_identifier_for_log` is the same sanitizer without the host pass;
+  secret, credential, and header redaction still apply, and free-form text is
+  unchanged. The summary row, the profile job, the analysis cache, and the
+  artifact row now agree on one id.
 - The installed self-test now walks the direct Impala route as well as the
   Cloudera Manager one. It parses a synthetic query list holding one finished
   and one in-flight query, checks the in-flight entry is normalized rather than
