@@ -42,9 +42,7 @@ def test_spark_support_matrix_records_package_handoff_without_support_claim() ->
 def test_spark_public_docs_index_package_code_under_experimental_boundary() -> None:
     code_map = _normalized(CODE_MAP)
     handoff = _normalized(CODEX_HANDOFF)
-    ru_support_boundary = _normalized(
-        ROOT / "docs" / "i18n" / "ru" / "support-boundary.md"
-    )
+    ru_support_boundary = _normalized(ROOT / "docs" / "i18n" / "ru" / "support-boundary.md")
     ru_docs_index = _normalized(RU_DOCS_INDEX)
 
     assert "Spark compact History Server intake and evidence packages" in code_map

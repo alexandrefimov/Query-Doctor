@@ -367,9 +367,7 @@ def test_sso_proxy_support_readiness_docs_mention_script() -> None:
     release_checklist = (readiness.ROOT / "docs" / "release-checklist.md").read_text(
         encoding="utf-8"
     )
-    support_boundary = (readiness.ROOT / "docs" / "support-boundary.md").read_text(
-        encoding="utf-8"
-    )
+    support_boundary = (readiness.ROOT / "docs" / "support-boundary.md").read_text(encoding="utf-8")
 
     assert "scripts/audit_owner_raw_sso_proxy_support_readiness.py" in deployment
     assert "owner_raw_sso_proxy_support_readiness_v1" in changelog
