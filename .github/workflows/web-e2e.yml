@@ -2,6 +2,7 @@ name: Web E2E
 
 on:
   pull_request:
+  merge_group:
   push:
     branches:
       - main
@@ -36,12 +37,15 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base_sha="${{ github.event.pull_request.base.sha }}"
             head_sha="${{ github.sha }}"
+          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            base_sha="${{ github.event.merge_group.base_sha }}"
+            head_sha="${{ github.sha }}"
           else
             base_sha="${{ github.event.before }}"
             head_sha="${{ github.sha }}"
           fi
 
-          if [[ "$base_sha" =~ ^0+$ ]]; then
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
             echo "run_e2e=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

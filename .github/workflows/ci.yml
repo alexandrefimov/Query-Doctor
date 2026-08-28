@@ -2,6 +2,7 @@ name: Safety CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches:
       - main
@@ -35,7 +36,7 @@ jobs:
 
       - name: Check committed whitespace
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           if [ -n "${BASE_SHA}" ] && ! echo "${BASE_SHA}" | grep -Eq '^0+$' && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
             git diff --check "${BASE_SHA}" HEAD
@@ -64,7 +65,7 @@ jobs:
 
       - name: Run public-release preflight
         env:
-          RELEASE_HISTORY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_HISTORY_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           RELEASE_HISTORY_HEAD: ${{ github.sha }}
         run: |
           if [ -n "${RELEASE_HISTORY_BASE}" ] && ! echo "${RELEASE_HISTORY_BASE}" | grep -Eq '^0+$' && git cat-file -e "${RELEASE_HISTORY_BASE}^{commit}" 2>/dev/null; then
