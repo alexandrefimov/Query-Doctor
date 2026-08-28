@@ -8,7 +8,7 @@ version = "0.11.0"
 description = "Rank slow Apache Impala queries and turn one exported profile into a deterministic diagnosis, without raw SQL or profiles leaving the machine."
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Aleksandr Efimov" },
 ]
@@ -37,7 +37,6 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Topic :: Database",
@@ -116,7 +115,7 @@ include = ["query_doctor*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 extend-exclude = [
     "cases",
     "legacy",

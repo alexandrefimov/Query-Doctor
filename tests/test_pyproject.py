@@ -103,7 +103,7 @@ def test_public_packaging_metadata_is_present():
         'Homepage = "https://github.com/alexandrefimov/Query-Doctor"',
         'Issues = "https://github.com/alexandrefimov/Query-Doctor/issues"',
         '"Development Status :: 4 - Beta"',
-        '"Programming Language :: Python :: 3.9"',
+        '"Programming Language :: Python :: 3.10"',
         '"Programming Language :: Python :: 3.11"',
     ):
         assert expected in pyproject_text
@@ -114,7 +114,7 @@ def test_public_packaging_metadata_is_present():
         'url="https://github.com/alexandrefimov/Query-Doctor"',
         '"Homepage": "https://github.com/alexandrefimov/Query-Doctor"',
         '"Development Status :: 4 - Beta"',
-        '"Programming Language :: Python :: 3.9"',
+        '"Programming Language :: Python :: 3.10"',
         '"Programming Language :: Python :: 3.11"',
     ):
         assert expected in setup_text
