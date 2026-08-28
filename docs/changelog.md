@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-08-10
+Last updated: 2026-08-28
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -23,6 +23,20 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 [release-notes-0.4.1.md](release-notes-0.4.1.md).
 
 ## Unreleased
+
+- The installed self-test now walks the direct Impala route as well as the
+  Cloudera Manager one. It parses a synthetic query list holding one finished
+  and one in-flight query, checks the in-flight entry is normalized rather than
+  passed through as `RUNNING`, writes both as raw-free summaries into SQLite,
+  and reopens the store through a fresh instance, so a Recent history that does
+  not survive a restart fails on the workstation instead of on a cluster. A
+  public-safe `query-doctor-config.direct-impala.example.json` joins the minimal
+  and full templates: one direct Impala cluster, SQLite history, no Cloudera
+  Manager, no LLM. Tests drive it through the real batch config builder and
+  preflight rather than only reading its JSON. `first-path.md` gains a fourth
+  door covering that route from install check through one bounded
+  discovery-only pass to a restart of the local UI. No new collector was added
+  and the direct-source support claim did not change.
 
 - The README is now a landing page rather than the full contract. Its first
   command runs without any input the reader has to obtain, the synthetic demo
