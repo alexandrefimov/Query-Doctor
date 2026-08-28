@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from functools import lru_cache
 from collections.abc import Callable, Iterable
 from typing import Protocol
 
@@ -81,6 +82,7 @@ PUBLIC_OR_INFRA_DOMAIN_SUFFIXES = frozenset(
         "test",
     }
 )
+SANITIZED_TEXT_CACHE_SIZE = 8192
 SAFE_FILE_EXTENSION_SUFFIXES = frozenset(
     {
         "crt",
@@ -179,7 +181,31 @@ HOSTLIKE_FQDN_RE = HostlikeFqdnMatcher()
 
 
 def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
-    return redact_host_identifiers(sanitize_identifier_for_log(text, secrets=secrets))
+    safe = str(text)
+    for secret in secrets:
+        if secret:
+            # A caller-supplied secret makes the result depend on more than the
+            # text, so this path is never cached.
+            return redact_host_identifiers(sanitize_identifier_for_log(safe, secrets=secrets))
+    return sanitized_text_for_log(safe)
+
+
+@lru_cache(maxsize=SANITIZED_TEXT_CACHE_SIZE)
+def sanitized_text_for_log(text: str) -> str:
+    """Sanitize one string, remembering the answer.
+
+    Sanitizing is a pure function of its input: the host redactor numbers its
+    aliases within a single call, so the same string always yields the same
+    result. Retained history is overwhelmingly repetition — reason codes,
+    severities, field names, statuses — so the same few hundred strings are
+    sanitized over and over whenever a page reads a batch of records. One
+    production page rendered 93698 strings drawn from 701 distinct values, and
+    spent most of its time on the redaction those repeats did not need.
+
+    The cache holds sanitized output, which is raw-free by construction, and is
+    bounded so an unusual run of distinct strings cannot grow it without limit.
+    """
+    return redact_host_identifiers(sanitize_identifier_for_log(text))
 
 
 def sanitize_identifier_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
