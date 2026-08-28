@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from query_doctor.cm.models import CMQuerySummary
-from query_doctor.cm.query_discovery import is_running_query_summary
+from query_doctor.cm.query_discovery import (
+    CANCELLED_QUERY_STATUSES,
+    FAILED_QUERY_STATUSES,
+    is_running_query_summary,
+)
 
 
 GIB = 1024**3
@@ -30,10 +34,10 @@ def score_recent_summary_suspicion(summary: CMQuerySummary) -> SummarySuspicionS
     score = 0
     reasons: list[str] = []
     status = (summary.status or "").strip().lower()
-    if status in {"failed", "error"}:
+    if status in FAILED_QUERY_STATUSES:
         score += 100
         reasons.append("failed_or_error_status")
-    elif status in {"cancelled", "canceled"}:
+    elif status in CANCELLED_QUERY_STATUSES:
         score += 70
         reasons.append("cancelled_status")
 

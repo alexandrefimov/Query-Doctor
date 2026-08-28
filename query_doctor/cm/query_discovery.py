@@ -142,11 +142,18 @@ def recent_summary_time_key(summary: CMQuerySummary) -> str:
     return summary.end_time or summary.start_time or ""
 
 
+# Engine failure vocabularies. Impala reports a failed query as "exception"; the
+# Recent path knew only "failed" and "error" and read those queries as successful,
+# which cost them both their failure score and the failed-query filter.
+FAILED_QUERY_STATUSES = frozenset({"failed", "error", "exception"})
+CANCELLED_QUERY_STATUSES = frozenset({"cancelled", "canceled"})
+
+
 def recent_summary_status_priority(summary: CMQuerySummary) -> int:
     if is_running_query_summary(summary):
         return 0
     status = (summary.status or "").strip().lower()
-    if status in {"failed", "error", "cancelled", "canceled"}:
+    if status in FAILED_QUERY_STATUSES or status in CANCELLED_QUERY_STATUSES:
         return 1
     if status in {"succeeded", "success", "finished"}:
         return 2
@@ -184,9 +191,9 @@ def classify_recent_query_candidate(
         return False, "excluded: not running query", extract_sql_verb(summary.statement)
     if is_running and not include_running:
         return False, "excluded: running query", extract_sql_verb(summary.statement)
-    if status in {"failed", "error"} and not include_failed:
+    if status in FAILED_QUERY_STATUSES and not include_failed:
         return False, "excluded: failed query", extract_sql_verb(summary.statement)
-    if status in {"cancelled", "canceled"} and not include_failed:
+    if status in CANCELLED_QUERY_STATUSES and not include_failed:
         return False, "excluded: cancelled query", extract_sql_verb(summary.statement)
 
     statement = summary.statement or ""

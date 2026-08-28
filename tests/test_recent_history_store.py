@@ -3,6 +3,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from query_doctor.cm.models import CMQuerySummary, RecentQueryCandidate
+from query_doctor.cm.query_discovery import classify_recent_query_candidate
 from query_doctor.recent.history_store import (
     RecentHistoryStoreError,
     RecentHistoryRetentionPolicy,
@@ -11,6 +12,7 @@ from query_doctor.recent.history_store import (
 )
 from query_doctor.recent.profile_budget import (
     ANALYSIS_CACHE_SCHEMA_VERSION,
+    DEFAULT_PROFILE_BUDGET_MIN_SUSPICION_SCORE,
     PROFILE_ARTIFACT_SCHEMA_VERSION,
     PROFILE_JOB_STATUS_COMPLETED,
     PROFILE_JOB_STATUS_FAILED,
@@ -141,6 +143,33 @@ def test_recent_history_keeps_query_id_that_reads_as_host_port():
 
     assert record.query_id == query_id
     assert job.query_id == query_id
+
+
+def test_impala_exception_counts_as_a_failure_everywhere_failed_does():
+    def summary(status: str) -> CMQuerySummary:
+        return CMQuerySummary(
+            query_id="q",
+            duration_ms=938_000,
+            status=status,
+            query_type="QUERY",
+            statement="SELECT one FROM two",
+        )
+
+    scores = {
+        s: score_recent_summary_suspicion(summary(s)) for s in ("exception", "failed", "error")
+    }
+    verdicts = {
+        s: classify_recent_query_candidate(summary(s), min_duration_sec=8)[:2]
+        for s in ("exception", "failed", "error")
+    }
+
+    assert "failed_or_error_status" in scores["exception"].reasons
+    assert scores["exception"].score == scores["failed"].score == scores["error"].score
+    assert verdicts["exception"] == verdicts["failed"] == verdicts["error"]
+    assert verdicts["exception"] == (False, "excluded: failed query")
+    # The score alone clears the profile-budget floor, so the query is still
+    # collected; it is the selected path it drops out of, exactly like failed.
+    assert scores["exception"].score >= DEFAULT_PROFILE_BUDGET_MIN_SUSPICION_SCORE
 
 
 def test_summary_suspicion_scores_failed_long_expensive_summary():

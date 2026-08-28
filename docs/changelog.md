@@ -24,6 +24,16 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Recent history reads an Impala `exception` as the failure it is. Impala
+  reports a failed query with that status, and the Recent path knew only
+  `failed` and `error`, so such queries scored nothing for having failed and
+  slipped past the filter that keeps failures out of the selected set — two
+  bugs that hid each other, since the query was still collected, just for the
+  wrong reason and with the wrong priority. One failure vocabulary now backs
+  the summary scorer, the failed-query filter and the status ordering, so a
+  new engine spelling has one place to be added. On the deployment where this
+  surfaced, 286 of about 68000 collected summaries carry that status, dozens
+  of them failing after fifteen minutes of work.
 - `query-doctor-recent-history-operator-readiness` can now age the evidence it
   reads. Every other check asks whether a retained payload's contents are
   acceptable, which a producer that stopped writing keeps satisfying: its last
