@@ -51,6 +51,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Resolve every declared extra
+        # CI installs .[dev] only, so a floor raised in an extra no job touches
+        # would pass every check here and break on a user's machine instead.
+        run: python scripts/check_declared_extras_resolve.py
+
       - name: Run ruff correctness checks
         run: python -m ruff check query_doctor tests scripts
 
