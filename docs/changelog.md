@@ -24,6 +24,13 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Three places that needed one field from the Online History view no longer
+  build every presented row to get it. The scope parts and the warning
+  messages are derived from the summary alone, and the empty message needs
+  only how many cases there are, but each call presented all of them first —
+  500 rows on the deployment measured, 2.85 of the page's profiled seconds
+  spent in `present_recent_scan_case_row`. The values are unchanged, which a
+  test now pins against the full view.
 - One Online History render now reads the retained history once instead of
   three times. The case detail context, the scan results and the inbox status
   each asked for the same summary, and each read loaded and sanitized every

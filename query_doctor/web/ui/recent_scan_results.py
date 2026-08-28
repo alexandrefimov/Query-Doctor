@@ -22,6 +22,12 @@ from query_doctor.web.ui.html_helpers import (
 )
 from query_doctor.web.ui.diagnostic_i18n import localize_diagnostic_text
 from query_doctor.web.trusted_artifacts import decorate_cases_with_optimizer_artifact_status
+from query_doctor.recent.materialized_case_index import materialized_case_entries
+from query_doctor.web.presenters.recent_scan_summary import (
+    recent_scan_empty_message,
+    recent_scan_scope_parts,
+    recent_scan_warning_messages,
+)
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseRowView,
     is_online_history_summary,
@@ -835,7 +841,7 @@ def render_batch_scan_details(
             workload_history=workload_history,
         )
     else:
-        parts = list(present_recent_scan_summary(summary).scope_parts)
+        parts = list(recent_scan_scope_parts(summary))
         parts.extend(scan_detail_metric_parts(header_items))
         parts.extend(profile_reuse_scan_parts(summary))
     if not parts:
@@ -1021,7 +1027,7 @@ def render_batch_empty_note(summary: dict[str, Any]) -> str:
 def batch_empty_notice_parts(summary: dict[str, Any]) -> tuple[str, str] | None:
     return batch_empty_notice_parts_from_message(
         summary,
-        present_recent_scan_summary(summary).empty_message,
+        recent_scan_empty_message(summary, case_count=len(materialized_case_entries(summary))),
     )
 
 
@@ -1264,7 +1270,7 @@ def render_batch_warning_note(summary: dict[str, Any]) -> str:
 
 
 def scan_warning_message(summary: dict[str, Any]) -> str:
-    return scan_warning_message_from_warnings(present_recent_scan_summary(summary).warning_messages)
+    return scan_warning_message_from_warnings(recent_scan_warning_messages(summary))
 
 
 def scan_warning_message_from_warnings(warnings: tuple[str, ...]) -> str:
