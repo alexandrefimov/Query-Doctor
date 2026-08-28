@@ -56,13 +56,14 @@ A direct Impala Web UI download named `profile_<query-id-high>_<query-id-low>`
 works as-is. Local and private web sessions can also upload one exported profile
 from the Query Inbox page.
 
-Three entry paths, depending on the access you have:
+Four entry paths, depending on the access you have:
 
 | Door | Use when |
 | --- | --- |
 | One exported profile | You can get a text profile but cannot grant live access yet. |
 | Synthetic demo | You want a read-only click-through with no real data. |
 | Minimal CM scan | You have read-only Cloudera Manager access for an Impala service. |
+| Direct Impala scan | You can reach the debug Web UI endpoints of Kubernetes Impala coordinators. |
 
 Full setup, options, and troubleshooting for each: [docs/first-path.md](docs/first-path.md).
 
@@ -78,9 +79,10 @@ query-doctor-self-test
 
 `query-doctor-self-test` is the installed-package confidence check. It exercises
 the packaged console scripts, one-profile analysis, local web rendering,
-deterministic reports, and the corpus smoke path against synthetic data, without
-contacting Cloudera Manager, impalad, Spark, Trino, Prometheus, Ollama, or any
-external LLM service.
+deterministic reports, direct Impala Recent/Running query-list parsing, a
+raw-free SQLite history reopen, and the corpus smoke path against synthetic
+data. It does not contact Cloudera Manager, impalad, Spark, Trino, Prometheus,
+Ollama, or any external LLM service.
 
 Local JSON configuration is documented in
 [docs/configuration.md](docs/configuration.md). The preferred workstation path is
