@@ -152,3 +152,20 @@ def test_sanitize_text_for_log_handles_bounded_pathological_mixed_input():
     assert "Host: host_01" in redacted
     assert malformed_ipv6 in redacted
     assert safe_table in redacted
+
+
+def test_sanitize_identifier_for_log_keeps_query_id_the_host_pass_reads_as_host_port():
+    query_id = "db4d1e2f3a4b5c6d:7a8b9c0d00000000"
+
+    assert redaction.sanitize_text_for_log(query_id) == "host_01:7a8b9c0d00000000"
+    assert redaction.sanitize_identifier_for_log(query_id) == query_id
+
+
+def test_sanitize_identifier_for_log_still_redacts_secrets_and_credentials():
+    query_id = "db4d1e2f3a4b5c6d:7a8b9c0d00000000"
+    text = f"query_id={query_id} password=" + "hunter2"
+
+    safe = redaction.sanitize_identifier_for_log(text, secrets=("hunter2",))
+
+    assert "hunter2" not in safe
+    assert query_id in safe

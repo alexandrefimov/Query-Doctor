@@ -179,6 +179,19 @@ HOSTLIKE_FQDN_RE = HostlikeFqdnMatcher()
 
 
 def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
+    return redact_host_identifiers(sanitize_identifier_for_log(text, secrets=secrets))
+
+
+def sanitize_identifier_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
+    """Sanitize a value that is an engine-assigned identifier, not free-form text.
+
+    Same secret and credential redaction as sanitize_text_for_log, without the
+    host pass. An Impala query id is written ``<hi>:<lo>``, and the host pass
+    reads that colon as a host/port separator: when the low half starts with a
+    digit it is taken for a port, and a high half that happens to start with a
+    short role prefix (``db4a...``) is replaced by a ``host_NN`` alias. The
+    surviving id names no query, so the profile behind it can never be fetched.
+    """
     safe = str(text)
     for secret in secrets:
         if secret:
@@ -188,7 +201,6 @@ def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
     safe = BEARER_BASIC_RE.sub(r"\1 <redacted>", safe)
     safe = URL_CREDENTIAL_RE.sub(r"\1<redacted>@", safe)
     safe = SECRET_VALUE_RE.sub(redact_secret_value_match_preserving_marker, safe)
-    safe = redact_host_identifiers(safe)
     return safe
 
 

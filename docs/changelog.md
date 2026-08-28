@@ -24,6 +24,16 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Recent history keeps the query id the engine assigned instead of running
+  it through host redaction. The host pass reads the colon in an Impala id
+  as a host/port separator, so an id whose low half starts with a digit and
+  whose high half starts with a short role prefix was stored as
+  `host_NN:<low half>`. Nothing can be fetched under that id, and the
+  profile worker retried it until its attempts ran out.
+  `sanitize_identifier_for_log` is the same sanitizer without the host pass;
+  secret, credential, and header redaction still apply, and free-form text is
+  unchanged. The summary row, the profile job, the analysis cache, and the
+  artifact row now agree on one id.
 - The installed self-test now walks the direct Impala route as well as the
   Cloudera Manager one. It parses a synthetic query list holding one finished
   and one in-flight query, checks the in-flight entry is normalized rather than
