@@ -26,7 +26,12 @@ jobs:
           python-version: "3.11"
 
       - name: Check active docs
-        run: python scripts/check_active_docs.py
+        env:
+          # A doc ageing past the review window is worth fixing, but it is not this
+          # pull request's fault and must not block it. On main and on manual runs
+          # the age check still fails, so the rot stays visible.
+          AGE_MODE: ${{ github.event_name == 'pull_request' && 'warn' || 'enforce' }}
+        run: python scripts/check_active_docs.py --age-mode "${AGE_MODE}"
 
       - name: Audit public docs for local-only notes
         run: python scripts/audit_public_docs.py

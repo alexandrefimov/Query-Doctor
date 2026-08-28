@@ -193,7 +193,13 @@ def find_i18n_failures(root: Path = ROOT) -> list[str]:
     return failures
 
 
-def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
+def find_failures(
+    paths: list[Path],
+    root: Path = ROOT,
+    *,
+    age_mode: str = "enforce",
+    age_warnings: list[str] | None = None,
+) -> list[str]:
     failures: list[str] = []
     today = date.today()
     active_rels = {str(Path(rel)) for rel in ACTIVE_DOCS}
@@ -229,9 +235,14 @@ def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
             if last_reviewed is None:
                 failures.append(f"{rel_path}: active doc missing Last reviewed/Last updated header")
             elif (today - last_reviewed).days > MAX_ACTIVE_DOC_AGE_DAYS:
-                failures.append(
+                stale = (
                     f"{rel_path}: active doc review is older than {MAX_ACTIVE_DOC_AGE_DAYS} days"
                 )
+                if age_mode == "warn":
+                    if age_warnings is not None:
+                        age_warnings.append(stale)
+                else:
+                    failures.append(stale)
         for lineno, line in iter_doc_lines(path):
             for stale in STALE_PATTERNS:
                 if stale.pattern.search(line):
@@ -267,6 +278,18 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         help="Specific markdown files to check. Defaults to active docs.",
     )
+    parser.add_argument(
+        "--age-mode",
+        choices=("enforce", "warn"),
+        default="enforce",
+        help=(
+            "How to treat an active doc whose review header is older than "
+            f"{MAX_ACTIVE_DOC_AGE_DAYS} days. 'warn' reports it without failing, so a "
+            "document ageing out does not block pull requests that never touched it. "
+            "Everything else this script checks still fails in either mode. "
+            "Default: %(default)s."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -274,12 +297,20 @@ def main() -> int:
     args = parse_args()
     root = args.repo.resolve()
     paths = [root / path for path in args.paths] if args.paths else active_doc_paths(root)
-    failures = find_failures(paths, root)
+    age_warnings: list[str] = []
+    failures = find_failures(paths, root, age_mode=args.age_mode, age_warnings=age_warnings)
+    for warning in age_warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     if failures:
         for failure in failures:
             print(failure, file=sys.stderr)
         return 1
     print(f"Checked {len(paths)} docs.")
+    if age_warnings:
+        print(
+            f"{len(age_warnings)} doc(s) are past the {MAX_ACTIVE_DOC_AGE_DAYS}-day review "
+            "window; --age-mode warn reports them without failing."
+        )
     return 0
 
 
