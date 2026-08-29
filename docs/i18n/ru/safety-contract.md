@@ -81,16 +81,17 @@ Last reviewed: 2026-07-13
 - Dry-run и preflight paths не должны собирать profile text.
 - Real profile collection не должен печатать raw profiles, SQL, raw Cloudera
   Manager JSON или credentials.
-- Первый поддержанный путь Impala metadata connection - Kerberos плюс
-  `impala-shell` с уже полученным TGT от `kinit`.
-- Metadata collector не вызывает `kinit`, не запрашивает passwords, не
-  принимает AD/LDAP passwords и не использует impyla/Python DB API.
+- Первый поддержанный путь Impala metadata connection - Kerberos поверх
+  HiveServer2 с уже полученным TGT от `kinit`.
+- Metadata collector не вызывает `kinit`, не запрашивает passwords и не
+  принимает AD/LDAP passwords. Он открывает одно read-only HiveServer2
+  соединение на прогон через impyla и переиспользует его для всех statements.
 - Metadata collector принимает только bounded table references из explicit CLI
   input или Python-owned selected-case extraction. Он выполняет только
   read-only statements: `SHOW CREATE TABLE`, `SHOW TABLE STATS`,
   `SHOW COLUMN STATS`.
-- Raw `impala-shell` stdout/stderr не печатается в terminal; collected output
-  bounded, redacted и пишется только в explicit `--out`.
+- Raw строки координатора и текст ошибок драйвера не печатаются в terminal;
+  collected output bounded, redacted и пишется только в explicit `--out`.
 - Generated `impala_context.md` и `impala_context.json` являются local outputs
   и не должны попадать в commit.
 

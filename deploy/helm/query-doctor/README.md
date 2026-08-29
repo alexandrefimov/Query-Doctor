@@ -255,11 +255,11 @@ to a `kubernetes.io/basic-auth` bootstrap Secret and keep using a separate
 Query Doctor DSN Secret. The chart does not install the CNPG operator, render
 Secret objects, or accept inline usernames, passwords, or DSNs.
 
-The upstream image includes Kerberos client tools and the isolated
-`/opt/query-doctor/.venv-impala-shell/bin/impala-shell` executable. To enable
-metadata refresh in configured mode, provide explicit metadata coordinator
-settings and a valid Kerberos ticket cache through the private deployment
-environment; do not put keytabs or ticket contents in chart values.
+The upstream image includes Kerberos client tools and the HiveServer2 metadata
+driver. To enable metadata refresh in configured mode, provide explicit metadata
+coordinator settings on the coordinator's HiveServer2 port and a valid Kerberos
+ticket cache through the private deployment environment; do not put keytabs or
+ticket contents in chart values.
 
 For deployments that need the chart to prepare the metadata Kerberos cache,
 enable the optional Secret-reference flow:
@@ -334,8 +334,8 @@ QUERY_DOCTOR_K8S_METADATA_SMOKE_RELEASE=query-doctor-full \
 scripts/kubernetes-configured-metadata-smoke.sh
 ```
 
-The smoke verifies the web pod's Kerberos cache, `klist`, configured
-`impala-shell`, and native `sasl` import, then submits a one-case Recent scan
+The smoke verifies the web pod's Kerberos cache, `klist`, and the importable
+impyla and kerberos modules, then submits a one-case Recent scan
 with `metadata_top_limit=1`. It requires collected or partial metadata with
 table context, and output is limited to aggregate job, metadata status, and
 table-context counters. The service scan is not published as the latest UI

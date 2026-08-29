@@ -23,7 +23,7 @@ def test_declared_extras_reads_every_name_in_the_section():
 
     extras = module.declared_extras((REPO_DIR / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert extras == ["dev", "e2e", "postgres"]
+    assert extras == ["dev", "e2e", "impala", "postgres"]
 
 
 def test_declared_extras_stops_at_the_next_section():

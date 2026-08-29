@@ -10,9 +10,18 @@ from command_test_support import command_args, command_uses_role
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
+
+from query_doctor.impala import hs2_runner
+
+
+@pytest.fixture(autouse=True)
+def metadata_driver_present(monkeypatch):
+    """These tests exercise metadata wiring, not whether impyla is installed."""
+    monkeypatch.setattr(hs2_runner, "driver_available", lambda: True)
+
+
 METADATA_ENV_VARS = [
     "QD_METADATA_COORDINATOR",
-    "QD_METADATA_IMPALA_SHELL",
     "QD_METADATA_PROTOCOL",
     "QD_METADATA_AUTH",
     "QD_METADATA_MAX_TABLES",
@@ -120,7 +129,6 @@ def test_pipeline_stop_after_analysis_help_mentions_no_llm(capsys):
 def test_pipeline_metadata_options_read_environment_defaults(monkeypatch):
     module = load_pipeline_module()
     monkeypatch.setenv("QD_METADATA_COORDINATOR", "coordinator.example.invalid:21000")
-    monkeypatch.setenv("QD_METADATA_IMPALA_SHELL", sys.executable)
     monkeypatch.setenv("QD_METADATA_PROTOCOL", "hs2")
     monkeypatch.setenv("QD_METADATA_MAX_TABLES", "3")
     monkeypatch.setenv("QD_METADATA_MAX_OUTPUT_BYTES", "65536")
@@ -128,7 +136,6 @@ def test_pipeline_metadata_options_read_environment_defaults(monkeypatch):
     args = module.parse_args(["case-dir"])
 
     assert args.metadata_coordinator == "coordinator.example.invalid:21000"
-    assert args.metadata_impala_shell == sys.executable
     assert args.metadata_protocol == "hs2"
     assert args.metadata_max_tables == 3
     assert args.metadata_max_output_bytes == 65536
@@ -403,8 +410,6 @@ def test_pipeline_stop_after_analysis_auto_with_metadata_config_collects_and_ski
             str(case_dir),
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--stop-after-analysis",
         ]
     )
@@ -452,8 +457,6 @@ def test_pipeline_metadata_failure_policy_fail_is_default(tmp_path, monkeypatch)
                 str(case_dir),
                 "--metadata-coordinator",
                 "coordinator.example.invalid:21000",
-                "--metadata-impala-shell",
-                sys.executable,
                 "--stop-after-analysis",
             ]
         )
@@ -497,8 +500,6 @@ def test_pipeline_metadata_failure_policy_continue_stops_after_analysis_without_
             str(case_dir),
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--stop-after-analysis",
             "--metadata-failure-policy",
             "continue",
@@ -558,8 +559,6 @@ def test_pipeline_metadata_auth_preflight_blocks_default_collector(tmp_path, mon
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
         ]
     )
 
@@ -627,8 +626,6 @@ def test_pipeline_view_metadata_not_applicable_does_not_fail_stop_after_analysis
             str(case_dir),
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--stop-after-analysis",
         ]
     )
@@ -755,8 +752,6 @@ def test_pipeline_auto_with_metadata_config_collects_referenced_tables(tmp_path,
             str(case_dir),
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--metadata-kerberos-service-name",
             "hive",
         ]
@@ -766,43 +761,6 @@ def test_pipeline_auto_with_metadata_config_collects_referenced_tables(tmp_path,
     assert events == ["analyzer", "metadata", "analyzer", "report"]
     assert collector_commands[0].count("--table") == 1
     assert "db.table_a" in collector_commands[0]
-
-
-def test_pipeline_auto_resolves_repo_relative_metadata_impala_shell_from_other_cwd(
-    tmp_path, monkeypatch
-):
-    module = load_pipeline_module()
-    case_dir = make_case(tmp_path)
-    other_cwd = tmp_path / "outside-repo"
-    other_cwd.mkdir()
-    collector_commands: list[list[str]] = []
-
-    def fake_run_cmd(cmd, cwd):
-        if command_uses_role(cmd, "analyze"):
-            write_facts(case_dir, ["db.table_a"])
-
-    def fake_metadata(cmd, cwd):
-        collector_commands.append(cmd)
-
-    monkeypatch.chdir(other_cwd)
-    monkeypatch.setattr(module, "run_cmd", fake_run_cmd)
-    monkeypatch.setattr(module, "run_metadata_cmd", fake_metadata)
-
-    result = module.main(
-        [
-            str(case_dir),
-            "--skip-report",
-            "--metadata-coordinator",
-            "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            "tests/test_pipeline_cli.py",
-        ]
-    )
-
-    assert result == 0
-    collector_cmd = collector_commands[0]
-    impala_shell = collector_cmd[collector_cmd.index("--impala-shell") + 1]
-    assert impala_shell == str((REPO_DIR / "tests/test_pipeline_cli.py").resolve())
 
 
 def test_pipeline_metadata_mode_off_does_not_collect_even_when_configured(tmp_path, monkeypatch):
@@ -828,8 +786,6 @@ def test_pipeline_metadata_mode_off_does_not_collect_even_when_configured(tmp_pa
             "off",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--metadata-kerberos-service-name",
             "hive",
         ]
@@ -899,8 +855,6 @@ def test_pipeline_collects_metadata_for_referenced_tables_and_reruns_analyzer(
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--mode",
             "user",
         ]
@@ -920,7 +874,7 @@ def test_pipeline_collects_metadata_for_referenced_tables_and_reruns_analyzer(
     assert "--out" in collector_cmd
     assert collector_cmd[collector_cmd.index("--out") + 1] == str(case_dir)
     assert "--protocol" in collector_cmd
-    assert collector_cmd[collector_cmd.index("--protocol") + 1] == "beeswax"
+    assert collector_cmd[collector_cmd.index("--protocol") + 1] == "hs2"
 
 
 def test_pipeline_metadata_collection_respects_max_tables(tmp_path, monkeypatch):
@@ -945,8 +899,6 @@ def test_pipeline_metadata_collection_respects_max_tables(tmp_path, monkeypatch)
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--metadata-max-tables",
             "2",
         ]
@@ -1145,8 +1097,6 @@ def test_pipeline_metadata_skips_malformed_and_duplicate_referenced_tables(tmp_p
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--metadata-kerberos-service-name",
             "hive",
         ]
@@ -1191,8 +1141,6 @@ def test_pipeline_metadata_skips_generic_placeholder_referenced_tables(tmp_path,
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
         ]
     )
 
@@ -1228,8 +1176,6 @@ def test_pipeline_metadata_skips_generic_placeholders_without_running_collector(
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
         ]
     )
 
@@ -1262,8 +1208,6 @@ def test_pipeline_metadata_uses_internal_source_tables_without_echoing_them(
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
         ]
     )
 
@@ -1299,8 +1243,6 @@ def test_pipeline_metadata_qualifies_unqualified_tables_with_default_database_fr
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
         ]
     )
 
@@ -1332,8 +1274,6 @@ def test_pipeline_metadata_explicit_default_database_overrides_facts(tmp_path, m
             "--collect-impala-metadata",
             "--metadata-coordinator",
             "coordinator.example.invalid:21000",
-            "--metadata-impala-shell",
-            sys.executable,
             "--metadata-default-db",
             "example_explicit_db",
         ]
@@ -1364,7 +1304,7 @@ Query (id=abc:def)
             "--metadata-coordinator",
             "host_01:21000",
             "--metadata-protocol",
-            "beeswax",
+            "hs2",
             "--metadata-max-tables",
             "5",
             "--metadata-dry-run",

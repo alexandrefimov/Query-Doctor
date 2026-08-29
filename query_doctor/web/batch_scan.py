@@ -655,7 +655,7 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
                 reason_code="impala.metadata_not_configured",
                 stage="Checking metadata request",
                 next_step=(
-                    "Restart with metadata coordinator and impala-shell settings, "
+                    "Restart with metadata coordinator settings, "
                     "or run in fast mode with metadata disabled."
                 ),
             )

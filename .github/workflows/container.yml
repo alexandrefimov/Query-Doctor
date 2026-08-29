@@ -35,6 +35,8 @@ jobs:
           python -m pytest -q tests/test_kubernetes_packaging.py tests/test_web_app.py::test_health_probe_routes_are_raw_free_json
 
       - name: Build container image
+        env:
+          QUERY_DOCTOR_INSTALL_EXTRAS: impala
         run: scripts/build-image.sh query-doctor:${GITHUB_SHA}
 
       - name: Smoke container image

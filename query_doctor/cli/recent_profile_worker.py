@@ -100,7 +100,7 @@ def main(
             effective_env,
             config.krb5ccname,
         )
-        batch_recent.preflight(config, env=effective_env, repo_root=repo_root)
+        batch_recent.preflight(config, env=effective_env)
         config.out.mkdir(parents=True, exist_ok=True)
         store = recent_history_store_from_config(config, env=effective_env)
         if store is None:

@@ -119,8 +119,7 @@ Use this shape when Cloudera Manager is not the profile source:
     "impalad-worker-2.example.com"
   ],
   "impala_kerberos_service_name": "hive",
-  "metadata_coordinator": "impala-coordinator.example.com:21000",
-  "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
+  "metadata_coordinator": "impala-coordinator.example.com:21050",
   "metadata_kerberos_service_name": "hive",
   "metadata_kerberos_host_fqdn": "impala-coordinator.example.com"
 }
@@ -163,8 +162,9 @@ Direct Impala history can grow through several distinct options:
 For load-balanced metadata connections, keep `metadata_coordinator` as the
 reachable `HOST:PORT` endpoint and set `metadata_kerberos_host_fqdn` when the
 Kerberos server principal uses a different DNS hostname.
-Metadata collection uses read-only `SHOW` statements through `impala-shell` and
-stays bounded by the metadata limits below.
+Metadata collection runs read-only `SHOW` statements over HiveServer2 and stays
+bounded by the metadata limits below. `metadata_coordinator` must name the
+coordinator's HiveServer2 port, not its Beeswax port.
 For Cloudera Manager Recent batches, the metadata refresh may use table
 references extracted from discovery statements before profile identifier
 redaction. Those identifiers are passed only to the bounded metadata subprocess;
@@ -188,16 +188,14 @@ Impala clusters; otherwise direct clusters inherit irrelevant CM defaults.
       "cluster": "prod_cluster",
       "service": "impala",
       "ca_bundle": "~/.qdcreds/cm-chain.pem",
-      "metadata_coordinator": "impala-prod-coordinator.example.com:21000",
-      "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+      "metadata_coordinator": "impala-prod-coordinator.example.com:21050"
     },
     {
       "id": "direct-impala",
       "label": "Direct Impala",
       "cluster_type": "impala",
       "impala_profile_hosts": ["impalad-worker-1.example.com"],
-      "metadata_coordinator": "impala-coordinator.example.com:21000",
-      "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+      "metadata_coordinator": "impala-coordinator.example.com:21050"
     }
   ]
 }
@@ -544,14 +542,13 @@ when selected-query profile evidence correlates the signal.
 
 | Field | Type | Scope | Notes |
 | --- | --- | --- | --- |
-| `metadata_coordinator` | string | global or cluster | Impala coordinator `HOST:PORT`. |
-| `metadata_impala_shell` | string path | global or cluster | `impala-shell` executable. |
+| `metadata_coordinator` | string | global or cluster | Impala coordinator `HOST:PORT` on its HiveServer2 port. |
 | `metadata_auth` | string | global or cluster | Only `kerberos` is supported. |
-| `metadata_protocol` | string | global or cluster | `beeswax`, `hs2`, or `hs2-http`. |
-| `metadata_ssl` | boolean | global or cluster | Enables TLS for `impala-shell`. |
+| `metadata_protocol` | string | global or cluster | `hs2` or `hs2-http`. |
+| `metadata_ssl` | boolean | global or cluster | Enables TLS for the metadata connection. |
 | `metadata_ca_cert` | string path | global or cluster | CA certificate for metadata TLS. |
 | `metadata_kerberos_service_name` | string | global or cluster | Kerberos service token for metadata, such as `impala` or `hive`. |
-| `metadata_kerberos_host_fqdn` | string | global or cluster | Optional Kerberos host override for load-balanced metadata coordinators. Passed to `impala-shell --kerberos_host_fqdn`. |
+| `metadata_kerberos_host_fqdn` | string | global or cluster | Optional Kerberos host override for load-balanced metadata coordinators. Becomes the host half of the service principal. |
 | `metadata_timeout_sec` | positive integer | global or cluster | Optional per-command timeout override. Omit to use the built-in default. |
 | `metadata_max_tables` | positive integer | global or cluster | Optional maximum tables override for each metadata run. Omit to use the workflow default. |
 | `metadata_max_output_bytes` | positive integer | global or cluster | Optional metadata output byte limit override. Omit to use the built-in default. |

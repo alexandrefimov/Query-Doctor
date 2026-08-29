@@ -9,8 +9,7 @@
       "service": "impala",
       "ca_bundle": "~/.qdcreds/cm-chain.pem",
       "cm_metrics_profile": "cm7",
-      "metadata_coordinator": "impala-prod-coordinator.example.com:21000",
-      "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+      "metadata_coordinator": "impala-prod-coordinator.example.com:21050"
     },
     {
       "id": "direct-impala",
@@ -21,8 +20,7 @@
         "impalad-worker-2.example.com"
       ],
       "impala_kerberos_service_name": "hive",
-      "metadata_coordinator": "impala-coordinator.example.com:21000",
-      "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
+      "metadata_coordinator": "impala-coordinator.example.com:21050",
       "metadata_kerberos_service_name": "hive",
       "collect_prometheus_timeseries": true,
       "prometheus_url": "https://prometheus.example.com/"

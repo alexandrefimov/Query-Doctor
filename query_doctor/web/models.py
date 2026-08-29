@@ -35,7 +35,7 @@ DEFAULT_IMPALA_PROFILE_SCHEME = "http"
 DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC = 15
 DEFAULT_IMPALA_QUERY_LIST_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_METADATA_AUTH = "kerberos"
-DEFAULT_METADATA_PROTOCOL = "beeswax"
+DEFAULT_METADATA_PROTOCOL = "hs2"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
 DEFAULT_LANGUAGE = "en"
 BATCH_CM_INSPECT_LIMIT_MAX = 5000
@@ -110,7 +110,6 @@ class WebClusterConfig:
     prometheus_step_sec: int = DEFAULT_PROMETHEUS_STEP_SEC
     prometheus_timeseries_padding_sec: int = DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC
     metadata_coordinator: str | None = None
-    metadata_impala_shell: str | None = None
     metadata_auth: str = DEFAULT_METADATA_AUTH
     metadata_protocol: str = DEFAULT_METADATA_PROTOCOL
     metadata_kerberos_service_name: str | None = None
@@ -194,7 +193,6 @@ class WebSettings:
     prometheus_step_sec: int = DEFAULT_PROMETHEUS_STEP_SEC
     prometheus_timeseries_padding_sec: int = DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC
     metadata_coordinator: str | None = None
-    metadata_impala_shell: str | None = None
     metadata_auth: str = DEFAULT_METADATA_AUTH
     metadata_protocol: str = DEFAULT_METADATA_PROTOCOL
     metadata_kerberos_service_name: str | None = None

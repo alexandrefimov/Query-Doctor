@@ -21,13 +21,3 @@ updates:
     labels:
       - dependencies
       - tooling
-    ignore:
-      # These pins belong to the isolated CDH6-compatible impala-shell venv.
-      # scripts/bootstrap-impala-shell installs impala_shell itself with
-      # --no-deps so patched transitive dependencies such as sqlparse can move
-      # independently from the legacy shell package.
-      - dependency-name: "bitarray"
-      - dependency-name: "configparser"
-      - dependency-name: "prettytable"
-      - dependency-name: "six"
-      - dependency-name: "thrift"

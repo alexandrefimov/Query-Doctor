@@ -97,10 +97,9 @@ KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
 query-doctor-collect-impala-context \
   --table scratch_db.query_doctor_meta_probe \
   --out /tmp/query-doctor-impala-collector-smoke-test-table \
-  --impala-shell .venv-impala-shell/bin/impala-shell \
-  --coordinator impala-coordinator.example.net:21000 \
+  --coordinator impala-coordinator.example.net:21050 \
   --auth kerberos \
-  --protocol beeswax \
+  --protocol hs2 \
   --timeout-sec 30 \
   --max-output-bytes 200000 \
   --redact
@@ -112,9 +111,8 @@ Pipeline metadata smoke:
 KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
 query-doctor-pipeline "$SMOKE_OUT" \
   --metadata-mode on \
-  --metadata-coordinator impala-coordinator.example.net:21000 \
-  --metadata-impala-shell .venv-impala-shell/bin/impala-shell \
-  --metadata-protocol beeswax \
+  --metadata-coordinator impala-coordinator.example.net:21050 \
+  --metadata-protocol hs2 \
   --metadata-max-tables 1 \
   --metadata-redact \
   --stop-after-analysis
@@ -254,7 +252,7 @@ ignored local notes или config.
 После no-LLM scan запускайте
 `scripts/audit_profile_evidence_gates.py --fail-on-issues`.
 
-Для Ambari deployments, где `impala-shell` использует service principal `hive`,
+Для Ambari deployments, где Impala использует service principal `hive`,
 указывайте `impala_kerberos_service_name` и `metadata_kerberos_service_name` в
 ignored local config или соответствующих CLI flags.
 

@@ -33,7 +33,7 @@ environment variables или local env files, описанных в
 - cluster/service selection;
 - `ca_bundle` path;
 - `krb5ccname`;
-- metadata coordinator and `impala-shell` settings;
+- metadata coordinator settings, on the coordinator's HiveServer2 port;
 - direct Impala profile/query source settings, including optional JSON profile
   probing with text fallback and optional safe `/profile_docs` counter-stability
   probing;

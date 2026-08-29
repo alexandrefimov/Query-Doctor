@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import signal
 import subprocess
 import threading
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import BinaryIO, Callable
 
 from query_doctor.config.contract import merge_kerberos_cache_env
+from query_doctor.impala import hs2_runner
 
 from query_doctor.web.config import metadata_configured
 from query_doctor.web.models import WebError, WebSettings
@@ -81,27 +81,19 @@ SAFE_SUBPROCESS_FAILURE_HINTS: tuple[SafeSubprocessFailureHint, ...] = (
         "Metadata Kerberos cache could not be inspected",
     ),
     SafeSubprocessFailureHint(
-        "metadata impala-shell is not available",
-        "Recognized safe failure reason: metadata impala-shell is not available. "
-        "Fix metadata_impala_shell or disable metadata collection.",
-        "impala.metadata_shell_unavailable",
-        "Fix metadata_impala_shell for the selected source or disable metadata collection.",
-        "Metadata impala-shell is unavailable",
-    ),
-    SafeSubprocessFailureHint(
-        "impala-shell executable is not available",
-        "Recognized safe failure reason: metadata impala-shell is not available. "
-        "Fix metadata_impala_shell or disable metadata collection.",
-        "impala.metadata_shell_unavailable",
-        "Fix metadata_impala_shell for the selected source or disable metadata collection.",
-        "Metadata impala-shell is unavailable",
+        "impala metadata driver is not available",
+        "Recognized safe failure reason: the impyla metadata driver is not installed. "
+        "Install query-doctor[impala] or disable metadata collection.",
+        "impala.metadata_driver_unavailable",
+        "Install query-doctor[impala] in the web server environment or disable metadata collection.",
+        "Metadata driver is unavailable",
     ),
     SafeSubprocessFailureHint(
         "metadata collection is not configured",
         "Recognized safe failure reason: metadata collection is not configured. "
-        "Add metadata coordinator and impala-shell settings or disable metadata collection.",
+        "Add metadata coordinator settings or disable metadata collection.",
         "impala.metadata_not_configured",
-        "Add metadata coordinator and impala-shell settings or disable metadata collection.",
+        "Add metadata coordinator settings or disable metadata collection.",
         "Metadata collection is not configured",
     ),
     SafeSubprocessFailureHint(
@@ -462,16 +454,6 @@ def effective_subprocess_env(
     return effective
 
 
-def resolve_metadata_impala_shell(settings: WebSettings, env: dict[str, str]) -> str | None:
-    executable = settings.metadata_impala_shell or "impala-shell"
-    if "/" in executable:
-        path = Path(executable)
-        if not path.is_absolute():
-            path = settings.repo_dir / path
-        return str(path) if path.is_file() else None
-    return shutil.which(executable, path=env.get("PATH"))
-
-
 def preflight_web_metadata_batch(
     settings: WebSettings,
     *,
@@ -486,17 +468,17 @@ def preflight_web_metadata_batch(
             reason_code="impala.metadata_not_configured",
             stage="Checking metadata preflight",
             next_step=(
-                "Restart with metadata coordinator and impala-shell settings, "
+                "Restart with metadata coordinator settings, "
                 "or run in fast mode with metadata disabled."
             ),
         )
-    if not resolve_metadata_impala_shell(settings, env):
+    if not hs2_runner.driver_available():
         raise WebError(
-            "Metadata preflight failed: impala-shell executable is not available. Fix server metadata settings or disable metadata in config.",
-            title="Metadata impala-shell is unavailable",
-            reason_code="impala.metadata_shell_unavailable",
+            "Metadata preflight failed: the impyla metadata driver is not installed. Install query-doctor[impala] or disable metadata in config.",
+            title="Metadata driver is unavailable",
+            reason_code="impala.metadata_driver_unavailable",
             stage="Checking metadata preflight",
-            next_step="Fix metadata_impala_shell for the selected source or disable metadata collection.",
+            next_step="Install query-doctor[impala] in the web server environment or disable metadata collection.",
         )
     krb5ccname = env.get("KRB5CCNAME", "")
     if krb5ccname and any(ord(ch) < 32 or ord(ch) == 127 for ch in krb5ccname):

@@ -147,10 +147,9 @@ repository-local `query-doctor-config.json`:
 ```json
 {
   "krb5ccname": "FILE:/tmp/krb5cc_query_doctor_user",
-  "metadata_coordinator": "impala-coordinator.example.net:21000",
-  "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
+  "metadata_coordinator": "impala-coordinator.example.net:21050",
   "metadata_auth": "kerberos",
-  "metadata_protocol": "beeswax",
+  "metadata_protocol": "hs2",
   "metadata_redact": true
 }
 ```
@@ -219,10 +218,9 @@ and Prometheus runtime metrics are selected together:
       "prometheus_metrics_profile": "ambari-hadoop",
       "prometheus_step_sec": 30,
       "prometheus_timeseries_padding_sec": 300,
-      "metadata_coordinator": "impala-coordinator.example.com:21000",
-      "metadata_impala_shell": "impala-shell",
+      "metadata_coordinator": "impala-coordinator.example.com:21050",
       "metadata_auth": "kerberos",
-      "metadata_protocol": "beeswax",
+      "metadata_protocol": "hs2",
       "metadata_kerberos_service_name": "hive",
       "metadata_redact": true
     }
@@ -244,14 +242,24 @@ Before using the config, validate it:
 python3 -m query_doctor.config.contract ~/.qdcreds/query-doctor-config.json
 ```
 
-For Ambari deployments whose Impala shell service principal is `hive`, create a
-fresh safe test query with the same Kerberos service name:
+For Ambari deployments whose Impala service principal is `hive`, create a fresh
+safe test query with the same Kerberos service name. Any HiveServer2 client will
+do; with impyla installed:
 
 ```bash
-KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
-  impala-shell -i impala-coordinator.example.com:21000 \
-  -k --kerberos_service_name=hive --protocol=beeswax \
-  -q 'select 1'
+KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user python - <<'PY'
+from impala.dbapi import connect
+
+with connect(
+    host="impala-coordinator.example.com",
+    port=21050,
+    auth_mechanism="GSSAPI",
+    kerberos_service_name="hive",
+) as connection:
+    cursor = connection.cursor()
+    cursor.execute("select 1")
+    print(cursor.fetchall())
+PY
 ```
 
 Submit the printed Query ID in the Known Query ID UI while the Ambari Direct
@@ -447,16 +455,15 @@ Record private per-run results in local exclude-only notes. Public docs may keep
 path-free aggregate summaries, compatibility observations, and follow-up gates
 after reviewing them for support-claim drift.
 
-For local `impala-shell`, use the isolated venv. The wrapper creates it when
-`.venv-impala-shell/bin/impala-shell` is missing; manually:
+Metadata collection needs the HiveServer2 driver from the `impala` extra:
 
 ```bash
-scripts/bootstrap-impala-shell
+python -m pip install -e ".[impala]"
 ```
 
-Use one explicit scratch/test table, not a broad table list. For CDH 6 / Impala
-3.2 with pip `impala-shell`, use `--protocol beeswax`; HS2/OpenSession may not
-work with that stack.
+Use one explicit scratch/test table, not a broad table list. The coordinator has
+to expose HiveServer2; Beeswax is not reachable any more, so point
+`--coordinator` at the HS2 port, 21050 by default.
 
 ### Collector Smoke
 
@@ -468,10 +475,9 @@ KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
 query-doctor-collect-impala-context \
   --table scratch_db.query_doctor_meta_probe \
   --out /tmp/query-doctor-impala-collector-smoke-test-table \
-  --impala-shell .venv-impala-shell/bin/impala-shell \
-  --coordinator impala-coordinator.example.net:21000 \
+  --coordinator impala-coordinator.example.net:21050 \
   --auth kerberos \
-  --protocol beeswax \
+  --protocol hs2 \
   --timeout-sec 30 \
   --max-output-bytes 200000 \
   --redact
@@ -615,11 +621,11 @@ paths, or raw coordinator payloads. They perform no SQL execution, metadata
 collection, Running scan, Details/trusted report generation, optimizer
 behavior, or support-claim promotion.
 
-### Padded `impala-shell` Output
+### Padded Metadata Output
 
-`impala-shell` can heavily pad tabular output, especially for
-`SHOW CREATE TABLE`. Query Doctor compacts only safe shell formatting before
-checking the output-size limit:
+`SHOW CREATE TABLE` returns DDL carrying whatever padding the catalog holds.
+Query Doctor compacts only safe formatting before checking the output-size
+limit:
 
 - trims trailing whitespace;
 - collapses repeated blank lines;
@@ -654,9 +660,8 @@ cp "$SOURCE_CASE/profile_digest.md" "$SMOKE_OUT/profile_digest.md"
 KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
 query-doctor-pipeline "$SMOKE_OUT" \
   --metadata-mode on \
-  --metadata-coordinator impala-coordinator.example.net:21000 \
-  --metadata-impala-shell .venv-impala-shell/bin/impala-shell \
-  --metadata-protocol beeswax \
+  --metadata-coordinator impala-coordinator.example.net:21050 \
+  --metadata-protocol hs2 \
   --metadata-max-tables 1 \
   --metadata-redact
 ```
@@ -667,9 +672,8 @@ Fast analyzer/metadata-only variant:
 KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
 query-doctor-pipeline "$SMOKE_OUT" \
   --metadata-mode on \
-  --metadata-coordinator impala-coordinator.example.net:21000 \
-  --metadata-impala-shell .venv-impala-shell/bin/impala-shell \
-  --metadata-protocol beeswax \
+  --metadata-coordinator impala-coordinator.example.net:21050 \
+  --metadata-protocol hs2 \
   --metadata-max-tables 1 \
   --metadata-redact \
   --stop-after-analysis
@@ -780,9 +784,8 @@ Second-stage full reports should be run only for top suspicious cases from
 ```bash
 KRB5CCNAME=FILE:/tmp/krb5cc_query_doctor_user \
 query-doctor-pipeline /tmp/query-doctor-recent-batch-example/cases/case-001/QUERY_ID_ALIAS \
-  --metadata-coordinator impala-coordinator.example.net:21000 \
-  --metadata-impala-shell .venv-impala-shell/bin/impala-shell \
-  --metadata-protocol beeswax \
+  --metadata-coordinator impala-coordinator.example.net:21050 \
+  --metadata-protocol hs2 \
   --metadata-max-tables 5 \
   --metadata-max-output-bytes 2097152 \
   --metadata-redact

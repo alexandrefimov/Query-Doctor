@@ -150,10 +150,8 @@ def build_parser(
         ),
     )
     parser.add_argument(
-        "--metadata-coordinator", help="Impala coordinator HOST:PORT for web metadata collection."
-    )
-    parser.add_argument(
-        "--metadata-impala-shell", help="impala-shell executable for web metadata collection."
+        "--metadata-coordinator",
+        help="Impala coordinator HOST:PORT for web metadata collection, on its HiveServer2 port.",
     )
     parser.add_argument(
         "--metadata-auth",
@@ -161,12 +159,12 @@ def build_parser(
     )
     parser.add_argument(
         "--metadata-protocol",
-        choices=("beeswax", "hs2", "hs2-http"),
-        help="impala-shell protocol for web metadata collection. Default comes from config or beeswax.",
+        choices=("hs2", "hs2-http"),
+        help="HiveServer2 transport for web metadata collection. Default comes from config or hs2.",
     )
     parser.add_argument(
         "--metadata-kerberos-service-name",
-        help="Kerberos service principal short name for metadata impala-shell, e.g. hive or impala.",
+        help="Kerberos service principal short name for metadata collection, e.g. hive or impala.",
     )
     parser.add_argument(
         "--metadata-kerberos-host-fqdn",
@@ -175,7 +173,7 @@ def build_parser(
     parser.add_argument(
         "--metadata-ssl",
         action="store_true",
-        help="Pass --ssl to impala-shell metadata collection.",
+        help="Use TLS for the metadata coordinator connection.",
     )
     parser.add_argument(
         "--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections."

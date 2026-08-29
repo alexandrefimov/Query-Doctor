@@ -1,26 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG QUERY_DOCTOR_PYTHON_BASE_IMAGE=python:3.10-slim
-
-FROM ${QUERY_DOCTOR_PYTHON_BASE_IMAGE} AS impala-shell
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-WORKDIR /opt/query-doctor
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        gcc \
-        libkrb5-dev \
-        libsasl2-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements-impala-shell.txt ./
-COPY scripts/bootstrap-impala-shell ./scripts/bootstrap-impala-shell
-
-RUN QD_IMPALA_SHELL_VENV=/opt/query-doctor/.venv-impala-shell \
-    ./scripts/bootstrap-impala-shell
+ARG QUERY_DOCTOR_PYTHON_BASE_IMAGE=python:3.13-slim
 
 FROM ${QUERY_DOCTOR_PYTHON_BASE_IMAGE} AS runtime
 
@@ -29,17 +9,16 @@ ARG QUERY_DOCTOR_INSTALL_EXTRAS=""
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     QUERY_DOCTOR_CONTAINER=1 \
-    QD_IMPALA_SHELL=/opt/query-doctor/.venv-impala-shell/bin/impala-shell \
     DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /opt/query-doctor
 
+# krb5-user carries klist, which the metadata Kerberos preflight runs, and
+# libkrb5-3, which pykerberos links against.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         krb5-user \
-        libsasl2-2 \
-        libsasl2-modules-gssapi-mit \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 10001 querydoctor \
@@ -47,14 +26,20 @@ RUN groupadd --gid 10001 querydoctor \
 
 COPY pyproject.toml setup.py README.md LICENSE ./
 COPY query_doctor ./query_doctor
-COPY --from=impala-shell /opt/query-doctor/.venv-impala-shell ./.venv-impala-shell
 
-RUN /usr/local/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+# pykerberos, which the impala extra pulls in for the GSSAPI handshake, ships no
+# wheel. The toolchain and the Kerberos headers are installed and removed inside
+# one layer so they do not reach the runtime image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libkrb5-dev \
+    && /usr/local/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
     && if [ -n "${QUERY_DOCTOR_INSTALL_EXTRAS}" ]; then \
         /usr/local/bin/python -m pip install --no-cache-dir ".[${QUERY_DOCTOR_INSTALL_EXTRAS}]"; \
     else \
         /usr/local/bin/python -m pip install --no-cache-dir --no-deps .; \
-    fi
+    fi \
+    && apt-get purge -y --auto-remove gcc libkrb5-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 USER 10001:10001
 

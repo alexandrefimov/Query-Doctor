@@ -672,7 +672,6 @@ def validate_public_demo_settings(settings: WebSettings) -> None:
             settings.impala_profile_hosts,
             settings.prometheus_url,
             settings.metadata_coordinator,
-            settings.metadata_impala_shell,
             settings.metadata_kerberos_host_fqdn,
             settings.source_owner_user,
             settings.source_owner_user_options,
@@ -1067,10 +1066,6 @@ def build_web_settings(
         metadata_coordinator=first_string_value(
             args.metadata_coordinator,
             optional_config_string(config_values, "metadata_coordinator"),
-        ),
-        metadata_impala_shell=first_string_value(
-            args.metadata_impala_shell,
-            optional_config_string(config_values, "metadata_impala_shell"),
         ),
         metadata_auth=first_string_value(
             args.metadata_auth,

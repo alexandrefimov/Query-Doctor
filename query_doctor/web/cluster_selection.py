@@ -218,10 +218,6 @@ def build_web_cluster_config(
             string_value(values, "metadata_coordinator"),
             string_value(defaults, "metadata_coordinator"),
         ),
-        metadata_impala_shell=first_string(
-            string_value(values, "metadata_impala_shell"),
-            string_value(defaults, "metadata_impala_shell"),
-        ),
         metadata_auth=first_string(
             string_value(values, "metadata_auth"),
             string_value(defaults, "metadata_auth"),
@@ -510,7 +506,6 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 prometheus_step_sec=cluster.prometheus_step_sec,
                 prometheus_timeseries_padding_sec=cluster.prometheus_timeseries_padding_sec,
                 metadata_coordinator=cluster.metadata_coordinator,
-                metadata_impala_shell=cluster.metadata_impala_shell,
                 metadata_auth=cluster.metadata_auth,
                 metadata_protocol=cluster.metadata_protocol,
                 metadata_kerberos_service_name=cluster.metadata_kerberos_service_name,

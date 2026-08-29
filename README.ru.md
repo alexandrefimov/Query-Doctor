@@ -121,8 +121,9 @@ docker run --rm -p 127.0.0.1:8765:8765 ghcr.io/alexandrefimov/query-doctor:0.11.
 ```
 
 Образ по умолчанию поднимает безопасное синтетическое публичное демо. Работает
-на Python 3.10 и несёт клиентские инструменты Kerberos и изолированный
-`impala-shell`, который используется при настроенном сборе metadata.
+на Python 3.13 и несёт клиентские инструменты Kerberos, нужные при настроенном
+сборе metadata. Драйвер HiveServer2 добавляется сборкой с
+`QUERY_DOCTOR_INSTALL_EXTRAS=impala`.
 
 Kubernetes-манифесты, пробы, базовые ресурсы, хранение истории Recent и Helm
 chart описаны в [deploy/kubernetes/README.md](deploy/kubernetes/README.md),

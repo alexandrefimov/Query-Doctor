@@ -55,8 +55,6 @@ def display_float(value: float) -> str:
 def append_web_metadata_args(cmd: list[str], settings: WebSettings) -> None:
     if settings.metadata_coordinator:
         cmd.extend(["--metadata-coordinator", settings.metadata_coordinator])
-    if settings.metadata_impala_shell:
-        cmd.extend(["--metadata-impala-shell", settings.metadata_impala_shell])
     cmd.extend(["--metadata-auth", settings.metadata_auth])
     cmd.extend(["--metadata-protocol", settings.metadata_protocol])
     cmd.extend(["--metadata-timeout-sec", str(settings.metadata_timeout_sec)])

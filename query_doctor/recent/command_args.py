@@ -29,8 +29,6 @@ def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
     if config.metadata_mode == "off" or not config.metadata_coordinator:
         return
     cmd.extend(["--metadata-coordinator", config.metadata_coordinator])
-    if config.metadata_impala_shell:
-        cmd.extend(["--metadata-impala-shell", config.metadata_impala_shell])
     cmd.extend(["--metadata-auth", config.metadata_auth])
     cmd.extend(["--metadata-protocol", config.metadata_protocol])
     cmd.extend(["--metadata-timeout-sec", str(config.metadata_timeout_sec)])

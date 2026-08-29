@@ -69,12 +69,12 @@ The image default command runs the safe public demo:
 query-doctor-web --host 0.0.0.0 --port 8765 --allow-nonlocal-web-bind --public-demo
 ```
 
-The image includes Kerberos client tools and the isolated
-`/opt/query-doctor/.venv-impala-shell/bin/impala-shell` executable so
-configured private deployments can enable bounded Impala metadata collection
-without baking credentials into the image. Metadata collection still requires
-an explicit metadata coordinator and a valid Kerberos ticket cache supplied by
-the private deployment environment.
+The image includes Kerberos client tools, and the published image is built with
+the `impala` extra, so configured private deployments can enable bounded Impala
+metadata collection over HiveServer2 without baking credentials into the image.
+Metadata collection still requires an explicit metadata coordinator on its
+HiveServer2 port and a valid Kerberos ticket cache supplied by the private
+deployment environment.
 
 The Helm chart adds an optional configured-mode Kerberos initContainer flow for
 that cache. It references an existing Secret by name/key only and does not
@@ -160,7 +160,7 @@ kubectl -n query-doctor rollout status deploy/query-doctor-web
 
 After metadata coordinator settings, the Kerberos ticket cache, and the
 configured web release are in place, run the bounded metadata smoke. It checks
-the web pod's Kerberos cache and `impala-shell` runtime, submits one Recent
+the web pod's Kerberos cache and HiveServer2 driver, submits one Recent
 scan through `/batch/run` with `metadata_top_limit=1`, requires collected or
 partial metadata with table context, and prints only aggregate status and
 table-context counters. The service scan is not published as the latest UI

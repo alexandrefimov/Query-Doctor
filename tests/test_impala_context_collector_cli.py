@@ -5,8 +5,42 @@ from pathlib import Path
 
 import pytest
 
+from query_doctor.impala.hs2_runner import (
+    ImpalaStatementError,
+    ImpalaStatementTimeoutError,
+    StatementRows,
+)
+
 
 REPO_DIR = Path(__file__).resolve().parents[1]
+
+
+class FakeSession:
+    """Stand-in for a HiveServer2 session: SQL maps to rows or to a failure."""
+
+    def __init__(self, responses):
+        self._responses = responses
+        self.calls = []
+        self.closed = False
+
+    def run(self, sql, *, timeout_sec=None):
+        self.calls.append(sql)
+        response = self._responses(sql) if callable(self._responses) else self._responses[sql]
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+    def close(self):
+        self.closed = True
+
+
+def text_rows(text):
+    """The single text column SHOW CREATE TABLE returns."""
+    return StatementRows(columns=("result",), rows=((text,),))
+
+
+def table_rows(columns, *rows):
+    return StatementRows(columns=tuple(columns), rows=tuple(tuple(row) for row in rows))
 
 
 def load_collector_module():
@@ -19,10 +53,6 @@ def test_package_entrypoint_keeps_repo_root_config_lookup():
     from query_doctor.cli import collect_impala_context
 
     assert collect_impala_context.REPO_DIR == REPO_DIR
-
-
-def sql_from_command(command):
-    return command[command.index("-q") + 1]
 
 
 @pytest.fixture(autouse=True)
@@ -163,11 +193,7 @@ def test_forbidden_statements_are_rejected(sql):
 
 def test_dry_run_prints_plan_and_does_not_execute(tmp_path, capsys):
     module = load_collector_module()
-    calls = []
-
-    def fake_runner(*args, **kwargs):
-        calls.append((args, kwargs))
-        raise AssertionError("dry-run must not execute impala-shell")
+    session = FakeSession(lambda sql: pytest.fail("dry-run must not run a statement"))
 
     rc = module.main(
         [
@@ -177,14 +203,16 @@ def test_dry_run_prints_plan_and_does_not_execute(tmp_path, capsys):
             str(tmp_path / "ctx"),
             "--dry-run",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert calls == []
+    assert session.calls == []
     assert "coordinator: <required for execution>" in captured.out
     assert "auth: kerberos" in captured.out
+    assert "protocol: hs2" in captured.out
+    assert "kerberos service name: impala (driver default)" in captured.out
     assert "SHOW CREATE TABLE <db>.<table>" in captured.out
     assert "SHOW TABLE STATS <db>.<table>" in captured.out
     assert "SHOW COLUMN STATS <db>.<table>" in captured.out
@@ -210,7 +238,6 @@ def test_dry_run_redacts_coordinator_and_ca_cert_path(tmp_path, capsys):
             "/user/alice/ssl/impala-ca.pem",
             "--dry-run",
         ],
-        runner=lambda *args, **kwargs: pytest.fail("dry-run must not execute impala-shell"),
     )
 
     captured = capsys.readouterr()
@@ -321,7 +348,6 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
     args = module.parse_args(["--config", str(config_path), "--table", "db.table", "--out", "ctx"])
 
     assert args.coordinator == "config-coordinator.example.com:21000"
-    assert args.impala_shell == "/opt/config/impala-shell"
     assert args.protocol == "hs2"
     assert args.kerberos_service_name == "hive"
     assert args.kerberos_host_fqdn == "config-coordinator.example.com"
@@ -343,7 +369,7 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
             "--coordinator",
             "cli-coordinator.example.com:21000",
             "--protocol",
-            "beeswax",
+            "hs2",
             "--kerberos-service-name",
             "impala",
             "--kerberos-host-fqdn",
@@ -355,7 +381,7 @@ def test_local_config_applies_metadata_defaults_and_cli_overrides(tmp_path):
     )
 
     assert args.coordinator == "cli-coordinator.example.com:21000"
-    assert args.protocol == "beeswax"
+    assert args.protocol == "hs2"
     assert args.kerberos_service_name == "impala"
     assert args.kerberos_host_fqdn == "cli-coordinator.example.com"
     assert args.timeout_sec == 5
@@ -403,28 +429,17 @@ def test_local_config_krb5ccname_passed_via_env_not_argv(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    seen_envs = []
-
-    def fake_runner(command, **kwargs):
-        seen_envs.append(kwargs.get("env", {}))
-        assert "FILE:/tmp/krb5cc_metadata_config" not in command
-        return subprocess.CompletedProcess(command, 0, stdout=b"ok\n", stderr=b"")
-
-    rc = module.main(
-        [
-            "--config",
-            str(config_path),
-            "--table",
-            "db.table",
-            "--out",
-            str(tmp_path / "ctx"),
-        ],
-        runner=fake_runner,
+    args = module.parse_args(
+        ["--config", str(config_path), "--table", "db.table", "--out", str(tmp_path / "ctx")]
     )
 
-    assert rc == 0
-    assert seen_envs
-    assert all(env["KRB5CCNAME"] == "FILE:/tmp/krb5cc_metadata_config" for env in seen_envs)
+    module.apply_kerberos_cache_env(args)
+
+    # The handshake runs in-process now, so the cache reaches libkrb5 through the
+    # environment rather than through a subprocess env argument.
+    import os
+
+    assert os.environ["KRB5CCNAME"] == "FILE:/tmp/krb5cc_metadata_config"
 
 
 def test_env_krb5ccname_overrides_local_config_cache(tmp_path, monkeypatch):
@@ -440,26 +455,15 @@ def test_env_krb5ccname_overrides_local_config_cache(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    seen_envs = []
-
-    def fake_runner(command, **kwargs):
-        seen_envs.append(kwargs.get("env"))
-        return subprocess.CompletedProcess(command, 0, stdout=b"ok\n", stderr=b"")
-
-    rc = module.main(
-        [
-            "--config",
-            str(config_path),
-            "--table",
-            "db.table",
-            "--out",
-            str(tmp_path / "ctx"),
-        ],
-        runner=fake_runner,
+    args = module.parse_args(
+        ["--config", str(config_path), "--table", "db.table", "--out", str(tmp_path / "ctx")]
     )
 
-    assert rc == 0
-    assert seen_envs == [None, None, None]
+    module.apply_kerberos_cache_env(args)
+
+    import os
+
+    assert os.environ["KRB5CCNAME"] == "FILE:/tmp/krb5cc_env"
 
 
 @pytest.mark.parametrize(
@@ -490,7 +494,9 @@ def test_invalid_coordinator_is_rejected(coordinator):
         )
 
 
-def test_impala_shell_argv_uses_kerberos_and_safe_options():
+def test_connection_settings_carry_kerberos_and_tls_options():
+    from query_doctor.impala.hs2_runner import connect_kwargs
+
     module = load_collector_module()
     args = module.parse_args(
         [
@@ -498,10 +504,8 @@ def test_impala_shell_argv_uses_kerberos_and_safe_options():
             "db.table",
             "--out",
             "ctx",
-            "--impala-shell",
-            "/opt/impala/bin/impala-shell",
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
             "--ssl",
             "--ca-cert",
             "/etc/ssl/certs/impala-ca.pem",
@@ -511,59 +515,76 @@ def test_impala_shell_argv_uses_kerberos_and_safe_options():
             "hive",
             "--kerberos-host-fqdn",
             "lb.example.com",
+            "--timeout-sec",
+            "17",
         ]
     )
 
-    argv = module.build_impala_shell_args(args, "SHOW TABLE STATS db.table")
+    settings = module.build_connection_settings(args)
 
-    assert argv == [
-        "/opt/impala/bin/impala-shell",
-        "-i",
-        "coordinator01.example.com:21000",
-        "-k",
-        "-q",
-        "SHOW TABLE STATS db.table",
-        "--output_delimiter=\t",
-        "--print_header",
-        "--ssl",
-        "--ca_cert",
-        "/etc/ssl/certs/impala-ca.pem",
-        "--protocol",
-        "hs2-http",
-        "--kerberos_service_name=hive",
-        "--kerberos_host_fqdn=lb.example.com",
-    ]
+    assert settings.host == "coordinator01.example.com"
+    assert settings.port == 21050
+    assert settings.use_http_transport is True
+    assert settings.http_path == "cliservice"
+    assert connect_kwargs(settings) == {
+        "host": "coordinator01.example.com",
+        "port": 21050,
+        "auth_mechanism": "GSSAPI",
+        "timeout": 17,
+        "use_ssl": True,
+        "ca_cert": "/etc/ssl/certs/impala-ca.pem",
+        "kerberos_service_name": "hive",
+        "krb_host": "lb.example.com",
+        "use_http_transport": True,
+        "http_path": "cliservice",
+    }
+
+
+def test_binary_hs2_does_not_ask_for_the_http_transport():
+    from query_doctor.impala.hs2_runner import connect_kwargs
+
+    module = load_collector_module()
+    args = module.parse_args(
+        [
+            "--table",
+            "db.table",
+            "--out",
+            "ctx",
+            "--coordinator",
+            "coordinator01.example.com:21050",
+        ]
+    )
+
+    kwargs = connect_kwargs(module.build_connection_settings(args))
+
+    assert "use_http_transport" not in kwargs
+    assert "kerberos_service_name" not in kwargs
 
 
 def test_successful_collection_writes_redacted_bounded_outputs(tmp_path, capsys):
     module = load_collector_module()
 
-    outputs = {
-        "SHOW CREATE TABLE `db`.`table`": (
-            "CREATE TABLE db.table (id BIGINT, token_column STRING)\n"
-            "LOCATION 'hdfs://warehouse01.example.invalid:8020/user/alice/warehouse/db.table'\n"
-            "COMMENT 'replica hdfs://[2001:db8::44]:8020/warehouse/db.table'\n"
-            "TBLPROPERTIES ('external_location'='s3a://raw-lake-prod/warehouse/db.table')\n"
-            "TBLPROPERTIES ('access_token'='secret-token')\n"
-            "Authorization: Bearer secret-token\n"
-            "Cookie: session=secret-cookie\n"
-        ),
-        "SHOW TABLE STATS `db`.`table`": "Rows=10 Size=128 host=10.1.2.3:22000\n",
-        "SHOW COLUMN STATS `db`.`table`": "id BIGINT NDV=10 NULLS=0\n",
-    }
-
-    def fake_runner(command, **kwargs):
-        sql = sql_from_command(command)
-        assert "-i" in command
-        assert command[command.index("-i") + 1] == "coordinator01.example.com:21000"
-        assert "-k" in command
-        assert kwargs["shell"] is False
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            stdout=outputs[sql].encode(),
-            stderr=b"",
-        )
+    session = FakeSession(
+        {
+            "SHOW CREATE TABLE `db`.`table`": text_rows(
+                "CREATE TABLE db.table (id BIGINT, token_column STRING)\n"
+                "LOCATION 'hdfs://warehouse01.example.invalid:8020/user/alice/warehouse/db.table'\n"
+                "COMMENT 'replica hdfs://[2001:db8::44]:8020/warehouse/db.table'\n"
+                "TBLPROPERTIES ('external_location'='s3a://raw-lake-prod/warehouse/db.table')\n"
+                "TBLPROPERTIES ('access_token'='secret-token')\n"
+                "Authorization: Bearer secret-token\n"
+                "Cookie: session=secret-cookie"
+            ),
+            "SHOW TABLE STATS `db`.`table`": table_rows(
+                ("#Rows", "Size", "Location"),
+                (10, "128B", "hdfs://10.1.2.3:22000/warehouse/db.table"),
+            ),
+            "SHOW COLUMN STATS `db`.`table`": table_rows(
+                ("Column", "Type", "#Distinct Values", "#Nulls"),
+                ("id", "BIGINT", 10, 0),
+            ),
+        }
+    )
 
     rc = module.main(
         [
@@ -572,9 +593,9 @@ def test_successful_collection_writes_redacted_bounded_outputs(tmp_path, capsys)
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     captured = capsys.readouterr()
@@ -583,11 +604,16 @@ def test_successful_collection_writes_redacted_bounded_outputs(tmp_path, capsys)
     combined = md_text + json_text
 
     assert rc == 0
+    assert session.calls == [
+        "SHOW CREATE TABLE `db`.`table`",
+        "SHOW TABLE STATS `db`.`table`",
+        "SHOW COLUMN STATS `db`.`table`",
+    ]
     assert "LOCATION" not in captured.out
-    assert "Rows=10" not in captured.out
+    assert "128B" not in captured.out
     assert "db.table" in md_text
-    assert "id BIGINT" in md_text
-    assert "Rows=10" in md_text
+    assert "| id | BIGINT | 10 | 0 |" in md_text
+    assert "| 10 | 128B |" in md_text
     assert "warehouse01.example.invalid" not in combined
     assert "2001:db8::44" not in combined
     assert "raw-lake-prod" not in combined
@@ -601,20 +627,39 @@ def test_successful_collection_writes_redacted_bounded_outputs(tmp_path, capsys)
     assert "token_column STRING" in combined
 
 
+def test_one_session_serves_every_statement_of_a_run(tmp_path):
+    module = load_collector_module()
+    session = FakeSession(lambda sql: text_rows("CREATE TABLE db.table (id BIGINT)"))
+
+    rc = module.main(
+        [
+            "--table",
+            "db.table_a",
+            "--table",
+            "db.table_b",
+            "--out",
+            str(tmp_path / "ctx"),
+            "--coordinator",
+            "coordinator01.example.com:21050",
+        ],
+        session=session,
+    )
+
+    assert rc == 0
+    assert len(session.calls) == 6
+    # The caller owns an injected session; the collector must not close it.
+    assert session.closed is False
+
+
 def test_view_metadata_skips_stats_as_not_applicable(tmp_path):
     module = load_collector_module()
-    calls = []
-
-    def fake_runner(command, **kwargs):
-        sql = sql_from_command(command)
-        calls.append(sql)
-        assert sql == "SHOW CREATE TABLE `db`.`view_a`"
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            stdout=b"CREATE VIEW db.view_a AS SELECT id FROM db.table_a\n",
-            stderr=b"",
-        )
+    session = FakeSession(
+        {
+            "SHOW CREATE TABLE `db`.`view_a`": text_rows(
+                "CREATE VIEW db.view_a AS SELECT id FROM db.table_a"
+            )
+        }
+    )
 
     rc = module.main(
         [
@@ -623,16 +668,16 @@ def test_view_metadata_skips_stats_as_not_applicable(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     payload = json.loads((tmp_path / "ctx" / "impala_context.json").read_text(encoding="utf-8"))
     statuses = {item["statement"]: item["status"] for item in payload["results"]}
 
     assert rc == 0
-    assert calls == ["SHOW CREATE TABLE `db`.`view_a`"]
+    assert session.calls == ["SHOW CREATE TABLE `db`.`view_a`"]
     assert statuses == {
         "SHOW CREATE TABLE": "ok",
         "SHOW TABLE STATS": "not_applicable",
@@ -648,23 +693,12 @@ def test_view_metadata_skips_stats_as_not_applicable(tmp_path):
 def test_view_stats_not_applicable_error_is_non_fatal(tmp_path):
     module = load_collector_module()
 
-    def fake_runner(command, **kwargs):
-        sql = sql_from_command(command)
+    def respond(sql):
         if sql == "SHOW CREATE TABLE `db`.`view_a`":
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=b"CREATE TABLE db.view_a (id BIGINT)\n",
-                stderr=b"",
-            )
-        if sql in {"SHOW TABLE STATS `db`.`view_a`", "SHOW COLUMN STATS `db`.`view_a`"}:
-            return subprocess.CompletedProcess(
-                command,
-                1,
-                stdout=b"",
-                stderr=b"AnalysisException: SHOW TABLE STATS not applicable to a view\n",
-            )
-        raise AssertionError(f"unexpected SQL: {sql}")
+            return text_rows("CREATE TABLE db.view_a (id BIGINT)")
+        return ImpalaStatementError(
+            "AnalysisException: SHOW TABLE STATS not applicable to a view: db.view_a"
+        )
 
     rc = module.main(
         [
@@ -673,9 +707,9 @@ def test_view_stats_not_applicable_error_is_non_fatal(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=FakeSession(respond),
     )
 
     payload = json.loads((tmp_path / "ctx" / "impala_context.json").read_text(encoding="utf-8"))
@@ -690,14 +724,9 @@ def test_view_stats_not_applicable_error_is_non_fatal(tmp_path):
 
 def test_authorization_error_still_fails(tmp_path):
     module = load_collector_module()
-
-    def fake_runner(command, **kwargs):
-        return subprocess.CompletedProcess(
-            command,
-            1,
-            stdout=b"",
-            stderr=b"AuthorizationException: user is not authorized\n",
-        )
+    session = FakeSession(
+        lambda sql: ImpalaStatementError("AuthorizationException: user is not authorized")
+    )
 
     rc = module.main(
         [
@@ -706,27 +735,27 @@ def test_authorization_error_still_fails(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     payload = json.loads((tmp_path / "ctx" / "impala_context.json").read_text(encoding="utf-8"))
 
     assert rc == 1
     assert payload["results"][0]["status"] == "error"
+    # The coordinator message has to survive into stderr: the fact parser reads it
+    # to tell an authorization failure from a missing object.
+    assert "AuthorizationException" in payload["results"][0]["stderr"]
 
 
 def test_table_not_found_error_still_fails(tmp_path):
     module = load_collector_module()
-
-    def fake_runner(command, **kwargs):
-        return subprocess.CompletedProcess(
-            command,
-            1,
-            stdout=b"",
-            stderr=b"AnalysisException: Could not resolve table reference: db.missing_table\n",
+    session = FakeSession(
+        lambda sql: ImpalaStatementError(
+            "AnalysisException: Could not resolve table reference: db.missing_table"
         )
+    )
 
     rc = module.main(
         [
@@ -735,9 +764,9 @@ def test_table_not_found_error_still_fails(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     payload = json.loads((tmp_path / "ctx" / "impala_context.json").read_text(encoding="utf-8"))
@@ -748,9 +777,7 @@ def test_table_not_found_error_still_fails(tmp_path):
 
 def test_too_large_output_is_recorded_without_raw_body(tmp_path):
     module = load_collector_module()
-
-    def fake_runner(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0, stdout=b"X" * 50, stderr=b"")
+    session = FakeSession(lambda sql: text_rows("X" * 50))
 
     rc = module.main(
         [
@@ -759,11 +786,11 @@ def test_too_large_output_is_recorded_without_raw_body(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
             "--max-output-bytes",
             "8",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     md_text = (tmp_path / "ctx" / "impala_context.md").read_text(encoding="utf-8")
@@ -776,22 +803,13 @@ def test_too_large_output_is_recorded_without_raw_body(tmp_path):
     assert {item["status"] for item in payload["results"]} == {"too_large"}
 
 
-def test_padded_output_is_compacted_before_size_check(tmp_path):
+def test_stats_rows_render_as_a_delimited_table(tmp_path):
     module = load_collector_module()
-    padded = (
-        "+--------------------------------------------------------------------------+\n"
-        "| result                                                                   |\n"
-        "+--------------------------------------------------------------------------+\n"
-        "| CREATE TABLE db.table (                                                  |\n"
-        "|   note STRING COMMENT 'hello   world'                                    |\n"
-        "| )                                                                        |\n"
-        "+--------------------------------------------------------------------------+\n"
-        "\n"
-        "\n" + (" " * 120) + "\n"
-    )
 
-    def fake_runner(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0, stdout=padded.encode(), stderr=b"")
+    def respond(sql):
+        if sql.startswith("SHOW CREATE TABLE"):
+            return text_rows("CREATE TABLE db.table (id BIGINT)")
+        return table_rows(("#Rows", "Size"), (-1, "0B"), ("Total", "0B"))
 
     rc = module.main(
         [
@@ -800,30 +818,64 @@ def test_padded_output_is_compacted_before_size_check(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
-            "--max-output-bytes",
-            "220",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=FakeSession(respond),
+    )
+
+    md_text = (tmp_path / "ctx" / "impala_context.md").read_text(encoding="utf-8")
+
+    assert rc == 0
+    assert "+---+" in md_text
+    assert "| #Rows | Size |" in md_text
+    assert "| -1 | 0B |" in md_text
+    # The DDL keeps its own line breaks instead of being boxed.
+    assert "```sql\nCREATE TABLE " in md_text
+    assert "(id BIGINT)" in md_text
+
+
+def test_padded_ddl_is_compacted_before_size_check(tmp_path):
+    module = load_collector_module()
+    padded = (
+        "CREATE TABLE db.table (                                                  \n"
+        "  note STRING COMMENT 'hello   world'                                    \n"
+        ")                                                                        \n"
+        "\n"
+        "\n" + (" " * 120) + "\n"
+    )
+
+    def respond(sql):
+        if sql.startswith("SHOW CREATE TABLE"):
+            return text_rows(padded)
+        return table_rows(("#Rows", "Size"), (1, "0B"))
+
+    rc = module.main(
+        [
+            "--table",
+            "db.table",
+            "--out",
+            str(tmp_path / "ctx"),
+            "--coordinator",
+            "coordinator01.example.com:21050",
+            "--max-output-bytes",
+            "120",
+        ],
+        session=FakeSession(respond),
     )
 
     md_text = (tmp_path / "ctx" / "impala_context.md").read_text(encoding="utf-8")
     payload = json.loads((tmp_path / "ctx" / "impala_context.json").read_text(encoding="utf-8"))
+    ddl = next(item for item in payload["results"] if item["statement"] == "SHOW CREATE TABLE")
 
     assert rc == 0
     assert {item["status"] for item in payload["results"]} == {"ok"}
     assert "status: too_large" not in md_text
     assert "hello   world" in md_text
     assert "                    " not in md_text
-    assert (
-        "+--------------------------------------------------------------------------+"
-        not in md_text
-    )
-    assert "+---+" in md_text
     assert "\n\n\n" not in md_text
-    assert all(item["stdout_raw_bytes"] > 220 for item in payload["results"])
-    assert all(item["stdout_bytes"] <= 220 for item in payload["results"])
-    assert all(item["stdout_normalized"] is True for item in payload["results"])
+    assert ddl["stdout_raw_bytes"] > 120
+    assert ddl["stdout_bytes"] <= 120
+    assert ddl["stdout_normalized"] is True
 
 
 def test_large_meaningful_output_still_fails_after_compaction(tmp_path):
@@ -831,9 +883,7 @@ def test_large_meaningful_output_still_fails_after_compaction(tmp_path):
     meaningful = (
         "CREATE TABLE db.table (\n" + "\n".join(f"  c{i} STRING" for i in range(40)) + "\n)"
     )
-
-    def fake_runner(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0, stdout=meaningful.encode(), stderr=b"")
+    session = FakeSession(lambda sql: text_rows(meaningful))
 
     rc = module.main(
         [
@@ -842,11 +892,11 @@ def test_large_meaningful_output_still_fails_after_compaction(tmp_path):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
             "--max-output-bytes",
             "96",
         ],
-        runner=fake_runner,
+        session=session,
     )
 
     md_text = (tmp_path / "ctx" / "impala_context.md").read_text(encoding="utf-8")
@@ -860,21 +910,13 @@ def test_large_meaningful_output_still_fails_after_compaction(tmp_path):
 
 def test_timeout_and_error_status_are_recorded_safely(tmp_path, capsys):
     module = load_collector_module()
-    calls = []
 
-    def fake_runner(command, **kwargs):
-        sql = sql_from_command(command)
-        calls.append(sql)
+    def respond(sql):
         if sql == "SHOW CREATE TABLE `db`.`table`":
-            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-        return subprocess.CompletedProcess(
-            command,
-            1,
-            stdout=b"",
-            stderr=(
-                b"password=topsecret token=secret-token "
-                b"Authorization: Bearer secret-token host=prod-nn.example.com"
-            ),
+            return ImpalaStatementTimeoutError("statement timed out after 30s")
+        return ImpalaStatementError(
+            "password=topsecret token=secret-token "
+            "Authorization: Bearer secret-token host=prod-nn.example.com"
         )
 
     rc = module.main(
@@ -884,9 +926,9 @@ def test_timeout_and_error_status_are_recorded_safely(tmp_path, capsys):
             "--out",
             str(tmp_path / "ctx"),
             "--coordinator",
-            "coordinator01.example.com:21000",
+            "coordinator01.example.com:21050",
         ],
-        runner=fake_runner,
+        session=FakeSession(respond),
     )
 
     text = (tmp_path / "ctx" / "impala_context.md").read_text(encoding="utf-8")

@@ -12,7 +12,6 @@ DOCKERFILE = REPO_ROOT / "Dockerfile"
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 BUILD_IMAGE = REPO_ROOT / "scripts" / "build-image.sh"
 IMAGE_SMOKE = REPO_ROOT / "scripts" / "image-smoke.sh"
-BOOTSTRAP_IMPALA_SHELL = REPO_ROOT / "scripts" / "bootstrap-impala-shell"
 KUBERNETES_DIR = REPO_ROOT / "deploy" / "kubernetes"
 HELM_CHART_DIR = REPO_ROOT / "deploy" / "helm" / "query-doctor"
 PUBLIC_DEMO_MANIFEST = KUBERNETES_DIR / "public-demo.yaml"
@@ -35,16 +34,14 @@ def read(path: Path) -> str:
 def test_dockerfile_runs_web_as_non_root_public_demo_by_default() -> None:
     text = read(DOCKERFILE)
 
-    assert "ARG QUERY_DOCTOR_PYTHON_BASE_IMAGE=python:3.10-slim" in text
+    assert "ARG QUERY_DOCTOR_PYTHON_BASE_IMAGE=python:3.13-slim" in text
     assert "FROM ${QUERY_DOCTOR_PYTHON_BASE_IMAGE}" in text
-    assert "AS impala-shell" in text
-    assert "requirements-impala-shell.txt" in text
-    assert "scripts/bootstrap-impala-shell" in text
-    assert "QD_IMPALA_SHELL=/opt/query-doctor/.venv-impala-shell/bin/impala-shell" in text
-    assert "PATH=/opt/query-doctor/.venv-impala-shell/bin:$PATH" not in text
+    # Metadata collection speaks HiveServer2 in-process, so the image carries no
+    # second interpreter, no impala-shell venv, and no libsasl2.
+    assert "impala-shell" not in text
+    assert "libsasl2" not in text
     assert "krb5-user" in text
-    assert "libsasl2-2" in text
-    assert "libsasl2-modules-gssapi-mit" in text
+    assert "apt-get purge -y --auto-remove gcc libkrb5-dev" in text
     assert "ARG QUERY_DOCTOR_INSTALL_EXTRAS" in text
     assert '".[${QUERY_DOCTOR_INSTALL_EXTRAS}]"' in text
     assert "/usr/local/bin/python -m pip install --no-cache-dir --no-deps ." in text
@@ -95,19 +92,12 @@ def test_image_smoke_script_allows_explicit_platform_for_cluster_smoke() -> None
 
     assert "QUERY_DOCTOR_IMAGE_PLATFORM" in text
     assert "--platform" in text
-    assert "QD_IMPALA_SHELL" in text
-    assert "import sasl" in text
+    assert "from impala.dbapi import connect" in text
+    assert "import shutil, kerberos" in text
     assert "klist" in text
     assert "/deployment/readiness.json" in text
     assert "query_doctor_deployment_readiness_v1" in text
     assert "sql_execution" in text
-
-
-def test_impala_shell_bootstrap_keeps_isolated_runtime() -> None:
-    text = read(BOOTSTRAP_IMPALA_SHELL)
-
-    assert "QD_IMPALA_SHELL_VENV" in text
-    assert "requirements-impala-shell.txt" in text
 
 
 def test_kubernetes_public_demo_manifest_is_safe_by_default() -> None:
@@ -965,8 +955,8 @@ def test_kubernetes_configured_metadata_smoke_is_aggregate_only() -> None:
     assert "port-forward" in text
     assert "/batch/run" in text
     assert "metadata_top_limit" in text
-    assert "QD_IMPALA_SHELL" in text
-    assert "import sasl" in text
+    assert "impyla_import" in text
+    assert "kerberos_import" in text
     assert "klist_valid" in text
     assert "metadata_status_counts" in text
     assert "metadata_cases_with_table_context" in text

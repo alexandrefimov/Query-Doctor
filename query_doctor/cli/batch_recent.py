@@ -689,7 +689,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         env = load_local_cm_env(env, allow_default=allow_default_cm_env)
         config = build_batch_config(args, env=env, cwd=Path.cwd(), repo_root=repo_root)
         env = effective_subprocess_env(env, config.krb5ccname)
-        preflight(config, env=env, repo_root=repo_root)
+        preflight(config, env=env)
         prepare_batch_output_dir(config.out, repo_root=repo_root, overwrite=config.overwrite)
     except ValueError as exc:
         print(f"[batch] ERROR: {exc}", file=sys.stderr)

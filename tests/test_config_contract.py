@@ -499,7 +499,7 @@ def test_supported_keys_are_accepted(tmp_path):
         "metadata_coordinator": "impala.example.com:21000",
         "metadata_impala_shell": "impala-shell",
         "metadata_auth": "kerberos",
-        "metadata_protocol": "beeswax",
+        "metadata_protocol": "hs2",
         "metadata_ssl": False,
         "metadata_ca_cert": "",
         "metadata_timeout_sec": 30,

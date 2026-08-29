@@ -12,6 +12,14 @@ from command_test_support import command_args, command_uses_role
 
 REPO_DIR = Path(__file__).resolve().parents[1]
 
+from query_doctor.impala import hs2_runner
+
+
+@pytest.fixture(autouse=True)
+def metadata_driver_present(monkeypatch):
+    """These tests exercise metadata wiring, not whether impyla is installed."""
+    monkeypatch.setattr(hs2_runner, "driver_available", lambda: True)
+
 
 def load_batch_module():
     from query_doctor.cli import batch_recent
@@ -57,7 +65,7 @@ def test_batch_recent_direct_impala_config_does_not_require_cm_auth(tmp_path):
         "--collect-cm-events",
         "--collect-cm-timeseries",
     )
-    module.preflight(config, env={}, repo_root=REPO_DIR)
+    module.preflight(config, env={})
 
     assert config.query_profile_source == "impala"
     assert config.impala_profile_hosts == ("impalad-1.example.com",)
@@ -1205,9 +1213,8 @@ def batch_summary_test_config(module, tmp_path: Path, **overrides):
         "max_timeseries_points": 100,
         "metadata_mode": "off",
         "metadata_coordinator": None,
-        "metadata_impala_shell": None,
         "metadata_auth": "kerberos",
-        "metadata_protocol": "beeswax",
+        "metadata_protocol": "hs2",
         "metadata_kerberos_service_name": None,
         "metadata_ssl": False,
         "metadata_ca_cert": None,
@@ -1575,7 +1582,6 @@ def test_batch_config_values_override_internal_defaults(tmp_path):
                 "max_timeseries_bytes": 3145728,
                 "max_timeseries_points": 4000,
                 "metadata_coordinator": "impala-config.example.net:21000",
-                "metadata_impala_shell": "/opt/impala-shell",
                 "metadata_auth": "kerberos",
                 "metadata_protocol": "hs2",
                 "metadata_kerberos_service_name": "hive",
@@ -1634,7 +1640,6 @@ def test_batch_config_values_override_internal_defaults(tmp_path):
     assert config.max_timeseries_bytes == 3145728
     assert config.max_timeseries_points == 4000
     assert config.metadata_coordinator == "impala-config.example.net:21000"
-    assert config.metadata_impala_shell == "/opt/impala-shell"
     assert config.metadata_protocol == "hs2"
     assert config.metadata_kerberos_service_name == "hive"
     assert config.metadata_kerberos_host_fqdn == "impala-lb.example.net"
@@ -5036,7 +5041,7 @@ def test_local_config_accepts_krb5ccname_alias_and_still_rejects_secrets(tmp_pat
                 "metadata_krb5ccname": "FILE:/tmp/krb5cc_alias_cache",
                 "metadata_coordinator": "impala-config.example.net:21000",
                 "metadata_auth": "kerberos",
-                "metadata_protocol": "beeswax",
+                "metadata_protocol": "hs2",
                 "metadata_timeout_sec": 30,
                 "metadata_max_tables": 5,
                 "metadata_max_output_bytes": 2097152,
@@ -7298,9 +7303,8 @@ def test_metadata_refresh_candidates_respect_limit_then_fill_remaining_budget():
         max_timeseries_points=2000,
         metadata_mode="on",
         metadata_coordinator="impala.example.net:21000",
-        metadata_impala_shell=None,
         metadata_auth="kerberos",
-        metadata_protocol="beeswax",
+        metadata_protocol="hs2",
         metadata_kerberos_service_name=None,
         metadata_ssl=False,
         metadata_ca_cert=None,
@@ -8853,7 +8857,7 @@ def test_direct_impala_onboarding_template_builds_bounded_history_config(tmp_pat
     )
 
     config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
-    module.preflight(config, env={}, repo_root=REPO_DIR)
+    module.preflight(config, env={})
 
     assert config.query_profile_source == "impala"
     assert config.impala_profile_hosts == ("impalad-coordinator.example.com",)

@@ -1,4 +1,4 @@
-"""Output compaction helpers for impala-shell metadata collection."""
+"""Output compaction helpers for Impala metadata collection."""
 
 from __future__ import annotations
 
@@ -14,15 +14,11 @@ class NormalizedOutput:
     normalized: bool
 
 
-def decode_bytes(value: bytes) -> str:
-    return value.decode("utf-8", errors="replace")
-
-
 def utf8_len(text: str) -> int:
     return len(text.encode("utf-8"))
 
 
-def compact_impala_shell_output(text: str) -> tuple[str, bool]:
+def compact_impala_output(text: str) -> tuple[str, bool]:
     lines = text.splitlines(keepends=True)
     if not lines:
         return text, False
@@ -60,11 +56,11 @@ def compact_impala_shell_output(text: str) -> tuple[str, bool]:
     return result, changed or result != text
 
 
-def normalize_output_bytes(value: bytes) -> NormalizedOutput:
-    text, normalized = compact_impala_shell_output(decode_bytes(value))
+def normalize_output_text(value: str) -> NormalizedOutput:
+    text, normalized = compact_impala_output(value)
     return NormalizedOutput(
         text=text,
-        raw_bytes=len(value),
+        raw_bytes=utf8_len(value),
         bytes=utf8_len(text),
         normalized=normalized,
     )

@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -23,6 +23,26 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 [release-notes-0.4.1.md](release-notes-0.4.1.md).
 
 ## Unreleased
+
+- Impala metadata collection now speaks HiveServer2 in process through impyla
+  instead of shelling out to `impala-shell`, and the collector holds one
+  coordinator connection for a whole run rather than starting a process and a
+  Kerberos handshake per statement. The policy is unchanged: the same three
+  allowlisted `SHOW` statements, the same bounded and redacted artifacts, the
+  same fail-closed statuses. What changes is the transport, and with it two
+  things that were forced by the shell. Beeswax is gone, because impyla speaks
+  HiveServer2 only, so `metadata_protocol` accepts `hs2` and `hs2-http` and a
+  coordinator must be named on its HiveServer2 port. And the image no longer
+  carries a second Python: `impala_shell` 4.3.0 imports the C `sasl` module
+  unconditionally, `sasl` 0.3.1 is the last release and needs `longintrepr.h`,
+  which CPython dropped in 3.12 — that is what pinned the old runtime to
+  Python 3.10, nine weeks from end of life. impyla reaches GSSAPI through
+  puresasl and pykerberos, so the whole thing builds on the same interpreter as
+  the rest of the package, and the container image moves to Python 3.13.
+  The driver lives behind a new `impala` extra; without it metadata collection
+  reports `impala.metadata_driver_unavailable` and everything else runs as
+  before. `metadata_impala_shell` is still accepted in config and ignored, so a
+  deployment can drop the setting after the image, not before it.
 
 - Three places that needed one field from the Online History view no longer
   build every presented row to get it. The scope parts and the warning
