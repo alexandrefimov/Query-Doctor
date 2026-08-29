@@ -45,7 +45,6 @@ class BatchConfig:
     max_timeseries_points: int
     metadata_mode: str
     metadata_coordinator: str | None
-    metadata_impala_shell: str | None
     metadata_auth: str
     metadata_protocol: str
     metadata_kerberos_service_name: str | None

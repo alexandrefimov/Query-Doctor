@@ -16,8 +16,13 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from query_doctor.impala.connection_policy import split_coordinator, validate_protocol
+from query_doctor.impala.hs2_runner import (
+    DEFAULT_HTTP_PATH,
+    Hs2ConnectionSettings,
+    Hs2MetadataSession,
+)
 from query_doctor.impala.metadata_policy import quote_table_identifier
-from query_doctor.impala.shell_runner import build_impala_shell_argv, run_impala_shell
 
 
 DEFAULT_LIMIT = 100_000
@@ -53,7 +58,6 @@ class TableCandidate:
 @dataclass(frozen=True)
 class MetadataValidationConfig:
     coordinator: str
-    impala_shell: str
     auth: str
     protocol: str | None
     kerberos_service_name: str | None
@@ -276,14 +280,10 @@ def metadata_validation_config(args: argparse.Namespace) -> MetadataValidationCo
     config = load_config(args.config or default_config_path())
     values = selected_config_values(config, args.cluster)
     coordinator = str(values.get("metadata_coordinator") or "").strip()
-    impala_shell = str(values.get("metadata_impala_shell") or "impala-shell").strip()
     if not coordinator:
         raise SmokeQueryError("Metadata validation requires metadata_coordinator in config.")
-    if not impala_shell:
-        raise SmokeQueryError("Metadata validation requires metadata_impala_shell in config.")
     return MetadataValidationConfig(
         coordinator=coordinator,
-        impala_shell=impala_shell,
         auth=str(values.get("metadata_auth") or "kerberos").strip() or "kerberos",
         protocol=str(values.get("metadata_protocol") or "").strip() or None,
         kerberos_service_name=str(values.get("metadata_kerberos_service_name") or "").strip()
@@ -295,38 +295,52 @@ def metadata_validation_config(args: argparse.Namespace) -> MetadataValidationCo
     )
 
 
-def candidate_passes_metadata_validation(
-    candidate: TableCandidate,
-    config: MetadataValidationConfig,
-) -> bool:
-    sql = "SHOW TABLE STATS " + quote_table_identifier(candidate.table)
-    argv = build_impala_shell_argv(
-        impala_shell=config.impala_shell,
-        coordinator=config.coordinator,
-        auth=config.auth,
-        sql=sql,
-        protocol=config.protocol,
-        ssl=config.ssl,
-        ca_cert=config.ca_cert,
+def connection_settings(config: MetadataValidationConfig) -> Hs2ConnectionSettings:
+    host, port = split_coordinator(config.coordinator)
+    protocol = validate_protocol(config.protocol) or "hs2"
+    return Hs2ConnectionSettings(
+        host=host,
+        port=port,
         kerberos_service_name=config.kerberos_service_name,
         kerberos_host_fqdn=config.kerberos_host_fqdn,
+        use_ssl=config.ssl,
+        ca_cert=config.ca_cert,
+        use_http_transport=protocol == "hs2-http",
+        http_path=DEFAULT_HTTP_PATH,
+        timeout_sec=config.timeout_sec,
     )
-    completed = run_impala_shell(argv, timeout_sec=config.timeout_sec)
-    return completed.returncode == 0
+
+
+def candidate_passes_metadata_validation(
+    candidate: TableCandidate,
+    session: Hs2MetadataSession,
+) -> bool:
+    session.run("SHOW TABLE STATS " + quote_table_identifier(candidate.table))
+    return True
 
 
 def select_validated_candidate(
     candidates: list[TableCandidate],
     config: MetadataValidationConfig,
+    *,
+    session: Hs2MetadataSession | None = None,
 ) -> CandidateSelection:
     attempts = 0
-    for candidate in sorted_candidates(candidates):
-        attempts += 1
-        try:
-            if candidate_passes_metadata_validation(candidate, config):
-                return CandidateSelection(candidate=candidate, validation_attempts=attempts)
-        except Exception:
-            continue
+    owned_session = session is None
+    session = session or Hs2MetadataSession(connection_settings(config))
+    try:
+        for candidate in sorted_candidates(candidates):
+            attempts += 1
+            try:
+                if candidate_passes_metadata_validation(candidate, session):
+                    return CandidateSelection(
+                        candidate=candidate, validation_attempts=attempts
+                    )
+            except Exception:
+                continue
+    finally:
+        if owned_session:
+            session.close()
     raise SmokeQueryError(
         "No candidate table passed metadata validation. "
         "Rerun a direct Recent metadata smoke or widen the search root."

@@ -1869,7 +1869,7 @@ def test_committed_local_config_template_is_safe():
     assert cm_cluster["cluster"] == "prod_cluster"
     assert cm_cluster["service"] == "impala"
     assert cm_cluster["cm_metrics_profile"] == "cm7"
-    assert cm_cluster["metadata_coordinator"] == "impala-prod-coordinator.example.com:21000"
+    assert cm_cluster["metadata_coordinator"] == "impala-prod-coordinator.example.com:21050"
     assert direct_cluster["query_profile_source"] == "impala"
     assert "cm_url" not in direct_cluster
     assert "cluster" not in direct_cluster

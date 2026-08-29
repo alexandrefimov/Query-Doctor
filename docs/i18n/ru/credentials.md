@@ -95,8 +95,7 @@ current-directory overrides, а legacy ignored `.query-doctor-cm.local.json`
   "cluster": "example_cluster",
   "service": "impala",
   "ca_bundle": "~/.qdcreds/cm-chain.pem",
-  "metadata_coordinator": "impala-coordinator.example.net:21000",
-  "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+  "metadata_coordinator": "impala-coordinator.example.net:21050"
 }
 ```
 
@@ -129,18 +128,20 @@ Wrapper делает следующее:
 - загружает из `~/.qdcreds/llm-api.env` только allowlisted LLM assignments,
   если файл существует;
 - при необходимости преобразует legacy `CM_USER` в `CM_USERNAME`;
-- bootstraps `.venv-impala-shell/bin/impala-shell`, если shell отсутствует;
 - пробрасывает дополнительные flags `query-doctor-web`, включая `--no-llm`;
 - создает или обновляет Kerberos cache из `~/.qdcreds/query-doctor.keytab`;
 - запускает `query-doctor-web` с `~/.qdcreds/query-doctor-config.json`,
   repository-local config или legacy ignored local config.
 
-`impala-shell` bootstrap намеренно изолирован от main Python runtime, потому что
-CDH6-compatible `impala_shell` имеет legacy dependency constraints:
+Сбору metadata нужен драйвер HiveServer2, он живёт за extra `impala`. Поставьте
+его один раз в окружение, где запускается web UI:
 
 ```bash
-scripts/bootstrap-impala-shell
+python -m pip install -e ".[impala]"
 ```
+
+pykerberos собирается из исходников, поэтому нужны заголовки Kerberos
+(`libkrb5-dev` в Debian/Ubuntu, `krb5-devel` в RHEL).
 
 Поддержанные wrapper overrides:
 
@@ -149,11 +150,6 @@ scripts/bootstrap-impala-shell
 - `QD_LLM_ENV`: LLM env file, default `$QD_CREDS_DIR/llm-api.env`;
 - `QD_KEYTAB`: path к Kerberos keytab, default `$QD_CREDS_DIR/query-doctor.keytab`;
 - `QD_KRB5_PRINCIPAL`: one-off override для Kerberos principal;
-- `QD_IMPALA_SHELL`: ожидаемый impala-shell executable для bootstrap checks,
-  default `.venv-impala-shell/bin/impala-shell`;
-- `QD_IMPALA_SHELL_VENV`: directory bootstrap venv, default
-  `.venv-impala-shell`;
-- `QD_BOOTSTRAP_IMPALA_SHELL=0`: не auto-bootstrap missing impala-shell;
 - `KRB5CCNAME`: Kerberos credential cache, default
   `FILE:/tmp/krb5cc_query_doctor`;
 - `QD_CONFIG`: override для local Query Doctor config. По умолчанию wrapper

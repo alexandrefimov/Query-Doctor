@@ -6,23 +6,30 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable
 
-from query_doctor.impala.shell_runner import (
-    ImpalaShellConfigError,
-    build_impala_shell_argv,
-    run_impala_shell,
+from query_doctor.impala.connection_policy import (
+    ImpalaConnectionConfigError,
+    split_coordinator,
     validate_auth,
     validate_coordinator,
     validate_kerberos_host_fqdn,
     validate_kerberos_service_name,
     validate_protocol,
 )
-from query_doctor.impala.shell_output import normalize_output_bytes
+from query_doctor.impala.hs2_runner import (
+    DEFAULT_HTTP_PATH,
+    DEFAULT_KERBEROS_SERVICE_NAME,
+    Hs2ConnectionSettings,
+    Hs2MetadataSession,
+    ImpalaDriverUnavailableError,
+    ImpalaStatementError,
+    ImpalaStatementTimeoutError,
+    render_statement_output,
+)
+from query_doctor.impala.metadata_output import normalize_output_text
 from query_doctor.impala.metadata_policy import (
     ALLOWED_STATEMENTS,
     CollectorError,
@@ -54,14 +61,12 @@ from query_doctor.config.contract import (
 
 DEFAULT_TIMEOUT_SEC = 30
 DEFAULT_MAX_OUTPUT_BYTES = 262_144
+DEFAULT_PROTOCOL = "hs2"
 CREATE_VIEW_RE = re.compile(
     r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", re.IGNORECASE | re.MULTILINE
 )
 VIEW_NOT_APPLICABLE_RE = re.compile(r"not\s+applicable\s+to\s+a\s+view", re.IGNORECASE)
 REPO_DIR = Path(__file__).resolve().parents[2]
-
-
-Runner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
 def redact_metadata_value(args: argparse.Namespace, value: object) -> str:
@@ -74,17 +79,22 @@ def redact_metadata_value(args: argparse.Namespace, value: object) -> str:
     )
 
 
-def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
-    return build_impala_shell_argv(
-        impala_shell=args.impala_shell,
-        coordinator=args.coordinator,
-        auth=args.auth,
-        sql=sql,
-        protocol=args.protocol,
-        ssl=args.ssl,
+def build_connection_settings(args: argparse.Namespace) -> Hs2ConnectionSettings:
+    host, port = split_coordinator(args.coordinator)
+    validate_auth(args.auth)
+    protocol = validate_protocol(args.protocol) or DEFAULT_PROTOCOL
+    if args.ca_cert and not args.ssl:
+        raise ImpalaConnectionConfigError("--ca-cert requires --ssl.")
+    return Hs2ConnectionSettings(
+        host=host,
+        port=port,
+        kerberos_service_name=validate_kerberos_service_name(args.kerberos_service_name),
+        kerberos_host_fqdn=validate_kerberos_host_fqdn(args.kerberos_host_fqdn),
+        use_ssl=bool(args.ssl),
         ca_cert=args.ca_cert,
-        kerberos_service_name=args.kerberos_service_name,
-        kerberos_host_fqdn=args.kerberos_host_fqdn,
+        use_http_transport=protocol == "hs2-http",
+        http_path=DEFAULT_HTTP_PATH,
+        timeout_sec=args.timeout_sec,
     )
 
 
@@ -92,23 +102,40 @@ def run_statement(
     args: argparse.Namespace,
     plan: StatementPlan,
     *,
-    runner: Runner = subprocess.run,
+    session: Hs2MetadataSession,
 ) -> StatementResult:
     validate_read_only_statement(plan.sql, plan.table)
     try:
-        proc = run_impala_shell(
-            build_impala_shell_args(args, plan.sql),
-            timeout_sec=args.timeout_sec,
-            runner=runner,
-            env=effective_impala_env(args),
-        )
-    except subprocess.TimeoutExpired:
+        rows = session.run(plan.sql, timeout_sec=args.timeout_sec)
+    except ImpalaStatementTimeoutError:
         return StatementResult(
             table=plan.table,
             label=plan.label,
             sql=plan.sql,
             status="timeout",
             error=f"statement timed out after {args.timeout_sec}s",
+        )
+    except ImpalaStatementError as exc:
+        message = redact_metadata_value(args, exc)
+        if is_view_not_applicable_error("", message):
+            return StatementResult(
+                table=plan.table,
+                label=plan.label,
+                sql=plan.sql,
+                status="not_applicable",
+                error="object is a view",
+            )
+        stderr_output = normalize_output_text(message)
+        return StatementResult(
+            table=plan.table,
+            label=plan.label,
+            sql=plan.sql,
+            status="error",
+            stderr=stderr_output.text,
+            error="the coordinator rejected the statement",
+            stderr_raw_bytes=stderr_output.raw_bytes,
+            stderr_bytes=stderr_output.bytes,
+            stderr_normalized=stderr_output.normalized,
         )
     except OSError as exc:
         return StatementResult(
@@ -119,53 +146,19 @@ def run_statement(
             error=redact_metadata_value(args, exc),
         )
 
-    stdout_bytes = proc.stdout or b""
-    stderr_bytes = proc.stderr or b""
-    stdout_output = normalize_output_bytes(stdout_bytes)
-    stderr_output = normalize_output_bytes(stderr_bytes)
-
+    stdout_output = normalize_output_text(render_statement_output(plan.label, rows))
     size_metadata = {
         "stdout_raw_bytes": stdout_output.raw_bytes,
         "stdout_bytes": stdout_output.bytes,
         "stdout_normalized": stdout_output.normalized,
-        "stderr_raw_bytes": stderr_output.raw_bytes,
-        "stderr_bytes": stderr_output.bytes,
-        "stderr_normalized": stderr_output.normalized,
     }
-
-    if stdout_output.bytes + stderr_output.bytes > args.max_output_bytes:
+    if stdout_output.bytes > args.max_output_bytes:
         return StatementResult(
             table=plan.table,
             label=plan.label,
             sql=plan.sql,
             status="too_large",
-            returncode=proc.returncode,
             error=f"captured output exceeded max-output-bytes ({args.max_output_bytes})",
-            **size_metadata,
-        )
-
-    stdout = redact_metadata_value(args, stdout_output.text)
-    stderr = redact_metadata_value(args, stderr_output.text)
-    if proc.returncode != 0:
-        if is_view_not_applicable_error(stdout, stderr):
-            return StatementResult(
-                table=plan.table,
-                label=plan.label,
-                sql=plan.sql,
-                status="not_applicable",
-                returncode=proc.returncode,
-                error="object is a view",
-                **size_metadata,
-            )
-        return StatementResult(
-            table=plan.table,
-            label=plan.label,
-            sql=plan.sql,
-            status="error",
-            stdout=stdout,
-            stderr=stderr,
-            returncode=proc.returncode,
-            error=f"impala-shell exited with code {proc.returncode}",
             **size_metadata,
         )
 
@@ -174,9 +167,7 @@ def run_statement(
         label=plan.label,
         sql=plan.sql,
         status="ok",
-        stdout=stdout,
-        stderr=stderr,
-        returncode=proc.returncode,
+        stdout=redact_metadata_value(args, stdout_output.text),
         **size_metadata,
     )
 
@@ -189,57 +180,34 @@ def is_view_not_applicable_error(stdout: str, stderr: str) -> bool:
     return bool(VIEW_NOT_APPLICABLE_RE.search(stdout) or VIEW_NOT_APPLICABLE_RE.search(stderr))
 
 
+def open_metadata_session(args: argparse.Namespace) -> Hs2MetadataSession:
+    apply_kerberos_cache_env(args)
+    return Hs2MetadataSession(build_connection_settings(args))
+
+
 def collect_impala_context(
     args: argparse.Namespace,
     *,
-    runner: Runner = subprocess.run,
+    session: Hs2MetadataSession | None = None,
 ) -> int:
     tables = dedupe_preserve_order(normalize_table_identifier(table) for table in args.table)
     plans = build_statement_plan(tables)
 
     if args.dry_run:
         print("Planned read-only Impala statements:")
-        print(f"- impala-shell: {args.impala_shell}")
-        coordinator = (
-            redact_metadata_value(args, args.coordinator)
-            if args.coordinator
-            else "<required for execution>"
-        )
-        print(f"- coordinator: {coordinator}")
-        print(f"- auth: {args.auth}")
-        if args.protocol:
-            print(f"- protocol: {args.protocol}")
-        if args.kerberos_service_name:
-            print(f"- kerberos service name: {args.kerberos_service_name}")
-        if args.ssl:
-            print("- ssl: yes")
-        if args.ca_cert:
-            print(f"- ca-cert: {redact_metadata_value(args, args.ca_cert)}")
+        print_connection_plan(args)
         for plan in plans:
             print(f"- {redact_metadata_value(args, plan.sql)}")
         results = [planned_result(plan) for plan in plans]
     else:
         print(f"Collecting read-only Impala metadata for {len(tables)} table(s).")
-        results = []
-        for table in tables:
-            table_plans = [plan for plan in plans if plan.table == table]
-            create_plan = table_plans[0]
-            print(f"- {create_plan.label} {create_plan.table}")
-            create_result = run_statement(args, create_plan, runner=runner)
-            print(f"  status: {create_result.status}")
-            results.append(create_result)
-            if create_result.status == "ok" and is_create_view_output(create_result.stdout):
-                for plan in table_plans[1:]:
-                    result = not_applicable_result(plan, "object is a view")
-                    print(f"- {plan.label} {plan.table}")
-                    print(f"  status: {result.status}")
-                    results.append(result)
-                continue
-            for plan in table_plans[1:]:
-                print(f"- {plan.label} {plan.table}")
-                result = run_statement(args, plan, runner=runner)
-                print(f"  status: {result.status}")
-                results.append(result)
+        owned_session = session is None
+        session = session or open_metadata_session(args)
+        try:
+            results = collect_statements(args, tables, plans, session=session)
+        finally:
+            if owned_session:
+                session.close()
 
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out_dir = Path(args.out)
@@ -248,6 +216,56 @@ def collect_impala_context(
 
     failure_statuses = {"error", "timeout", "too_large"}
     return 1 if any(result.status in failure_statuses for result in results) else 0
+
+
+def collect_statements(
+    args: argparse.Namespace,
+    tables: list[str],
+    plans: list[StatementPlan],
+    *,
+    session: Hs2MetadataSession,
+) -> list[StatementResult]:
+    results: list[StatementResult] = []
+    for table in tables:
+        table_plans = [plan for plan in plans if plan.table == table]
+        create_plan = table_plans[0]
+        print(f"- {create_plan.label} {create_plan.table}")
+        create_result = run_statement(args, create_plan, session=session)
+        print(f"  status: {create_result.status}")
+        results.append(create_result)
+        if create_result.status == "ok" and is_create_view_output(create_result.stdout):
+            for plan in table_plans[1:]:
+                result = not_applicable_result(plan, "object is a view")
+                print(f"- {plan.label} {plan.table}")
+                print(f"  status: {result.status}")
+                results.append(result)
+            continue
+        for plan in table_plans[1:]:
+            print(f"- {plan.label} {plan.table}")
+            result = run_statement(args, plan, session=session)
+            print(f"  status: {result.status}")
+            results.append(result)
+    return results
+
+
+def print_connection_plan(args: argparse.Namespace) -> None:
+    coordinator = (
+        redact_metadata_value(args, args.coordinator)
+        if args.coordinator
+        else "<required for execution>"
+    )
+    print(f"- coordinator: {coordinator}")
+    print(f"- auth: {args.auth}")
+    print(f"- protocol: {args.protocol or DEFAULT_PROTOCOL}")
+    service_name = args.kerberos_service_name or DEFAULT_KERBEROS_SERVICE_NAME
+    unset = "" if args.kerberos_service_name else " (driver default)"
+    print(f"- kerberos service name: {service_name}{unset}")
+    if args.kerberos_host_fqdn:
+        print(f"- kerberos host fqdn: {redact_metadata_value(args, args.kerberos_host_fqdn)}")
+    if args.ssl:
+        print("- ssl: yes")
+    if args.ca_cert:
+        print(f"- ca-cert: {redact_metadata_value(args, args.ca_cert)}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -272,34 +290,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fully qualified table name to inspect, e.g. db.table. May be repeated.",
     )
     parser.add_argument("--out", required=True, help="Output directory for impala_context.md/json.")
-    parser.add_argument("--impala-shell", help="impala-shell executable.")
     parser.add_argument(
         "--coordinator",
-        help="Impala coordinator HOST:PORT for real execution. Not required for --dry-run.",
+        help=(
+            "Impala coordinator HOST:PORT for real execution, on its HiveServer2 port. "
+            "Not required for --dry-run."
+        ),
     )
     parser.add_argument(
         "--auth",
-        help="Authentication mode for impala-shell. Only kerberos is supported.",
+        help="Authentication mode for the coordinator connection. Only kerberos is supported.",
     )
     parser.add_argument(
         "--protocol",
-        choices=["beeswax", "hs2", "hs2-http"],
-        help="Optional impala-shell protocol.",
+        choices=["hs2", "hs2-http"],
+        help=f"HiveServer2 transport. Default: {DEFAULT_PROTOCOL}.",
     )
     parser.add_argument(
         "--kerberos-service-name",
-        help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
+        help=(
+            "Kerberos service principal short name, e.g. hive or impala. "
+            f"Default: {DEFAULT_KERBEROS_SERVICE_NAME}."
+        ),
     )
     parser.add_argument(
         "--kerberos-host-fqdn",
         help=(
-            "Expected Kerberos host FQDN passed to impala-shell. Use this when the "
+            "Expected Kerberos host FQDN for the service principal. Use this when the "
             "network coordinator is a load balancer address but the service principal "
             "uses a DNS hostname."
         ),
     )
     parser.add_argument(
-        "--ssl", action="store_true", default=None, help="Pass --ssl to impala-shell."
+        "--ssl", action="store_true", default=None, help="Use TLS for the coordinator connection."
     )
     parser.add_argument("--ca-cert", help="CA certificate path for --ssl connections.")
     parser.add_argument(
@@ -310,7 +333,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-output-bytes",
         type=int,
-        help=f"Maximum captured stdout+stderr bytes per statement (default: {DEFAULT_MAX_OUTPUT_BYTES}).",
+        help=f"Maximum captured output bytes per statement (default: {DEFAULT_MAX_OUTPUT_BYTES}).",
     )
     parser.add_argument(
         "--redact",
@@ -374,7 +397,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error("--coordinator is required unless --dry-run is used")
         if args.ca_cert and not args.ssl:
             parser.error("--ca-cert requires --ssl")
-    except ImpalaShellConfigError as exc:
+    except ImpalaConnectionConfigError as exc:
         parser.error(str(exc))
     return args
 
@@ -387,12 +410,17 @@ def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
         use_repo_default=False,
     )
 
-    args.impala_shell = first_string(
-        args.impala_shell, config_values.get("metadata_impala_shell"), "impala-shell"
-    )
+    if config_values.get("metadata_impala_shell"):
+        print(
+            "note: metadata_impala_shell is no longer used; metadata is collected "
+            "over HiveServer2. The setting can be removed from the config.",
+            file=sys.stderr,
+        )
     args.coordinator = first_string(args.coordinator, config_values.get("metadata_coordinator"))
     args.auth = first_string(args.auth, config_values.get("metadata_auth"), "kerberos")
-    args.protocol = first_string(args.protocol, config_values.get("metadata_protocol"))
+    args.protocol = first_string(
+        args.protocol, config_values.get("metadata_protocol"), DEFAULT_PROTOCOL
+    )
     args.kerberos_service_name = first_string(
         args.kerberos_service_name,
         config_values.get("metadata_kerberos_service_name"),
@@ -462,18 +490,26 @@ def first_bool(*values: object, default: bool) -> bool:
     return default
 
 
-def effective_impala_env(args: argparse.Namespace) -> dict[str, str] | None:
+def apply_kerberos_cache_env(args: argparse.Namespace) -> None:
+    """Point this process at the configured ticket cache.
+
+    The GSSAPI handshake now runs in-process, and libkrb5 reads the cache
+    location from KRB5CCNAME only.
+    """
     krb5ccname = getattr(args, "krb5ccname", None)
     if not krb5ccname or os.environ.get("KRB5CCNAME"):
-        return None
-    return merge_kerberos_cache_env(os.environ, {"krb5ccname": krb5ccname})
+        return
+    effective = merge_kerberos_cache_env(os.environ, {"krb5ccname": krb5ccname})
+    cache = effective.get("KRB5CCNAME")
+    if cache:
+        os.environ["KRB5CCNAME"] = cache
 
 
-def main(argv: list[str] | None = None, *, runner: Runner = subprocess.run) -> int:
+def main(argv: list[str] | None = None, *, session: Hs2MetadataSession | None = None) -> int:
     args = parse_args(argv)
     try:
-        return collect_impala_context(args, runner=runner)
-    except (CollectorError, ImpalaShellConfigError) as exc:
+        return collect_impala_context(args, session=session)
+    except (CollectorError, ImpalaConnectionConfigError, ImpalaDriverUnavailableError) as exc:
         print(f"error: {redact_impala_context_text(exc)}", file=sys.stderr)
         return 2
 

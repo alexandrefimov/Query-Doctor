@@ -10,7 +10,6 @@ QDCREDS_CONFIG="$CREDS_DIR/query-doctor-config.json"
 REPO_CONFIG="$ROOT_DIR/query-doctor-config.json"
 LEGACY_CONFIG="$ROOT_DIR/.query-doctor-cm.local.json"
 KRB5_CACHE="${KRB5CCNAME:-FILE:/tmp/krb5cc_query_doctor}"
-IMPALA_SHELL="${QD_IMPALA_SHELL:-$ROOT_DIR/.venv-impala-shell/bin/impala-shell}"
 
 if [[ ! -r "$CM_ENV" ]]; then
   echo "Missing CM credentials env file: $CM_ENV" >&2
@@ -133,9 +132,6 @@ fi
 
 export KRB5CCNAME="$KRB5_CACHE"
 export QD_KEYTAB="$KEYTAB"
-if [[ "${QD_BOOTSTRAP_IMPALA_SHELL:-1}" != "0" && ! -x "$IMPALA_SHELL" ]]; then
-  "$ROOT_DIR/scripts/bootstrap-impala-shell"
-fi
 if [[ "${QD_SKIP_KINIT:-0}" != "1" ]]; then
   if [[ ! -r "$KEYTAB" ]]; then
     echo "Missing Kerberos keytab: $KEYTAB" >&2

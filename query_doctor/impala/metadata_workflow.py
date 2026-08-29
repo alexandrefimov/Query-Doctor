@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from query_doctor.impala.shell_runner import (
-    ImpalaShellConfigError,
+from query_doctor.impala.connection_policy import (
+    ImpalaConnectionConfigError,
     validate_auth,
     validate_coordinator,
     validate_kerberos_host_fqdn,
     validate_kerberos_service_name,
     validate_protocol,
 )
+from query_doctor.impala import hs2_runner
 from query_doctor.impala.metadata_policy import (
     CollectorError,
     normalize_database_identifier,
@@ -28,8 +28,11 @@ DEFAULT_METADATA_MAX_TABLES = 5
 DEFAULT_METADATA_TIMEOUT_SEC = 30
 DEFAULT_METADATA_MAX_OUTPUT_BYTES = 262_144
 DEFAULT_METADATA_AUTH = "kerberos"
-DEFAULT_METADATA_PROTOCOL = "beeswax"
+DEFAULT_METADATA_PROTOCOL = "hs2"
 METADATA_MODES = ("auto", "on", "off", "dry-run")
+METADATA_DRIVER_MISSING_REASON = (
+    "impala metadata driver is not available; install query-doctor[impala]"
+)
 REPO_DIR = Path(__file__).resolve().parents[2]
 METADATA_SOURCE_TABLES_ENV = "QD_METADATA_SOURCE_TABLES_JSON"
 GENERIC_METADATA_IDENTIFIER_PARTS = {
@@ -82,12 +85,7 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--metadata-coordinator",
         default=os.environ.get("QD_METADATA_COORDINATOR"),
-        help="Impala coordinator HOST:PORT for metadata collection.",
-    )
-    parser.add_argument(
-        "--metadata-impala-shell",
-        default=os.environ.get("QD_METADATA_IMPALA_SHELL", "impala-shell"),
-        help="impala-shell executable for metadata collection. Default: %(default)s.",
+        help=("Impala coordinator HOST:PORT for metadata collection, on its HiveServer2 port."),
     )
     parser.add_argument(
         "--metadata-auth",
@@ -96,28 +94,25 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--metadata-protocol",
-        choices=["beeswax", "hs2", "hs2-http"],
+        choices=["hs2", "hs2-http"],
         default=os.environ.get("QD_METADATA_PROTOCOL", DEFAULT_METADATA_PROTOCOL),
-        help="impala-shell protocol for metadata collection. Default: %(default)s.",
+        help="HiveServer2 transport for metadata collection. Default: %(default)s.",
     )
     parser.add_argument(
         "--metadata-kerberos-service-name",
         default=os.environ.get("QD_METADATA_KERBEROS_SERVICE_NAME")
         or os.environ.get("QD_IMPALA_KERBEROS_SERVICE_NAME"),
-        help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
+        help="Kerberos service principal short name, e.g. hive or impala.",
     )
     parser.add_argument(
         "--metadata-kerberos-host-fqdn",
         default=os.environ.get("QD_METADATA_KERBEROS_HOST_FQDN"),
-        help=(
-            "Expected Kerberos host FQDN passed to impala-shell for load-balanced "
-            "metadata coordinators."
-        ),
+        help="Expected Kerberos host FQDN for load-balanced metadata coordinators.",
     )
     parser.add_argument(
         "--metadata-ssl",
         action="store_true",
-        help="Pass --ssl to impala-shell for metadata collection.",
+        help="Use TLS for the metadata coordinator connection.",
     )
     parser.add_argument(
         "--metadata-ca-cert",
@@ -182,7 +177,7 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--metadata-dry-run",
         action="store_true",
-        help="Show the bounded metadata collection plan without running impala-shell.",
+        help="Show the bounded metadata collection plan without connecting.",
     )
 
 
@@ -219,7 +214,7 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
         args.metadata_kerberos_host_fqdn = validate_kerberos_host_fqdn(
             args.metadata_kerberos_host_fqdn
         )
-    except ImpalaShellConfigError as exc:
+    except ImpalaConnectionConfigError as exc:
         parser.error(str(exc))
     if effective_mode != "off" and args.metadata_default_db:
         try:
@@ -233,13 +228,13 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
             validate_auth(args.metadata_auth)
             validate_protocol(args.metadata_protocol)
             args.metadata_coordinator = validate_coordinator(args.metadata_coordinator)
-        except ImpalaShellConfigError as exc:
+        except ImpalaConnectionConfigError as exc:
             parser.error(str(exc))
     elif effective_mode == "on":
         try:
             validate_auth(args.metadata_auth)
             validate_protocol(args.metadata_protocol)
-        except ImpalaShellConfigError as exc:
+        except ImpalaConnectionConfigError as exc:
             parser.error(str(exc))
 
 
@@ -279,49 +274,21 @@ def resolve_metadata_mode(args: argparse.Namespace) -> str:
     return args.metadata_mode
 
 
-def metadata_config_status(
-    args: argparse.Namespace, *, base_dir: Path | None = None
-) -> MetadataConfigStatus:
+def metadata_config_status(args: argparse.Namespace) -> MetadataConfigStatus:
     if not args.metadata_coordinator:
         return MetadataConfigStatus(False, "metadata coordinator is not configured")
     try:
         validate_auth(args.metadata_auth)
         validate_protocol(args.metadata_protocol)
-    except ImpalaShellConfigError as exc:
+    except ImpalaConnectionConfigError as exc:
         return MetadataConfigStatus(False, str(exc), fatal=True)
     try:
         args.metadata_coordinator = validate_coordinator(args.metadata_coordinator)
-    except ImpalaShellConfigError as exc:
+    except ImpalaConnectionConfigError as exc:
         return MetadataConfigStatus(False, str(exc), fatal=True)
-    resolved_impala_shell = _resolve_impala_shell_path(
-        args.metadata_impala_shell, base_dir=base_dir
-    )
-    if resolved_impala_shell is None:
-        return MetadataConfigStatus(
-            False,
-            f"impala-shell executable is not available: {args.metadata_impala_shell}",
-        )
-    args.metadata_impala_shell = resolved_impala_shell
+    if not hs2_runner.driver_available():
+        return MetadataConfigStatus(False, METADATA_DRIVER_MISSING_REASON)
     return MetadataConfigStatus(True)
-
-
-def _resolve_impala_shell_path(impala_shell: str, *, base_dir: Path | None = None) -> str | None:
-    value = impala_shell.strip()
-    if not value:
-        return None
-    if "/" in value or "\\" in value:
-        path = Path(value).expanduser()
-        if path.exists() and path.is_file():
-            return str(path.resolve())
-        if not path.is_absolute():
-            root = base_dir or REPO_DIR
-            repo_relative_path = (root / path).resolve()
-            if repo_relative_path.exists() and repo_relative_path.is_file():
-                return str(repo_relative_path)
-        return None
-    if shutil.which(value) is None:
-        return None
-    return value
 
 
 def read_referenced_tables_from_facts(facts_path: Path) -> list[str]:
@@ -457,8 +424,6 @@ def build_metadata_collector_cmd(
         [
             "--out",
             str(case_dir),
-            "--impala-shell",
-            args.metadata_impala_shell,
             "--coordinator",
             args.metadata_coordinator,
             "--auth",
@@ -527,4 +492,4 @@ def print_metadata_plan(
         for table in plan.invalid_tables:
             print(f"[pipeline]   invalid: {display_table(table)}")
     if dry_run:
-        print("[pipeline] metadata dry-run requested; impala-shell will not run")
+        print("[pipeline] metadata dry-run requested; no coordinator connection will open")

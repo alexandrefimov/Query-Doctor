@@ -58,19 +58,27 @@ if [[ -z "${pod}" ]]; then
 fi
 
 kubectl exec -i -n "${namespace}" "${pod}" -c "${container}" -- python - <<'PY'
+import importlib
 import os
 import pathlib
 import shutil
 import subprocess
 import sys
 
-shell = pathlib.Path(os.environ.get("QD_IMPALA_SHELL", ""))
+
+def importable(name):
+    try:
+        importlib.import_module(name)
+    except ImportError:
+        return False
+    return True
+
+
 cache = os.environ.get("KRB5CCNAME", "")
 cache_path = cache[5:] if cache.startswith("FILE:") else cache
 checks = {
-    "impala_shell_path_exists": shell.is_file(),
-    "sasl_import": bool(shell.is_file())
-    and subprocess.run([str(shell.with_name("python")), "-c", "import sasl"], check=False).returncode == 0,
+    "impyla_import": importable("impala.dbapi"),
+    "kerberos_import": importable("kerberos"),
     "krb5ccname_set": bool(cache),
     "krb5_cache_exists": bool(cache_path) and pathlib.Path(cache_path).is_file(),
     "klist_available": bool(shutil.which("klist")),

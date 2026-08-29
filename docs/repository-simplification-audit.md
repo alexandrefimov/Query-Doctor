@@ -41,7 +41,7 @@ user-facing requirement changes that boundary.
 | Dev gate | Maintainer validation script that audits readiness or safety. | `audit_*`, `check_*`, `agent_preflight.py`, `web_static_smoke.py`. |
 | Release gate | Script used before public release, demo, or handoff. | `local_gate.sh`, public-safety checks, release-history checks, demo preflight. |
 | Fixture or handoff builder | Script that creates sanitized fixtures or retained raw-free manifests. | `build_*`, `export_*`, evidence-package builders. |
-| Legacy compatibility helper | Compatibility path retained for old environments or package workflows. | `bootstrap-impala-shell`, legacy config/artifact fallback tests. |
+| Legacy compatibility helper | Compatibility path retained for old environments or package workflows. | legacy config/artifact fallback tests. |
 
 ## Test Roles
 

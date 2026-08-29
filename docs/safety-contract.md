@@ -79,17 +79,18 @@ implementation boundaries.
 - Dry-run and preflight paths must not collect profile text.
 - Real profile collection must not print raw profiles, SQL, raw Cloudera
   Manager (CM) JSON, or credentials.
-- The first supported real Impala metadata connection path is Kerberos plus
-  `impala-shell` with an already available TGT from `kinit`.
+- The first supported real Impala metadata connection path is Kerberos over
+  HiveServer2 with an already available TGT from `kinit`.
 - The metadata collector does not call `kinit`, does not prompt for passwords,
-  does not accept AD/LDAP passwords, and does not use impyla or a Python DB API.
+  and does not accept AD/LDAP passwords. It opens one read-only HiveServer2
+  connection per run through impyla and reuses it for every planned statement.
 - The metadata collector accepts only bounded table references from explicit
   CLI input or Python-owned selected-case extraction. It runs only read-only
   statements: `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
   `SHOW COLUMN STATS`.
-- Raw `impala-shell` stdout/stderr must not be printed to the terminal.
-  Collected output is bounded, redacted, and written only under explicit
-  `--out`.
+- Raw coordinator rows and driver error text must not be printed to the
+  terminal. Collected output is bounded, redacted, and written only under
+  explicit `--out`.
 - Generated `impala_context.md` and `impala_context.json` are local outputs and
   must not be committed.
 

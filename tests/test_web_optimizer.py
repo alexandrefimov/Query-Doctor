@@ -4,7 +4,27 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlencode
 
+import pytest
+
+from impala_hs2_test_support import FakeHs2Connector, table_rows, text_rows
+from query_doctor.impala import hs2_runner
 from web_server_test_support import load_web_module
+
+
+@pytest.fixture(autouse=True)
+def metadata_driver_present(monkeypatch):
+    """These tests exercise metadata wiring, not whether impyla is installed."""
+    monkeypatch.setattr(hs2_runner, "driver_available", lambda: True)
+
+
+def metadata_responder(sql):
+    if sql.startswith("SHOW CREATE TABLE"):
+        return text_rows("CREATE TABLE example_sales.orders (id INT) STORED AS PARQUET")
+    if sql.startswith("SHOW TABLE STATS"):
+        return table_rows(("#Rows", "Size"), (-1, "10MB"))
+    if sql.startswith("SHOW COLUMN STATS"):
+        return table_rows(("Column", "#Distinct Values"), ("id", -1))
+    raise AssertionError(f"unexpected statement: {sql}")
 
 
 def make_request(handler, path):
@@ -243,8 +263,7 @@ def test_optimizer_rejects_mutating_sql_without_metadata_collection():
     module = load_web_module()
     settings = module.WebSettings(
         config=Path(".query-doctor-cm.local.json"),
-        metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell="/bin/echo",
+        metadata_coordinator="impala.example.com:21050",
         metadata_kerberos_service_name="hive",
     )
     calls = []
@@ -268,34 +287,20 @@ def test_optimizer_rejects_mutating_sql_without_metadata_collection():
     assert calls == []
 
 
-def test_optimizer_metadata_collection_uses_only_allowlisted_show_statements(tmp_path):
+def test_optimizer_metadata_collection_uses_only_allowlisted_show_statements(tmp_path, monkeypatch):
     module = load_web_module()
     settings = module.WebSettings(
         config=Path(".query-doctor-cm.local.json"),
-        metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell="/bin/echo",
+        metadata_coordinator="impala.example.com:21050",
         metadata_kerberos_service_name="hive",
     )
-    observed_sql = []
+    connector = FakeHs2Connector(metadata_responder)
+    monkeypatch.setattr(hs2_runner, "default_connector", connector)
 
-    def runner(cmd, **kwargs):
-        sql = cmd[cmd.index("-q") + 1]
-        assert "--kerberos_service_name=hive" in cmd
-        observed_sql.append(sql)
-        if sql.startswith("SHOW CREATE TABLE"):
-            stdout = b"CREATE TABLE example_sales.orders (id INT) STORED AS PARQUET\n"
-        elif sql.startswith("SHOW TABLE STATS"):
-            stdout = b"| #Rows | Size |\n| -1 | 10MB |\n"
-        elif sql.startswith("SHOW COLUMN STATS"):
-            stdout = b"| Column | #Distinct Values |\n| id | -1 |\n"
-        else:
-            stdout = b""
-        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr=b"")
+    result = module.run_optimizer_analysis("select id from example_sales.orders", settings)
 
-    result = module.run_optimizer_analysis(
-        "select id from example_sales.orders", settings, runner=runner
-    )
-
+    observed_sql = connector.connections[0].calls
+    assert connector.settings[0].kerberos_service_name == "hive"
     assert observed_sql == [
         "SHOW CREATE TABLE `example_sales`.`orders`",
         "SHOW TABLE STATS `example_sales`.`orders`",
@@ -304,27 +309,18 @@ def test_optimizer_metadata_collection_uses_only_allowlisted_show_statements(tmp
     assert result.metadata_status == "collected"
 
 
-def test_optimizer_browser_output_hides_sensitive_metadata_and_raw_output():
+def test_optimizer_browser_output_hides_sensitive_metadata_and_raw_output(monkeypatch):
     module = load_web_module()
     settings = module.WebSettings(
         config=Path(".query-doctor-cm.local.json"),
-        metadata_coordinator="secret-coordinator.example.com:21000",
-        metadata_impala_shell="/bin/echo",
+        metadata_coordinator="secret-coordinator.example.com:21050",
         metadata_auth="kerberos",
         krb5ccname="/tmp/krb5cc_secret",
     )
+    monkeypatch.setattr(hs2_runner, "default_connector", FakeHs2Connector(metadata_responder))
 
     def runner(cmd, **kwargs):
-        sql = cmd[cmd.index("-q") + 1]
-        if sql.startswith("SHOW CREATE TABLE"):
-            stdout = b"CREATE TABLE example_sales.orders (id INT) STORED AS PARQUET\n"
-        elif sql.startswith("SHOW TABLE STATS"):
-            stdout = b"| #Rows | Size |\n| -1 | 10MB |\n"
-        elif sql.startswith("SHOW COLUMN STATS"):
-            stdout = b"| Column | #Distinct Values |\n| id | -1 |\n"
-        else:
-            stdout = b"raw unexpected output"
-        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr=b"raw stderr secret")
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"raw stderr secret")
 
     handler = module.make_handler(settings, runner=runner)
     request, captured = make_request(handler, "/optimizer")

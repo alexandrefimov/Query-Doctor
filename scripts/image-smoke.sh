@@ -31,7 +31,7 @@ if [[ -n "${platform}" ]]; then
   tool_args+=(--platform "${platform}")
 fi
 docker run "${tool_args[@]}" --entrypoint python "${image_tag}" -c \
-  "import os, pathlib, shutil, subprocess; shell=pathlib.Path(os.environ['QD_IMPALA_SHELL']); assert shell.is_file(); assert shutil.which('klist'); subprocess.run([str(shell.with_name('python')), '-c', 'import sasl'], check=True)" >/dev/null
+  "import shutil, kerberos; from impala.dbapi import connect; assert shutil.which('klist')" >/dev/null
 
 health_url="http://${host}:${port}/healthz"
 ready_url="http://${host}:${port}/readyz"

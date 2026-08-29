@@ -120,9 +120,10 @@ use `python -m query_doctor.cli.<command_module>`.
 docker run --rm -p 127.0.0.1:8765:8765 ghcr.io/alexandrefimov/query-doctor:0.11.0
 ```
 
-The image defaults to the safe synthetic public demo. It runs on Python 3.10 and
-carries the Kerberos client tools and isolated `impala-shell` runtime used by
-configured metadata collection.
+The image defaults to the safe synthetic public demo. It runs on Python 3.13 and
+carries the Kerberos client tools used by configured metadata collection. Build
+it with `QUERY_DOCTOR_INSTALL_EXTRAS=impala` to include the HiveServer2 driver
+that metadata collection needs.
 
 Kubernetes manifests, probes, resource baselines, Recent history storage, and
 the Helm chart are documented in

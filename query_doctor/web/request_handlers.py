@@ -106,7 +106,7 @@ def handle_optimizer_request(
     if not sql:
         return 400, render_optimizer_page(settings, error=optimizer_sql_required_error())
     try:
-        result = run_optimizer_analysis(sql, settings, runner=runner)
+        result = run_optimizer_analysis(sql, settings)
     except WebError as exc:
         return 400, render_optimizer_page(settings, error=exc)
     return 200, render_optimizer_page(settings, result=result)

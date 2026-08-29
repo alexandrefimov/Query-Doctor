@@ -20,6 +20,13 @@ from query_doctor.optimizer.defaults import BUILTIN_OPTIMIZER_MODEL
 from query_doctor.web.manual_profile_inbox import manual_profile_file_for_query
 from query_doctor.web.routes import route_get_request
 from query_doctor.web.ui import layout
+from query_doctor.impala import hs2_runner
+
+
+@pytest.fixture(autouse=True)
+def metadata_driver_present(monkeypatch):
+    """These tests exercise metadata wiring, not whether impyla is installed."""
+    monkeypatch.setattr(hs2_runner, "driver_available", lambda: True)
 
 
 def compact_css(css: str) -> str:
@@ -376,7 +383,6 @@ SERVER_REEXPORTS = [
             "WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES",
             "run_subprocess",
             "effective_subprocess_env",
-            "resolve_metadata_impala_shell",
             "preflight_web_metadata_batch",
             "subprocess_failure_message",
             "has_cm_credentials",
@@ -1226,12 +1232,10 @@ def test_web_parse_args_accepts_metadata_options():
             ".query-doctor-cm.local.json",
             "--metadata-coordinator",
             "impala.example.com:21000",
-            "--metadata-impala-shell",
-            "/opt/impala-shell",
             "--metadata-auth",
             "kerberos",
             "--metadata-protocol",
-            "beeswax",
+            "hs2",
             "--metadata-kerberos-service-name",
             "hive",
             "--metadata-kerberos-host-fqdn",
@@ -1250,8 +1254,7 @@ def test_web_parse_args_accepts_metadata_options():
     )
 
     assert args.metadata_coordinator == "impala.example.com:21000"
-    assert args.metadata_impala_shell == "/opt/impala-shell"
-    assert args.metadata_protocol == "beeswax"
+    assert args.metadata_protocol == "hs2"
     assert args.metadata_kerberos_service_name == "hive"
     assert args.metadata_kerberos_host_fqdn == "impala-lb.example.com"
     assert args.metadata_ssl is True
@@ -13187,15 +13190,13 @@ def test_canonical_local_config_template_contains_web_metadata_placeholders():
     assert cm_cluster["cm_url"] == "https://cm-prod.example.com:7183/"
     assert cm_cluster["cluster"] == "prod_cluster"
     assert cm_cluster["service"] == "impala"
-    assert cm_cluster["metadata_coordinator"] == "impala-prod-coordinator.example.com:21000"
-    assert cm_cluster["metadata_impala_shell"] == ".venv-impala-shell/bin/impala-shell"
+    assert cm_cluster["metadata_coordinator"] == "impala-prod-coordinator.example.com:21050"
     assert direct_cluster["query_profile_source"] == "impala"
     assert direct_cluster["impala_profile_hosts"] == [
         "impalad-worker-1.example.com",
         "impalad-worker-2.example.com",
     ]
-    assert direct_cluster["metadata_coordinator"] == "impala-coordinator.example.com:21000"
-    assert direct_cluster["metadata_impala_shell"] == ".venv-impala-shell/bin/impala-shell"
+    assert direct_cluster["metadata_coordinator"] == "impala-coordinator.example.com:21050"
     assert direct_cluster["metadata_kerberos_service_name"] == "hive"
     assert direct_cluster["collect_prometheus_timeseries"] is True
     assert "cm_url" not in direct_cluster
@@ -13231,7 +13232,6 @@ def test_web_settings_loads_metadata_from_local_config(tmp_path):
                 "host": "127.0.0.1",
                 "port": 9876,
                 "metadata_coordinator": "impala-config.example.net:21000",
-                "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
                 "metadata_auth": "kerberos",
                 "metadata_protocol": "hs2",
                 "impala_kerberos_service_name": "hive",
@@ -13269,7 +13269,6 @@ def test_web_settings_loads_metadata_from_local_config(tmp_path):
     assert settings.host == "127.0.0.1"
     assert settings.port == 9876
     assert settings.metadata_coordinator == "impala-config.example.net:21000"
-    assert settings.metadata_impala_shell == ".venv-impala-shell/bin/impala-shell"
     assert settings.metadata_auth == "kerberos"
     assert settings.metadata_protocol == "hs2"
     assert settings.metadata_kerberos_service_name == "hive"
@@ -13584,8 +13583,7 @@ def test_web_metadata_cli_options_override_local_config(tmp_path):
         json.dumps(
             {
                 "metadata_coordinator": "impala-config.example.net:21000",
-                "metadata_impala_shell": "/config/impala-shell",
-                "metadata_protocol": "beeswax",
+                "metadata_protocol": "hs2",
                 "metadata_timeout_sec": 30,
                 "metadata_max_tables": 5,
                 "metadata_max_output_bytes": 111111,
@@ -13601,8 +13599,6 @@ def test_web_metadata_cli_options_override_local_config(tmp_path):
             str(config),
             "--metadata-coordinator",
             "impala-cli.example.net:21000",
-            "--metadata-impala-shell",
-            "/cli/impala-shell",
             "--metadata-protocol",
             "hs2-http",
             "--metadata-timeout-sec",
@@ -13617,7 +13613,6 @@ def test_web_metadata_cli_options_override_local_config(tmp_path):
     settings = module.build_web_settings(args, cwd=tmp_path)
 
     assert settings.metadata_coordinator == "impala-cli.example.net:21000"
-    assert settings.metadata_impala_shell == "/cli/impala-shell"
     assert settings.metadata_protocol == "hs2-http"
     assert settings.metadata_timeout_sec == 55
     assert settings.metadata_max_tables == 8
@@ -13712,8 +13707,7 @@ def test_web_full_batch_command_uses_metadata_args_from_local_config(tmp_path):
         json.dumps(
             {
                 "metadata_coordinator": "impala-config.example.net:21000",
-                "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
-                "metadata_protocol": "beeswax",
+                "metadata_protocol": "hs2",
                 "metadata_timeout_sec": 44,
                 "metadata_max_tables": 6,
                 "metadata_max_output_bytes": 123456,
@@ -13733,8 +13727,8 @@ def test_web_full_batch_command_uses_metadata_args_from_local_config(tmp_path):
     assert cmd[cmd.index("--triage-profile-limit") + 1] == "5000"
     assert cmd[cmd.index("--metadata-top-limit") + 1] == "8"
     assert cmd[cmd.index("--metadata-coordinator") + 1] == "impala-config.example.net:21000"
-    assert cmd[cmd.index("--metadata-impala-shell") + 1] == ".venv-impala-shell/bin/impala-shell"
-    assert cmd[cmd.index("--metadata-protocol") + 1] == "beeswax"
+    assert "--metadata-impala-shell" not in cmd
+    assert cmd[cmd.index("--metadata-protocol") + 1] == "hs2"
     assert cmd[cmd.index("--metadata-timeout-sec") + 1] == "44"
     assert cmd[cmd.index("--metadata-max-tables") + 1] == "6"
     assert cmd[cmd.index("--metadata-max-output-bytes") + 1] == "123456"
@@ -13865,8 +13859,7 @@ def test_web_batch_command_uses_direct_impala_source_for_selected_cluster(tmp_pa
                         "prometheus_step_sec": 45,
                         "prometheus_timeseries_padding_sec": 180,
                         "metadata_coordinator": "impala-ambari.example.com:21000",
-                        "metadata_impala_shell": "/opt/impala-shell",
-                        "metadata_protocol": "beeswax",
+                        "metadata_protocol": "hs2",
                         "metadata_kerberos_service_name": "hive",
                         "metadata_redact": True,
                     },
@@ -13908,7 +13901,7 @@ def test_web_batch_command_uses_direct_impala_source_for_selected_cluster(tmp_pa
     assert cmd[cmd.index("--prometheus-timeseries-padding-sec") + 1] == "180"
     assert cmd[cmd.index("--metadata-mode") + 1] == "on"
     assert cmd[cmd.index("--metadata-coordinator") + 1] == "impala-ambari.example.com:21000"
-    assert cmd[cmd.index("--metadata-impala-shell") + 1] == "/opt/impala-shell"
+    assert "--metadata-impala-shell" not in cmd
     assert cmd[cmd.index("--metadata-kerberos-service-name") + 1] == "hive"
     assert "--metadata-redact" in cmd
     assert "--cm-url" not in cmd
@@ -14596,9 +14589,8 @@ def test_web_batch_full_mode_builds_metadata_command(tmp_path):
         config=tmp_path / "cm-config.json",
         repo_dir=REPO_DIR,
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell="/opt/impala-shell",
         metadata_auth="kerberos",
-        metadata_protocol="beeswax",
+        metadata_protocol="hs2",
         metadata_kerberos_service_name="hive",
         metadata_kerberos_host_fqdn="impala-lb.example.com",
         metadata_ssl=True,
@@ -14618,9 +14610,9 @@ def test_web_batch_full_mode_builds_metadata_command(tmp_path):
     assert cmd[cmd.index("--jobs") + 1] == "4"
     assert cmd[cmd.index("--metadata-jobs") + 1] == "5"
     assert cmd[cmd.index("--metadata-coordinator") + 1] == "impala.example.com:21000"
-    assert cmd[cmd.index("--metadata-impala-shell") + 1] == "/opt/impala-shell"
+    assert "--metadata-impala-shell" not in cmd
     assert cmd[cmd.index("--metadata-auth") + 1] == "kerberos"
-    assert cmd[cmd.index("--metadata-protocol") + 1] == "beeswax"
+    assert cmd[cmd.index("--metadata-protocol") + 1] == "hs2"
     assert cmd[cmd.index("--metadata-kerberos-service-name") + 1] == "hive"
     assert cmd[cmd.index("--metadata-kerberos-host-fqdn") + 1] == "impala-lb.example.com"
     assert cmd[cmd.index("--metadata-timeout-sec") + 1] == "45"
@@ -14652,7 +14644,6 @@ def test_web_batch_full_mode_preflight_passes_before_starting_batch(tmp_path, mo
         config=tmp_path / "cm-config.json",
         repo_dir=REPO_DIR,
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell=sys.executable,
         krb5ccname="FILE:/tmp/krb5cc_web_config",
     )
     settings.config.write_text("{}", encoding="utf-8")
@@ -14705,7 +14696,6 @@ def test_web_batch_full_mode_klist_failure_rejects_before_subprocess(tmp_path, m
         config=tmp_path / "cm-config.json",
         repo_dir=REPO_DIR,
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell=sys.executable,
         krb5ccname="FILE:/tmp/krb5cc_secret_path",
     )
     settings.config.write_text("{}", encoding="utf-8")
@@ -14739,13 +14729,13 @@ def test_web_batch_full_mode_klist_failure_rejects_before_subprocess(tmp_path, m
     assert store.latest_batch_summary() is None
 
 
-def test_web_batch_full_mode_missing_impala_shell_rejects_before_klist(tmp_path):
+def test_web_batch_full_mode_missing_driver_rejects_before_klist(tmp_path, monkeypatch):
     module = load_web_module()
+    monkeypatch.setattr(hs2_runner, "driver_available", lambda: False)
     settings = module.WebSettings(
         config=tmp_path / "cm-config.json",
         repo_dir=REPO_DIR,
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell=str(tmp_path / "missing-impala-shell"),
         krb5ccname="FILE:/tmp/krb5cc_web_config",
     )
     settings.config.write_text("{}", encoding="utf-8")
@@ -14761,8 +14751,7 @@ def test_web_batch_full_mode_missing_impala_shell_rejects_before_klist(tmp_path)
     )
 
     assert status == 400
-    assert "Metadata preflight failed: impala-shell executable is not available" in body
-    assert "missing-impala-shell" not in body
+    assert "the impyla metadata driver is not installed" in body
 
 
 def test_web_batch_fast_mode_skips_metadata_preflight(tmp_path):
@@ -14771,7 +14760,6 @@ def test_web_batch_fast_mode_skips_metadata_preflight(tmp_path):
         config=tmp_path / "cm-config.json",
         repo_dir=REPO_DIR,
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell=str(tmp_path / "missing-impala-shell"),
         krb5ccname="FILE:/tmp/krb5cc_web_config",
     )
     settings.config.write_text("{}", encoding="utf-8")
@@ -15116,7 +15104,6 @@ def test_nonlocal_web_batch_uses_conservative_metadata_defaults(tmp_path, monkey
         cm_cluster="prod_cluster",
         cm_service="impala",
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell=sys.executable,
         krb5ccname="FILE:/tmp/krb5cc_web_config",
     )
     settings.config.write_text("{}", encoding="utf-8")
@@ -16556,9 +16543,8 @@ def test_web_query_id_analysis_collects_metadata_when_configured(monkeypatch, tm
         repo_dir=tmp_path,
         corpus_dir=tmp_path / "cm-corpus",
         metadata_coordinator="impala.example.com:21000",
-        metadata_impala_shell="/opt/impala-shell",
         metadata_auth="kerberos",
-        metadata_protocol="beeswax",
+        metadata_protocol="hs2",
         metadata_kerberos_service_name="hive",
         metadata_timeout_sec=45,
         metadata_max_tables=7,
@@ -16591,7 +16577,7 @@ def test_web_query_id_analysis_collects_metadata_when_configured(monkeypatch, tm
             assert "--skip-report" not in cmd
             assert cmd[cmd.index("--metadata-mode") + 1] == "on"
             assert cmd[cmd.index("--metadata-coordinator") + 1] == "impala.example.com:21000"
-            assert cmd[cmd.index("--metadata-impala-shell") + 1] == "/opt/impala-shell"
+            assert "--metadata-impala-shell" not in cmd
             assert cmd[cmd.index("--metadata-kerberos-service-name") + 1] == "hive"
             assert cmd[cmd.index("--metadata-timeout-sec") + 1] == "45"
             assert cmd[cmd.index("--metadata-max-tables") + 1] == "7"
@@ -16979,8 +16965,8 @@ def test_subprocess_failure_web_error_adds_safe_reason_code():
             "metadata Kerberos ticket is missing or expired",
         ),
         (
-            "[batch] ERROR: metadata impala-shell is not available: /private/tmp/impala-shell",
-            "metadata impala-shell is not available",
+            "[batch] ERROR: impala metadata driver is not available; install query-doctor[impala]",
+            "the impyla metadata driver is not installed",
         ),
         (
             "[batch] ERROR: Impala query discovery requires --impala-profile-host or local config impala_profile_hosts.",

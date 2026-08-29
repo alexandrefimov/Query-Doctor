@@ -87,8 +87,7 @@ discovery order.
   "cluster": "example_cluster",
   "service": "impala",
   "ca_bundle": "~/.qdcreds/cm-chain.pem",
-  "metadata_coordinator": "impala-coordinator.example.net:21000",
-  "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+  "metadata_coordinator": "impala-coordinator.example.net:21050"
 }
 ```
 
@@ -121,19 +120,20 @@ The wrapper:
 - loads only whitelisted LLM assignments from `~/.qdcreds/llm-api.env` when it
   exists;
 - maps legacy `CM_USER` to `CM_USERNAME` if needed;
-- bootstraps `.venv-impala-shell/bin/impala-shell` when it is missing;
 - creates or refreshes the Kerberos cache from `~/.qdcreds/query-doctor.keytab`;
 - starts `query-doctor-web` with `~/.qdcreds/query-doctor-config.json`, a
   repository-local config, or the legacy ignored local config.
 - forwards any extra `query-doctor-web` flags, including `--no-llm`.
 
-The impala-shell bootstrap is intentionally isolated from the main Python
-runtime because CDH6-compatible `impala_shell` has legacy dependency
-constraints:
+Metadata collection needs the HiveServer2 driver, which lives behind the
+`impala` extra. Install it once into the environment that runs the web UI:
 
 ```bash
-scripts/bootstrap-impala-shell
+python -m pip install -e ".[impala]"
 ```
+
+pykerberos builds from source, so the Kerberos development headers
+(`libkrb5-dev` on Debian/Ubuntu, `krb5-devel` on RHEL) have to be present.
 
 Supported wrapper overrides:
 
@@ -142,11 +142,6 @@ Supported wrapper overrides:
 - `QD_LLM_ENV`: LLM env file, default `$QD_CREDS_DIR/llm-api.env`;
 - `QD_KEYTAB`: Kerberos keytab path, default `$QD_CREDS_DIR/query-doctor.keytab`;
 - `QD_KRB5_PRINCIPAL`: one-off Kerberos principal override;
-- `QD_IMPALA_SHELL`: expected impala-shell executable for bootstrap checks,
-  default `.venv-impala-shell/bin/impala-shell`;
-- `QD_IMPALA_SHELL_VENV`: bootstrap venv directory, default
-  `.venv-impala-shell`;
-- `QD_BOOTSTRAP_IMPALA_SHELL=0`: do not auto-bootstrap missing impala-shell;
 - `KRB5CCNAME`: Kerberos credential cache, default
   `FILE:/tmp/krb5cc_query_doctor`;
 - `QD_CONFIG`: local Query Doctor config override. By default the wrapper

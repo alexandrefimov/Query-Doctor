@@ -46,7 +46,9 @@ RECENT_ORDER_CHOICES = (
 )
 LANGUAGE_CHOICES = SUPPORTED_REPORT_LANGUAGES
 METADATA_AUTH_CHOICES = ("kerberos",)
-METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
+# Metadata collection speaks HiveServer2 through impyla; beeswax is no longer
+# reachable and is rejected rather than accepted and then failed on at connect.
+METADATA_PROTOCOL_CHOICES = ("hs2", "hs2-http")
 QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
 IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
 WEB_ADVANCED_FILTER_CHOICES = ("user", "pool", "query_type")
@@ -175,6 +177,7 @@ ALLOWED_CONFIG_KEYS = {
     "metadata_auth",
     "metadata_ca_cert",
     "metadata_coordinator",
+    # Accepted and ignored: the collector no longer shells out.
     "metadata_impala_shell",
     "metadata_kerberos_host_fqdn",
     "metadata_kerberos_service_name",
@@ -215,6 +218,7 @@ CLUSTER_CONFIG_KEYS = {
     "metadata_auth",
     "metadata_ca_cert",
     "metadata_coordinator",
+    # Accepted and ignored: the collector no longer shells out.
     "metadata_impala_shell",
     "metadata_kerberos_host_fqdn",
     "metadata_kerberos_service_name",

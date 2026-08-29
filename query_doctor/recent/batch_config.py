@@ -19,7 +19,9 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.impala import hs2_runner
 from query_doctor.impala.kerberos_preflight import check_kerberos_ticket_cache
+from query_doctor.impala.metadata_workflow import METADATA_DRIVER_MISSING_REASON
 from query_doctor.impala.query_discovery import DEFAULT_MAX_QUERY_LIST_BYTES
 from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
@@ -604,15 +606,12 @@ def build_batch_config(
         metadata_coordinator=first_string(
             args.metadata_coordinator, config_values.get("metadata_coordinator")
         ),
-        metadata_impala_shell=first_string(
-            args.metadata_impala_shell, config_values.get("metadata_impala_shell")
-        ),
         metadata_auth=first_string(
             args.metadata_auth, config_values.get("metadata_auth"), "kerberos"
         )
         or "kerberos",
         metadata_protocol=first_string(
-            args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax"
+            args.metadata_protocol, config_values.get("metadata_protocol"), "hs2"
         )
         or "beeswax",
         metadata_kerberos_service_name=first_string(
@@ -988,22 +987,15 @@ def path_is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
-def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> None:
+def preflight(config: BatchConfig, *, env: dict[str, str]) -> None:
     if config.query_profile_source == "cm" and not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
         raise ValueError("CM auth env is not set in this execution environment.")
     if metadata_kerberos_preflight_required(config):
         ticket_status = check_kerberos_ticket_cache(env)
         if not ticket_status.ok:
             raise ValueError(ticket_status.reason or "Kerberos ticket preflight failed.")
-    if metadata_configuration_preflight_required(config):
-        if config.metadata_impala_shell:
-            shell_path = Path(config.metadata_impala_shell)
-            if "/" in config.metadata_impala_shell and not shell_path.is_absolute():
-                shell_path = repo_root / shell_path
-            if "/" in config.metadata_impala_shell and not shell_path.exists():
-                raise ValueError(
-                    f"metadata impala-shell is not available: {config.metadata_impala_shell}"
-                )
+    if metadata_configuration_preflight_required(config) and not hs2_runner.driver_available():
+        raise ValueError(METADATA_DRIVER_MISSING_REASON)
 
 
 def metadata_configuration_preflight_required(config: BatchConfig) -> bool:

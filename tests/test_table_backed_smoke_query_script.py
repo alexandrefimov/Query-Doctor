@@ -1,12 +1,45 @@
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+from impala_hs2_test_support import table_rows
+from query_doctor.impala.hs2_runner import ImpalaStatementError
+
 
 REPO_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_DIR / "scripts" / "query-doctor-table-backed-smoke-query"
+
+
+def load_script_module():
+    # The helper has no .py suffix, so the loader has to be named outright.
+    loader = importlib.machinery.SourceFileLoader("table_backed_smoke_query", str(SCRIPT))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    # dataclasses resolves annotations through sys.modules during exec.
+    sys.modules[loader.name] = module
+    loader.exec_module(module)
+    return module
+
+
+class FakeSession:
+    def __init__(self, responder):
+        self._responder = responder
+        self.calls = []
+        self.closed = False
+
+    def run(self, sql, *, timeout_sec=None):
+        self.calls.append(sql)
+        outcome = self._responder(sql)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    def close(self):
+        self.closed = True
 
 
 def run_helper(args):
@@ -24,17 +57,16 @@ def write_analysis(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def write_config(path: Path, impala_shell: Path) -> None:
+def write_config(path: Path) -> None:
     path.write_text(
         json.dumps(
             {
                 "clusters": [
                     {
                         "id": "direct",
-                        "metadata_coordinator": "coordinator.example.com:21000",
-                        "metadata_impala_shell": str(impala_shell),
+                        "metadata_coordinator": "coordinator.example.com:21050",
                         "metadata_auth": "kerberos",
-                        "metadata_protocol": "beeswax",
+                        "metadata_protocol": "hs2",
                         "metadata_kerberos_service_name": "hive",
                         "metadata_kerberos_host_fqdn": "coordinator.example.com",
                     }
@@ -43,23 +75,6 @@ def write_config(path: Path, impala_shell: Path) -> None:
         ),
         encoding="utf-8",
     )
-
-
-def write_fake_impala_shell(path: Path) -> None:
-    path.write_text(
-        """#!/usr/bin/env python3
-import sys
-
-sql = sys.argv[sys.argv.index("-q") + 1] if "-q" in sys.argv else ""
-if "valid_fact" in sql:
-    print("fake metadata ok for valid_fact")
-    raise SystemExit(0)
-print("fake metadata failed for missing_fact", file=sys.stderr)
-raise SystemExit(1)
-""",
-        encoding="utf-8",
-    )
-    os.chmod(path, 0o755)
 
 
 def test_table_backed_smoke_query_writes_sql_without_echoing_table_or_paths(tmp_path):
@@ -156,64 +171,62 @@ def test_table_backed_smoke_query_prefers_latest_analysis_candidate(tmp_path):
     assert "new_fact" not in result.stdout
 
 
-def test_table_backed_smoke_query_metadata_validation_skips_stale_candidate(tmp_path):
-    root = tmp_path / "cases"
-    out = tmp_path / "query.sql"
-    config = tmp_path / "config.json"
-    fake_shell = tmp_path / "fake-impala-shell"
-    write_fake_impala_shell(fake_shell)
-    write_config(config, fake_shell)
-    stale = root / "case-002" / "analysis.json"
-    valid = root / "case-001" / "analysis.json"
-    write_analysis(
-        stale,
-        {"table_metadata_context": {"tables": [{"table": "analytics.missing_fact"}]}},
+def test_metadata_validation_walks_past_a_stale_candidate_on_one_session(tmp_path):
+    module = load_script_module()
+    config = module.MetadataValidationConfig(
+        coordinator="coordinator.example.com:21050",
+        auth="kerberos",
+        protocol="hs2",
+        kerberos_service_name="hive",
+        kerberos_host_fqdn="coordinator.example.com",
+        ssl=False,
+        ca_cert=None,
+        timeout_sec=30,
     )
-    write_analysis(
-        valid,
-        {"table_metadata_context": {"tables": [{"table": "mart.valid_fact"}]}},
-    )
-    os.utime(valid, (1000, 1000))
-    os.utime(stale, (2000, 2000))
+    stale = module.TableCandidate(table="analytics.missing_fact", mtime_ns=2000, ordinal=0)
+    fresh = module.TableCandidate(table="mart.valid_fact", mtime_ns=1000, ordinal=1)
 
-    result = run_helper(
-        [
-            "--search-root",
-            str(root),
-            "--out",
-            str(out),
-            "--validate-with-metadata",
-            "--config",
-            str(config),
-            "--cluster",
-            "direct",
-        ]
+    def respond(sql):
+        if "valid_fact" in sql:
+            return table_rows(("#Rows",), (10,))
+        return ImpalaStatementError("AnalysisException: Could not resolve table reference")
+
+    session = FakeSession(respond)
+    selection = module.select_validated_candidate([stale, fresh], config, session=session)
+
+    assert selection.candidate.table == "mart.valid_fact"
+    assert selection.validation_attempts == 2
+    assert len(session.calls) == 2
+    # The caller owns an injected session, so the helper must leave it open.
+    assert session.closed is False
+
+
+def test_metadata_validation_connects_to_the_configured_hs2_port(tmp_path):
+    module = load_script_module()
+    config = module.MetadataValidationConfig(
+        coordinator="coordinator.example.com:21050",
+        auth="kerberos",
+        protocol="hs2-http",
+        kerberos_service_name="hive",
+        kerberos_host_fqdn="lb.example.com",
+        ssl=True,
+        ca_cert="/etc/ssl/ca.pem",
+        timeout_sec=17,
     )
 
-    combined_output = result.stdout + result.stderr
-    assert result.returncode == 0, combined_output
-    assert "metadata_validation=enabled" in result.stdout
-    assert "metadata_validation_attempts=2" in result.stdout
-    assert "analytics" not in combined_output
-    assert "missing_fact" not in combined_output
-    assert "mart" not in combined_output
-    assert "valid_fact" not in combined_output
-    assert str(root) not in combined_output
-    assert str(out) not in combined_output
-    assert str(config) not in combined_output
-    assert "fake metadata failed" not in combined_output
-    sql = out.read_text(encoding="utf-8")
-    assert "FROM `mart`.`valid_fact`" in sql
-    assert "missing_fact" not in sql
+    settings = module.connection_settings(config)
+
+    assert (settings.host, settings.port) == ("coordinator.example.com", 21050)
+    assert settings.use_http_transport is True
+    assert settings.kerberos_host_fqdn == "lb.example.com"
+    assert settings.timeout_sec == 17
 
 
 def test_table_backed_smoke_query_metadata_validation_fails_safely(tmp_path):
     root = tmp_path / "cases"
     out = tmp_path / "query.sql"
     config = tmp_path / "config.json"
-    fake_shell = tmp_path / "fake-impala-shell"
-    write_fake_impala_shell(fake_shell)
-    write_config(config, fake_shell)
+    write_config(config)
     write_analysis(
         root / "case-001" / "analysis.json",
         {"table_metadata_context": {"tables": [{"table": "analytics.missing_fact"}]}},

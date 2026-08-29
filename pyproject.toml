@@ -52,6 +52,11 @@ dev = [
 e2e = [
     "playwright>=1.62.0",
 ]
+impala = [
+    # HiveServer2 transport for read-only metadata collection. The kerberos
+    # extra pulls pykerberos, which puresasl needs for the GSSAPI handshake.
+    "impyla[kerberos]>=0.24.0,<0.25",
+]
 postgres = [
     "psycopg[binary]>=3.2.13,<4",
 ]
