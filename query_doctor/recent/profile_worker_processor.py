@@ -11,7 +11,11 @@ from uuid import uuid4
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_scoring import score_case
 from query_doctor.recent.batch_summary import case_to_summary
-from query_doctor.recent.case_processing import collect_case_profile, run_analysis_pass
+from query_doctor.recent.case_processing import (
+    collect_case_profile,
+    metadata_subprocess_env,
+    run_analysis_pass,
+)
 from query_doctor.recent.history_store import recent_history_source_key
 from query_doctor.recent.profile_budget import (
     ANALYSIS_CACHE_SUMMARY_FIELDS,
@@ -73,7 +77,19 @@ def process_recent_profile_job(
                 retry=retry,
                 error_code=case.failure_category or "recent_profile_worker_collection_failed",
             )
-        run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
+        # The mode is the deployment's to choose. Forcing it off here meant the
+        # worker never collected metadata whatever the config said, and it is the
+        # only component that analyzes a case: the collector runs discover-only,
+        # so the separate refresh_top_metadata pass is never reached either.
+        # metadata_subprocess_env carries the table names extracted from the
+        # statement during collection; without it the pipeline sees only the
+        # redacted facts, where every identifier is a placeholder.
+        run_analysis_pass(
+            config,
+            case,
+            env=metadata_subprocess_env(env, case),
+            repo_root=repo_root,
+        )
         if case.analysis_status != "ok":
             retry = case.failure_category in _RETRYABLE_ANALYSIS_FAILURES
             return RecentProfileWorkerJobOutcome(

@@ -431,12 +431,15 @@ def test_recent_profile_worker_default_processor_runs_analysis_only_without_raw_
     def fake_collect(_config, case, *, env, repo_root, collect_cm_timeseries):
         calls["collect_cm_timeseries"] = collect_cm_timeseries
         case.collection_status = "ok"
+        # Collection extracts these from the statement, before redaction.
+        case.metadata_source_tables = ("marts.orders",)
         case.actual_case_dir = case.wrapper_dir / "collected-case"
         case.actual_case_dir.mkdir(parents=True)
         (case.actual_case_dir / "profile_digest.md").write_text("# digest\n", encoding="utf-8")
 
-    def fake_analysis(_config, case, *, env, repo_root, metadata_mode):
-        calls["metadata_mode"] = metadata_mode
+    def fake_analysis(_config, case, *, env, repo_root):
+        # No metadata_mode argument: the worker must not override the config.
+        calls["analysis_source_tables"] = env.get("QD_METADATA_SOURCE_TABLES_JSON")
         case.analysis_status = "ok"
 
     def fake_summary(case):
@@ -477,7 +480,10 @@ def test_recent_profile_worker_default_processor_runs_analysis_only_without_raw_
     outcome = process_recent_profile_job(job, config, auth_env(), batch_recent.REPO_DIR)
 
     assert outcome.status == "completed"
-    assert calls == {"collect_cm_timeseries": False, "metadata_mode": "off"}
+    assert calls == {
+        "collect_cm_timeseries": False,
+        "analysis_source_tables": '["marts.orders"]',
+    }
     assert outcome.profile_fingerprint is not None
     assert outcome.profile_fingerprint.startswith("sha256_")
     assert outcome.artifact_storage_key == outcome.profile_fingerprint
