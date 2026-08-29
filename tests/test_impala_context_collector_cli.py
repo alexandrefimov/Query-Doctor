@@ -66,6 +66,11 @@ def isolate_cwd(tmp_path, monkeypatch):
         ("db.table", "db.table"),
         ("`db`.`table`", "db.table"),
         ("db.`table`", "db.table"),
+        # Impala accepts a quoted name that starts with a digit, and the
+        # collector quotes everything it emits.
+        ("db.2014_2018_facts", "db.2014_2018_facts"),
+        ("`db`.`2014_2018_facts`", "db.2014_2018_facts"),
+        ("2014_marts.facts", "2014_marts.facts"),
     ],
 )
 def test_valid_table_identifiers_are_normalized(raw, normalized):
@@ -80,6 +85,8 @@ def test_valid_table_identifiers_are_normalized(raw, normalized):
         ("db", "db"),
         ("`db`", "db"),
         ("te_ruby_agg", "te_ruby_agg"),
+        ("1db", "1db"),
+        ("`2014_marts`", "2014_marts"),
     ],
 )
 def test_valid_database_identifiers_are_normalized(raw, normalized):
@@ -116,7 +123,6 @@ def test_invalid_table_identifiers_are_rejected(raw):
         "db; DROP",
         "db -- comment",
         "db name",
-        "1db",
         "'db'",
     ],
 )
@@ -140,6 +146,37 @@ def test_generated_sql_is_exactly_allowlisted():
     for plan in plans:
         module.validate_read_only_statement(plan.sql, plan.table)
     module.validate_read_only_statement("SHOW CREATE TABLE db.table", "db.table")
+
+
+def test_a_table_name_starting_with_a_digit_still_produces_quoted_allowlisted_sql():
+    module = load_collector_module()
+
+    plans = module.build_statement_plan(["2014_marts.2014_2018_facts"])
+
+    assert [plan.sql for plan in plans] == [
+        "SHOW CREATE TABLE `2014_marts`.`2014_2018_facts`",
+        "SHOW TABLE STATS `2014_marts`.`2014_2018_facts`",
+        "SHOW COLUMN STATS `2014_marts`.`2014_2018_facts`",
+    ]
+    for plan in plans:
+        module.validate_read_only_statement(plan.sql, plan.table)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "db.tab`le",
+        "db.`tab`le`",
+        "`db`.`tab``le`",
+    ],
+)
+def test_a_backtick_inside_a_name_is_still_refused(raw):
+    # The quoting is what keeps a digit-leading name safe, so nothing may
+    # break out of it.
+    module = load_collector_module()
+
+    with pytest.raises(module.CollectorError):
+        module.normalize_table_identifier(raw)
 
 
 def test_repeated_tables_are_deduped_deterministically():
