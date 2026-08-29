@@ -24,6 +24,15 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- A table whose name starts with a digit no longer loses its metadata. The
+  identifier policy demanded a leading letter or underscore, which is Impala's
+  rule for *unquoted* names, while everything the collector emits is
+  backtick-quoted and may start with a digit. `2014_2018_facts` is a real
+  production table, and it was refused before a connection was even opened, so
+  no metadata would ever be collected for it. The allowed character set is
+  unchanged, so a backtick still cannot appear inside a name and break out of
+  the quoting; a test pins that.
+
 - Impala metadata collection now speaks HiveServer2 in process through impyla
   instead of shelling out to `impala-shell`, and the collector holds one
   coordinator connection for a whole run rather than starting a process and a

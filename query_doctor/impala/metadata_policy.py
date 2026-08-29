@@ -12,7 +12,13 @@ ALLOWED_STATEMENTS = (
     "SHOW TABLE STATS",
     "SHOW COLUMN STATS",
 )
-IDENTIFIER_PART_RE = re.compile(r"(?:`([A-Za-z_][A-Za-z0-9_$]*)`|([A-Za-z_][A-Za-z0-9_$]*))\Z")
+# Impala only requires a leading letter or underscore of an *unquoted*
+# identifier, and everything this module emits is backtick-quoted, so a name
+# may start with a digit. `2014_2018_facts` is a real production table, and
+# refusing it here meant no metadata for it, ever. The character set is
+# deliberately unchanged: a backtick still cannot appear inside a name and
+# break out of the quoting.
+IDENTIFIER_PART_RE = re.compile(r"(?:`([A-Za-z0-9_$]+)`|([A-Za-z0-9_$]+))\Z")
 
 
 class CollectorError(Exception):
