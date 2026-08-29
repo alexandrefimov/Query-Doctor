@@ -24,6 +24,17 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- The Recent profile worker now collects Impala metadata when the deployment
+  asks for it. It forced `--metadata-mode off` on every analysis pass whatever
+  the config said, and it is the only component that analyzes a case: the
+  collector runs discover-only, so the separate top-N metadata refresh is never
+  reached either. Between the two, a deployment could set every metadata option
+  correctly and still have `metadata_status` read `skipped` on every case
+  forever, which is what a production install did across 957 analyses. The
+  worker also hands the analysis the table names extracted from the statement
+  during collection; without them the pipeline reads only the redacted facts,
+  where every identifier is a placeholder and nothing is collectable.
+
 - A table whose name starts with a digit no longer loses its metadata. The
   identifier policy demanded a leading letter or underscore, which is Impala's
   rule for *unquoted* names, while everything the collector emits is
