@@ -286,7 +286,18 @@ def parse_impala_query_entry(
             first_present(raw, ("user", "username", "effective_user", "effectiveUser"))
         ),
         pool=normalize_string(
-            first_present(raw, ("pool", "pool_name", "poolName", "request_pool", "requestPool"))
+            first_present(
+                raw,
+                (
+                    "pool",
+                    "pool_name",
+                    "poolName",
+                    "request_pool",
+                    "requestPool",
+                    "resource_pool",
+                    "resourcePool",
+                ),
+            )
         ),
         query_type=normalize_string(
             first_present(
@@ -298,7 +309,62 @@ def parse_impala_query_entry(
             first_present(raw, ("stmt", "statement", "query", "sql", "stmt_text", "stmtText"))
         ),
         query_state="running" if status == "running" else raw_query_state or status,
+        rows_produced=parse_nonnegative_count(
+            first_present(raw, ("rows_produced", "rowsProduced", "rows_fetched", "rowsFetched"))
+        ),
+        bytes_read=parse_size_bytes(first_present(raw, ("bytes_read", "bytesRead"))),
+        bytes_sent=parse_size_bytes(first_present(raw, ("bytes_sent", "bytesSent"))),
+        # The coordinator's mem_usage is the sum of the per-node peaks, not the
+        # largest of them: on a nine-node query it read 989.45 MB against a
+        # per-node maximum of 138.85. So it is the aggregate, and the per-node
+        # peak stays unknown because the listing does not carry it.
+        memory_aggregate_peak=parse_size_bytes(
+            first_present(raw, ("memory_aggregate_peak", "mem_usage", "memUsage"))
+        ),
+        admission_wait_ms=parse_admission_wait_ms(raw),
     )
+
+
+def parse_nonnegative_count(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = int(float(str(value).strip().replace(",", "")))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def parse_size_bytes(value: Any) -> int | None:
+    """Parse a coordinator size such as '11.43 GB' into bytes.
+
+    Impala prints binary units under decimal names, so GB here is 1024**3. The
+    suspicion score compares against GiB and TiB, and reading these as decimal
+    would understate every threshold by seven percent per unit step.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    match = SIZE_VALUE_RE.fullmatch(str(value).strip())
+    if not match:
+        return None
+    amount = float(match.group("amount").replace(",", ""))
+    unit = (match.group("unit") or "B").upper()
+    return max(0, int(amount * SIZE_UNIT_MULTIPLIERS[unit]))
+
+
+def parse_admission_wait_ms(raw: dict[str, Any]) -> int | None:
+    for key in ("admission_wait_ms", "admissionWaitMs", "queued_duration", "queuedDuration"):
+        if key not in raw:
+            continue
+        value = raw[key]
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return max(0, int(value))
+        parsed = parse_duration_text(str(value))
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def first_present(raw: dict[str, Any], keys: tuple[str, ...]) -> Any:
@@ -355,6 +421,20 @@ def extract_query_id_from_strings(raw: dict[str, Any]) -> str | None:
         if match:
             return match.group(0)
     return None
+
+
+SIZE_UNIT_MULTIPLIERS = {
+    "B": 1,
+    "KB": 1024,
+    "MB": 1024**2,
+    "GB": 1024**3,
+    "TB": 1024**4,
+    "PB": 1024**5,
+}
+SIZE_VALUE_RE = re.compile(
+    r"(?P<amount>[0-9][0-9,]*(?:\.[0-9]+)?)\s*(?P<unit>[KMGTP]?B)?",
+    re.IGNORECASE,
+)
 
 
 def parse_duration_ms(raw: dict[str, Any]) -> int | None:
