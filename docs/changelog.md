@@ -24,6 +24,20 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Direct-Impala query summaries now keep the metrics the coordinator already
+  serves. `/queries?json` carries `rows_fetched`, `bytes_read`, `bytes_sent`,
+  `mem_usage` and `queued_duration`, and the parser read none of them, so
+  `rows_produced`, both byte counts, the memory peak and the admission wait were
+  empty on every row of a production install -- and the suspicion score, which
+  reads exactly those fields, could never rise above what duration and status
+  alone contribute. The pool was missed too: the coordinator calls it
+  `resource_pool` while the parser looked only for `pool` and `request_pool`.
+  Sizes arrive as text like `11.43 GB` and are read as binary units, which is
+  what Impala means by them; reading them as decimal would understate every
+  threshold. `mem_usage` maps to the aggregate peak rather than the per-node
+  one, because it is the sum of the per-node peaks: on a nine-node query it
+  reported 989.45 MB against a per-node maximum of 138.85 MB.
+
 - The Recent profile worker now collects Impala metadata when the deployment
   asks for it. It forced `--metadata-mode off` on every analysis pass whatever
   the config said, and it is the only component that analyzes a case: the
