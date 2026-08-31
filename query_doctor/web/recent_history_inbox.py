@@ -93,7 +93,13 @@ def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object
             return None
         load_with_count = getattr(store, "load_materialized_payloads_with_count", None)
         if callable(load_with_count):
-            payloads, retained_count = load_with_count(limit=MAX_HISTORY_INBOX_ROWS)
+            if backend == "postgres":
+                payloads, retained_count = load_with_count(
+                    limit=MAX_HISTORY_INBOX_ROWS,
+                    prepare_schema=False,
+                )
+            else:
+                payloads, retained_count = load_with_count(limit=MAX_HISTORY_INBOX_ROWS)
         else:
             payloads = store.load_materialized_payloads(limit=MAX_HISTORY_INBOX_ROWS)
             retained_count = store.count_summaries()
@@ -107,9 +113,15 @@ def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object
         )
         profile_backlog_health: Mapping[str, object] | None = None
         try:
-            profile_backlog_health = store.summarize_profile_backlog_health(
-                now_iso=datetime.now(timezone.utc).isoformat()
-            ).safe_payload()
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if backend == "postgres":
+                backlog_health = store.summarize_profile_backlog_health(
+                    now_iso=now_iso,
+                    prepare_schema=False,
+                )
+            else:
+                backlog_health = store.summarize_profile_backlog_health(now_iso=now_iso)
+            profile_backlog_health = backlog_health.safe_payload()
         except (OSError, RecentHistoryStoreError):
             profile_backlog_health = None
     except (OSError, ValueError, RecentHistoryStoreError):

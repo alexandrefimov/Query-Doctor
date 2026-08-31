@@ -914,6 +914,59 @@ def test_postgres_history_store_loads_materialized_payloads_and_count_together()
     ]
 
 
+def test_postgres_online_history_reads_do_not_prepare_schema():
+    connections: list[FakeConnection] = []
+
+    class ReadOnlyCursor(FakeCursor):
+        def execute(self, statement, params=None):
+            super().execute(statement, params)
+            if statement == "SELECT COUNT(*) FROM recent_query_summary":
+                self.rows = [(233_036,)]
+            elif statement == POSTGRES_RECENT_PROFILE_BACKLOG_HEALTH:
+                self.rows = [(2, 1, 3, 1, 4)]
+            else:
+                self.rows = []
+
+    class ReadOnlyConnection(FakeConnection):
+        def __init__(self):
+            self.cursor_obj = ReadOnlyCursor()
+
+    def connect(dsn):
+        assert dsn == "postgresql://query-doctor-history"
+        connection = ReadOnlyConnection()
+        connections.append(connection)
+        return connection
+
+    store = PostgresRecentHistoryStore("postgresql://query-doctor-history", connect=connect)
+
+    payloads, retained_count = store.load_materialized_payloads_with_count(
+        limit=500,
+        prepare_schema=False,
+    )
+    health = store.summarize_profile_backlog_health(
+        now_iso="2026-07-03T10:30:00+00:00",
+        prepare_schema=False,
+    )
+
+    assert payloads == []
+    assert retained_count == 233_036
+    assert health.safe_payload() == {
+        "pending_jobs": 2,
+        "retry_pending_jobs": 1,
+        "leased_jobs": 3,
+        "stale_leased_jobs": 1,
+        "failed_jobs": 4,
+    }
+    statements = [
+        statement for connection in connections for statement in connection.cursor_obj.executed
+    ]
+    assert statements == [
+        POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT,
+        "SELECT COUNT(*) FROM recent_query_summary",
+        POSTGRES_RECENT_PROFILE_BACKLOG_HEALTH,
+    ]
+
+
 def test_postgres_history_store_prunes_history_with_terminal_job_guard():
     connections: list[FakeConnection] = []
 

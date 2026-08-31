@@ -71,7 +71,13 @@ def test_online_history_loads_only_the_rows_the_page_can_display(monkeypatch):
         def count_summaries(self):
             return 10_000
 
-        def summarize_profile_backlog_health(self, *, now_iso: str):
+        def summarize_profile_backlog_health(
+            self,
+            *,
+            now_iso: str,
+            prepare_schema: bool,
+        ):
+            assert prepare_schema is False
             raise recent_history_inbox.RecentHistoryStoreError("not_configured")
 
     monkeypatch.setattr(recent_history_inbox, "load_web_local_config", lambda *_a, **_k: {})
@@ -102,8 +108,13 @@ def test_online_history_uses_combined_postgres_payload_and_count_read(monkeypatc
     calls: list[tuple[str, int | None]] = []
 
     class Store:
-        def load_materialized_payloads_with_count(self, *, limit: int):
-            calls.append(("snapshot", limit))
+        def load_materialized_payloads_with_count(
+            self,
+            *,
+            limit: int,
+            prepare_schema: bool,
+        ):
+            calls.append(("snapshot", limit, prepare_schema))
             return [], 233_036
 
         def load_materialized_payloads(self, *, limit: int):
@@ -112,8 +123,13 @@ def test_online_history_uses_combined_postgres_payload_and_count_read(monkeypatc
         def count_summaries(self):
             raise AssertionError("combined PostgreSQL read should include the count")
 
-        def summarize_profile_backlog_health(self, *, now_iso: str):
-            calls.append(("backlog", None))
+        def summarize_profile_backlog_health(
+            self,
+            *,
+            now_iso: str,
+            prepare_schema: bool,
+        ):
+            calls.append(("backlog", None, prepare_schema))
             raise recent_history_inbox.RecentHistoryStoreError("not_configured")
 
     monkeypatch.setattr(recent_history_inbox, "load_web_local_config", lambda *_a, **_k: {})
@@ -137,4 +153,33 @@ def test_online_history_uses_combined_postgres_payload_and_count_read(monkeypatc
 
     assert summary is not None
     assert summary["summaries_inspected"] == 233_036
-    assert calls == [("snapshot", recent_history_inbox.MAX_HISTORY_INBOX_ROWS), ("backlog", None)]
+    assert calls == [
+        ("snapshot", recent_history_inbox.MAX_HISTORY_INBOX_ROWS, False),
+        ("backlog", None, False),
+    ]
+
+
+def test_online_history_missing_postgres_schema_is_safely_unavailable(monkeypatch):
+    class Store:
+        def load_materialized_payloads_with_count(
+            self,
+            *,
+            limit: int,
+            prepare_schema: bool,
+        ):
+            assert limit == recent_history_inbox.MAX_HISTORY_INBOX_ROWS
+            assert prepare_schema is False
+            raise recent_history_inbox.RecentHistoryStoreError(
+                "postgres_recent_history_materialized_load_failed"
+            )
+
+    monkeypatch.setattr(recent_history_inbox, "load_web_local_config", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "_history_store_from_config",
+        lambda _config: (Store(), "postgres"),
+    )
+
+    summary = recent_history_inbox.load_recent_history_inbox_summary(_Settings())
+
+    assert summary == recent_history_inbox.recent_history_unavailable_summary()

@@ -24,6 +24,12 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Postgres-backed Online History reads are now DDL-free. Schema creation stays
+  with the explicit Postgres readiness command and the configured Helm
+  initContainer, while a missing schema makes the browser show its existing
+  safe unavailable state. The web request now opens only the two read
+  connections for materialized rows/count and fail-soft backlog health.
+
 - Online History now materializes only the newest 500 retained summaries that
   the page can display. The database applies that bound before joining profile
   jobs, artifact metadata, and analysis-cache payloads, so that expensive

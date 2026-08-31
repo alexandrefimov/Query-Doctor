@@ -350,6 +350,7 @@ class PostgresRecentHistoryStore:
         engine: str | None = None,
         source_kind: str | None = None,
         source_key: str | None = None,
+        prepare_schema: bool = True,
     ) -> RecentProfileBacklogHealth:
         engine_filter, source_kind_filter, source_key_filter = (
             normalize_optional_profile_job_filters(
@@ -368,7 +369,8 @@ class PostgresRecentHistoryStore:
             "source_kind_filter": source_kind_filter,
             "source_key_filter": source_key_filter,
         }
-        self.initialize()
+        if prepare_schema:
+            self.initialize()
         try:
             with self._connect() as connection:
                 with connection.cursor() as cursor:
@@ -623,6 +625,7 @@ class PostgresRecentHistoryStore:
         self,
         *,
         limit: int | None = None,
+        prepare_schema: bool = True,
     ) -> tuple[list[dict[str, object]], int]:
         params = {
             "artifact_contract": PROFILE_ARTIFACT_DEFAULT_CONTRACT,
@@ -634,7 +637,7 @@ class PostgresRecentHistoryStore:
         try:
             with self._connect() as connection:
                 with connection.cursor() as cursor:
-                    if not self._initialized:
+                    if prepare_schema and not self._initialized:
                         for statement in POSTGRES_RECENT_QUERY_SUMMARY_DDL:
                             cursor.execute(statement)
                     cursor.execute(POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT, params)
@@ -645,7 +648,8 @@ class PostgresRecentHistoryStore:
             raise RecentHistoryStoreError(
                 "postgres_recent_history_materialized_load_failed"
             ) from exc
-        self._initialized = True
+        if prepare_schema:
+            self._initialized = True
         return recent_summary_payloads_from_rows(rows), int(count_row[0]) if count_row else 0
 
     def _execute_profile_job_transition(
