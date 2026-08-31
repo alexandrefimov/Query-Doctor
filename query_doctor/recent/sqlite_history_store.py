@@ -771,6 +771,11 @@ CREATE INDEX IF NOT EXISTS recent_query_summary_status_idx
     ON recent_query_summary(engine, source_kind, source_key, status);
 CREATE INDEX IF NOT EXISTS recent_query_summary_recorded_idx
     ON recent_query_summary(recorded_at_iso);
+CREATE INDEX IF NOT EXISTS recent_query_summary_latest_idx
+    ON recent_query_summary(
+        COALESCE(end_time, start_time, recorded_at_iso) DESC,
+        query_id
+    );
 CREATE TABLE IF NOT EXISTS recent_profile_job (
     schema_version INTEGER NOT NULL,
     engine TEXT NOT NULL,

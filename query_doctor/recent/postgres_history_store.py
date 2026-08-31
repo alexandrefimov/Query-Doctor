@@ -700,6 +700,13 @@ POSTGRES_RECENT_QUERY_SUMMARY_DDL = (
         ON recent_query_summary(recorded_at_iso)
     """,
     """
+    CREATE INDEX IF NOT EXISTS recent_query_summary_latest_idx
+        ON recent_query_summary(
+            (COALESCE(end_time, start_time, recorded_at_iso)) DESC,
+            query_id
+        )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS recent_profile_job (
         schema_version integer NOT NULL,
         engine text NOT NULL,
