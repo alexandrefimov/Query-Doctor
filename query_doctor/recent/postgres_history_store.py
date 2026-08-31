@@ -64,6 +64,7 @@ class PostgresRecentHistoryStore:
             raise RecentHistoryStoreError("postgres_recent_history_dsn_missing")
         self._dsn = normalized
         self._connect_factory = connect
+        self._initialized = False
 
     @classmethod
     def from_env(
@@ -79,6 +80,8 @@ class PostgresRecentHistoryStore:
         return cls(dsn, connect=connect)
 
     def initialize(self) -> None:
+        if self._initialized:
+            return
         try:
             with self._connect() as connection:
                 with connection.cursor() as cursor:
@@ -86,6 +89,7 @@ class PostgresRecentHistoryStore:
                         cursor.execute(statement)
         except Exception as exc:  # noqa: BLE001 - driver errors must stay path-free upstream.
             raise RecentHistoryStoreError("postgres_recent_history_initialize_failed") from exc
+        self._initialized = True
 
     def upsert_summaries(self, records: Iterable[RecentSummaryHistoryRecord]) -> int:
         rows = [record_to_postgres_row(record) for record in records]
@@ -614,6 +618,35 @@ class PostgresRecentHistoryStore:
                 "postgres_recent_history_materialized_load_failed"
             ) from exc
         return recent_summary_payloads_from_rows(rows)
+
+    def load_materialized_payloads_with_count(
+        self,
+        *,
+        limit: int | None = None,
+    ) -> tuple[list[dict[str, object]], int]:
+        params = {
+            "artifact_contract": PROFILE_ARTIFACT_DEFAULT_CONTRACT,
+            "artifact_status": PROFILE_ARTIFACT_STATUS_AVAILABLE,
+            "analyzer_contract": ANALYSIS_CACHE_DEFAULT_CONTRACT,
+            "analysis_status": ANALYSIS_CACHE_STATUS_READY,
+            "limit": None if limit is None else max(0, int(limit)),
+        }
+        try:
+            with self._connect() as connection:
+                with connection.cursor() as cursor:
+                    if not self._initialized:
+                        for statement in POSTGRES_RECENT_QUERY_SUMMARY_DDL:
+                            cursor.execute(statement)
+                    cursor.execute(POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT, params)
+                    rows = cursor.fetchall()
+                    cursor.execute("SELECT COUNT(*) FROM recent_query_summary")
+                    count_row = cursor.fetchone()
+        except Exception as exc:  # noqa: BLE001 - driver errors must stay path-free upstream.
+            raise RecentHistoryStoreError(
+                "postgres_recent_history_materialized_load_failed"
+            ) from exc
+        self._initialized = True
+        return recent_summary_payloads_from_rows(rows), int(count_row[0]) if count_row else 0
 
     def _execute_profile_job_transition(
         self,

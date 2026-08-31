@@ -154,6 +154,24 @@ def test_postgres_history_store_initializes_and_upserts_raw_free_rows():
     assert "sensitive_table" not in payload_text
 
 
+def test_postgres_history_store_initializes_once_per_store():
+    connections: list[FakeConnection] = []
+
+    def connect(dsn):
+        assert dsn == "postgresql://query-doctor-history"
+        connection = FakeConnection()
+        connections.append(connection)
+        return connection
+
+    store = PostgresRecentHistoryStore("postgresql://query-doctor-history", connect=connect)
+
+    store.initialize()
+    store.initialize()
+
+    assert len(connections) == 1
+    assert len(connections[0].cursor_obj.executed) == len(POSTGRES_RECENT_QUERY_SUMMARY_DDL)
+
+
 def test_postgres_history_store_enqueues_profile_jobs_raw_free():
     connections: list[FakeConnection] = []
 
@@ -368,7 +386,7 @@ def test_postgres_history_store_fails_profile_job_as_retry_or_terminal():
 
     def connect(dsn):
         assert dsn == "postgresql://query-doctor-history"
-        connection = FakeConnection(rowcount=1 if len(connections) in {1, 3} else 0)
+        connection = FakeConnection(rowcount=1 if len(connections) in {1, 2} else 0)
         connections.append(connection)
         return connection
 
@@ -396,7 +414,7 @@ def test_postgres_history_store_fails_profile_job_as_retry_or_terminal():
     )
 
     retry_statement, retry_params = connections[1].cursor_obj.execute_calls[0]
-    terminal_statement, terminal_params = connections[3].cursor_obj.execute_calls[0]
+    terminal_statement, terminal_params = connections[2].cursor_obj.execute_calls[0]
     assert retry_statement == POSTGRES_RECENT_PROFILE_JOB_FAIL
     assert terminal_statement == POSTGRES_RECENT_PROFILE_JOB_FAIL
     assert retry_params["next_status"] == PROFILE_JOB_STATUS_PENDING
@@ -406,7 +424,7 @@ def test_postgres_history_store_fails_profile_job_as_retry_or_terminal():
     assert retry_params["leased_status"] == PROFILE_JOB_STATUS_LEASED
     assert terminal_params["lease_owner"] == "worker_a"
     retry_status_statement, retry_status_params = connections[1].cursor_obj.execute_calls[1]
-    terminal_status_statement, terminal_status_params = connections[3].cursor_obj.execute_calls[1]
+    terminal_status_statement, terminal_status_params = connections[2].cursor_obj.execute_calls[1]
     assert retry_status_statement == POSTGRES_RECENT_QUERY_SUMMARY_PROFILE_STATUS_UPDATE
     assert terminal_status_statement == POSTGRES_RECENT_QUERY_SUMMARY_PROFILE_STATUS_UPDATE
     assert retry_status_params["profile_status"] == PROFILE_STATUS_RETRY_PENDING
@@ -502,7 +520,7 @@ def test_postgres_history_store_requeues_failed_profile_jobs_with_bounded_update
         source_key="cm:cluster:impala",
     )
 
-    apply_cursor = connections[3].cursor_obj
+    apply_cursor = connections[2].cursor_obj
     update_statement, update_params = apply_cursor.execute_calls[1]
     assert applied.safe_payload() == {
         "matched_failed_jobs": 2,
@@ -779,7 +797,7 @@ def test_postgres_history_store_counts_and_loads_summary_payloads():
         assert dsn == "postgresql://query-doctor-history"
         if len(connections) == 1:
             connection = FakeConnection(rows=[(2,)])
-        elif len(connections) == 3:
+        elif len(connections) == 2:
             connection = FakeConnection(rows=load_rows)
         else:
             connection = FakeConnection()
@@ -794,7 +812,7 @@ def test_postgres_history_store_counts_and_loads_summary_payloads():
         {"query_id": "query-old", "profile_status": PROFILE_STATUS_ANALYZED},
     ]
     count_statement, _ = connections[1].cursor_obj.execute_calls[0]
-    load_statement, _ = connections[3].cursor_obj.execute_calls[0]
+    load_statement, _ = connections[2].cursor_obj.execute_calls[0]
     assert "SELECT COUNT(*) FROM recent_query_summary" in count_statement
     assert "profile_status" in load_statement
     assert "COALESCE(end_time, start_time, recorded_at_iso) DESC" in load_statement
@@ -843,6 +861,57 @@ def test_postgres_history_store_loads_materialized_payloads_raw_free():
     }
     assert "WITH newest_summary_keys AS" in statement
     assert "LIMIT %(limit)s" in statement
+
+
+def test_postgres_history_store_loads_materialized_payloads_and_count_together():
+    load_rows = [
+        (
+            {"query_id": "query-materialized"},
+            PROFILE_STATUS_ANALYZED,
+            {"score": 72},
+        )
+    ]
+    connections: list[FakeConnection] = []
+
+    class SnapshotCursor(FakeCursor):
+        def execute(self, statement, params=None):
+            super().execute(statement, params)
+            if statement == POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT:
+                self.rows = load_rows
+            elif statement == "SELECT COUNT(*) FROM recent_query_summary":
+                self.rows = [(233_036,)]
+
+    class SnapshotConnection(FakeConnection):
+        def __init__(self):
+            self.cursor_obj = SnapshotCursor()
+
+    def connect(dsn):
+        assert dsn == "postgresql://query-doctor-history"
+        connection = SnapshotConnection()
+        connections.append(connection)
+        return connection
+
+    store = PostgresRecentHistoryStore("postgresql://query-doctor-history", connect=connect)
+
+    payloads, retained_count = store.load_materialized_payloads_with_count(limit=500)
+
+    assert payloads == [
+        {
+            "query_id": "query-materialized",
+            "profile_status": PROFILE_STATUS_ANALYZED,
+            "analysis_cache_payload": {"score": 72},
+        }
+    ]
+    assert retained_count == 233_036
+    assert len(connections) == 1
+    statements = connections[0].cursor_obj.executed
+    assert statements[: len(POSTGRES_RECENT_QUERY_SUMMARY_DDL)] == list(
+        POSTGRES_RECENT_QUERY_SUMMARY_DDL
+    )
+    assert statements[-2:] == [
+        POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT,
+        "SELECT COUNT(*) FROM recent_query_summary",
+    ]
 
 
 def test_postgres_history_store_prunes_history_with_terminal_job_guard():
