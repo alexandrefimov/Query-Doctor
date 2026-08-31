@@ -81,8 +81,11 @@ not enqueue duplicate background jobs because they already collect and analyze
 their selected cases synchronously.
 
 When the local web UI is configured with the same history backend, Query Inbox
-can load retained summary payloads into a read-only Online History view. The
-view uses only the raw-free summary fields, caps the first rendered history
+can load retained summary payloads into a read-only Online History view.
+Postgres-backed web read does not create or update schema objects; run the
+Postgres readiness command first, or use the Helm initContainer that runs it.
+If the schema is not ready, the page degrades to its safe unavailable state.
+The view uses only the raw-free summary fields, caps the first rendered history
 projection, and does not expose raw SQL, profile text, local store paths, or
 raw artifact names. Rows without a materialized safe Details snapshot remain
 read-only until a scan or profile worker creates the corresponding snapshot.
