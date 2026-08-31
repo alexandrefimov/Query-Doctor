@@ -193,6 +193,27 @@ def render_batch_page(
                 workload_group_signal=workload_group_signal,
                 extra_query=result_extra_query,
             )
+        result_html = None
+        if (
+            scope_matches
+            and job is not None
+            and job.status == "ok"
+            and getattr(job, "kind", "") == "batch"
+        ):
+            result_html = render_batch_card(
+                display_settings,
+                query_group=query_group,
+                only_with_spills=only_with_spills,
+                result_filters=normalized_result_filters,
+                result_sort=normalized_result_sort,
+                results_page=results_page,
+                workload_admin_scope=workload_admin_scope,
+                workload_admin_signal=workload_admin_signal,
+                workload_group_scope=workload_group_scope,
+                workload_group_name=workload_group_name,
+                workload_group_signal=workload_group_signal,
+                extra_query=result_extra_query,
+            )
         has_existing_results = bool(batch_card) and job is None and error is None
         if effective_form_values is None and (
             has_existing_results or query_inbox_scope_filter_query(scope_filters)
@@ -223,22 +244,6 @@ def render_batch_page(
             ),
         ]
         if job is not None:
-            result_html = None
-            if scope_matches and job.status == "ok" and getattr(job, "kind", "") == "batch":
-                result_html = render_batch_card(
-                    display_settings,
-                    query_group=query_group,
-                    only_with_spills=only_with_spills,
-                    result_filters=normalized_result_filters,
-                    result_sort=normalized_result_sort,
-                    results_page=results_page,
-                    workload_admin_scope=workload_admin_scope,
-                    workload_admin_signal=workload_admin_signal,
-                    workload_group_scope=workload_group_scope,
-                    workload_group_name=workload_group_name,
-                    workload_group_signal=workload_group_signal,
-                    extra_query=result_extra_query,
-                )
             sections.append(render_job_panel(job, result_html_override=result_html))
         if batch_card:
             if has_existing_results:
