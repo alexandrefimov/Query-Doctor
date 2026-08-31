@@ -24,7 +24,6 @@ from query_doctor.web.operator_readiness_status import (
     MAX_OPERATOR_READINESS_ISSUE_CODES,
     project_operator_readiness_issue_code,
 )
-from query_doctor.web.presenters.recent_scan import present_recent_scan_summary
 from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCaseRowView,
     RecentScanSummaryView,
@@ -57,7 +56,10 @@ from query_doctor.web.ui.recent_scan_result_filters import (
     result_filter_is_active,
     result_filters_with_toggle,
 )
-from query_doctor.web.ui.recent_scan_view_cache import cached_recent_scan_summary_view
+from query_doctor.web.ui.recent_scan_view_cache import (
+    cached_recent_scan_summary_view,
+    recent_scan_summary_view_for_render,
+)
 
 
 _MATERIALIZED_INBOX_STATES = {"ready", "partial", "stale"}
@@ -424,7 +426,13 @@ def query_inbox_status_from_summary(
     now: datetime | None = None,
     scope_filters: QueryInboxScopeFilters | None = None,
 ) -> QueryInboxStatus:
-    view = summary_view or present_recent_scan_summary(dict(summary))
+    # The batch card presents this source first and may add outcome metrics.
+    # Reusing that view keeps the inbox counts aligned with the visible rows.
+    view = summary_view or recent_scan_summary_view_for_render(
+        dict(summary),
+        cache_source=summary,
+        reuse_existing_for_source=True,
+    )
     current_scope = _query_inbox_current_scope_from_summary(summary)
     scope_filter_groups = _scope_filter_groups_from_current_scope(current_scope)
     freshness = query_inbox_freshness_from_summary(summary, now=now)

@@ -48,7 +48,10 @@ from query_doctor.web.presenters.workload_action_contract import (
     workload_group_impact as workload_total_impact,
 )
 from query_doctor.web.recent_history_inbox import recent_history_inbox_summary_from_settings
-from query_doctor.web.ui.recent_scan_view_cache import cached_recent_scan_summary_view
+from query_doctor.web.ui.recent_scan_view_cache import (
+    cached_recent_scan_summary_view,
+    recent_scan_summary_view_for_render,
+)
 from query_doctor.web.ui.recent_scan_groups import (
     DEFAULT_RESULT_SORT,
     DEFAULT_QUERY_GROUP,
@@ -154,11 +157,15 @@ def render_batch_card(
             summary_path=Path(summary_path),
             language=language,
         )
-    render_payload = (
-        payload
-        if summary_view is not None
-        else decorate_cases_with_optimizer_artifact_status(payload)
-    )
+    workload_outcome_metrics = workload_outcome_metrics_by_fingerprint()
+    render_payload = payload
+    if summary_view is None:
+        render_payload = decorate_cases_with_optimizer_artifact_status(payload)
+        summary_view = recent_scan_summary_view_for_render(
+            render_payload,
+            cache_source=payload,
+            workload_outcome_metrics=workload_outcome_metrics,
+        )
     effective_title = corpus_summary_title(payload) or title
     return render_batch_summary(
         render_payload,
@@ -176,7 +183,7 @@ def render_batch_card(
         title=effective_title,
         details_base_path=details_base_path,
         action_outcomes_recorded=action_outcome_count(),
-        workload_outcome_metrics=workload_outcome_metrics_by_fingerprint(),
+        workload_outcome_metrics=workload_outcome_metrics,
         summary_view=summary_view,
         language=language,
     )

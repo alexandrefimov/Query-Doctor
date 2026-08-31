@@ -105,6 +105,57 @@ def test_query_inbox_uses_online_recent_history_store(tmp_path, monkeypatch):
     assert "private_table" not in body
 
 
+def test_online_history_page_presents_shared_summary_once(tmp_path, monkeypatch):
+    module = load_web_module()
+    from query_doctor.web.ui import query_inbox, recent_scan_results, recent_scan_view_cache
+
+    history_db = tmp_path / "recent-history.sqlite"
+    _write_single_recent_history_row(history_db)
+    config = tmp_path / "web-config.json"
+    config.write_text(
+        '{"recent_history_backend":"sqlite","recent_history_db":"recent-history.sqlite"}',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    original_presenter = recent_scan_view_cache.present_recent_scan_summary
+    call_count = 0
+
+    def counted_presenter(summary_payload, *, workload_outcome_metrics=None):
+        nonlocal call_count
+        call_count += 1
+        return original_presenter(
+            summary_payload,
+            workload_outcome_metrics=workload_outcome_metrics,
+        )
+
+    for presenter_module in (
+        recent_scan_view_cache,
+        recent_scan_results,
+        query_inbox,
+    ):
+        monkeypatch.setattr(
+            presenter_module,
+            "present_recent_scan_summary",
+            counted_presenter,
+            raising=False,
+        )
+    monkeypatch.setattr(
+        recent_scan_results,
+        "workload_outcome_metrics_by_fingerprint",
+        lambda: {"unmatched-workload": object()},
+    )
+
+    body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
+
+    assert call_count == 1
+    assert "Online history ready" in body
+
+    module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
+
+    assert call_count == 2
+
+
 def test_query_inbox_online_history_shows_configured_collector_summary(tmp_path, monkeypatch):
     module = load_web_module()
     history_db = tmp_path / "recent-history.sqlite"

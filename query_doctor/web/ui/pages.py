@@ -42,6 +42,7 @@ from query_doctor.web.ui.recent_scan_groups import (
     normalize_result_sort,
 )
 from query_doctor.web.ui.recent_scan_results import render_batch_card
+from query_doctor.web.ui.recent_scan_view_cache import shared_recent_scan_summary_views
 from query_doctor.web.ui.recent_scan_result_filters import (
     RecentScanResultFilters,
     normalize_recent_scan_result_filters,
@@ -162,7 +163,7 @@ def render_batch_page(
     inbox_scope_filters: QueryInboxScopeFilters | None = None,
     result_filters: RecentScanResultFilters | None = None,
 ) -> str:
-    with shared_recent_history_inbox_summary():
+    with shared_recent_history_inbox_summary(), shared_recent_scan_summary_views():
         effective_form_values = form_values
         if effective_form_values is None and job is not None:
             effective_form_values = getattr(job, "batch_form_values", None)
