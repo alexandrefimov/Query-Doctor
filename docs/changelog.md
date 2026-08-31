@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-08-29
+Last updated: 2026-08-31
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -23,6 +23,13 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 [release-notes-0.4.1.md](release-notes-0.4.1.md).
 
 ## Unreleased
+
+- Online History now materializes only the newest 500 retained summaries that
+  the page can display. The database applies that bound before joining profile
+  jobs, artifact metadata, and analysis-cache payloads, so that expensive
+  materialization and sanitization work no longer grows with the full retention
+  window. The page still reports the separate total retained-row count, while
+  profile-loop and Details-ready counters describe the displayed window.
 
 - Direct-Impala query summaries now keep the metrics the coordinator already
   serves. `/queries?json` carries `rows_fetched`, `bytes_read`, `bytes_sent`,

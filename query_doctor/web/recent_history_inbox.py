@@ -91,7 +91,7 @@ def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object
         store, backend = _history_store_from_config(config_values)
         if store is None:
             return None
-        payloads = store.load_materialized_payloads()
+        payloads = store.load_materialized_payloads(limit=MAX_HISTORY_INBOX_ROWS)
         retained_count = store.count_summaries()
         operator_readiness = operator_readiness_summary_from_config(
             config_values,

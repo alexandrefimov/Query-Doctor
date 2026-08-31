@@ -816,7 +816,7 @@ def test_postgres_history_store_loads_materialized_payloads_raw_free():
 
     store = PostgresRecentHistoryStore("postgresql://query-doctor-history", connect=connect)
 
-    assert store.load_materialized_payloads() == [
+    assert store.load_materialized_payloads(limit=500) == [
         {
             "query_id": "query-materialized",
             "profile_status": PROFILE_STATUS_ANALYZED,
@@ -833,7 +833,10 @@ def test_postgres_history_store_loads_materialized_payloads_raw_free():
         "artifact_status": "available",
         "analyzer_contract": "profile_digest_analysis_json_v1",
         "analysis_status": "ready",
+        "limit": 500,
     }
+    assert "WITH newest_summary_keys AS" in statement
+    assert "LIMIT %(limit)s" in statement
 
 
 def test_postgres_history_store_prunes_history_with_terminal_job_guard():
