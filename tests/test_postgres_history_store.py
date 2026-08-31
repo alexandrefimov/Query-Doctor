@@ -138,6 +138,12 @@ def test_postgres_history_store_initializes_and_upserts_raw_free_rows():
     upsert_cursor = connections[1].cursor_obj
     assert len(ddl_cursor.executed) == len(POSTGRES_RECENT_QUERY_SUMMARY_DDL)
     assert "jsonb" in "\n".join(ddl_cursor.executed)
+    assert any(
+        "recent_query_summary_latest_idx" in statement
+        and "COALESCE(end_time, start_time, recorded_at_iso)" in statement
+        and "query_id" in statement
+        for statement in ddl_cursor.executed
+    )
     assert "recent_query_summary.profile_status" in POSTGRES_RECENT_QUERY_SUMMARY_UPSERT
     assert upsert_cursor.executemany_calls[0][0] == POSTGRES_RECENT_QUERY_SUMMARY_UPSERT
     rows = upsert_cursor.executemany_calls[0][1]
