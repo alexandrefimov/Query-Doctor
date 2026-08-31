@@ -958,9 +958,7 @@ def test_postgres_online_history_reads_do_not_prepare_schema():
         "failed_jobs": 4,
     }
     statements = [
-        statement
-        for connection in connections
-        for statement in connection.cursor_obj.executed
+        statement for connection in connections for statement in connection.cursor_obj.executed
     ]
     assert statements == [
         POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT,
