@@ -96,3 +96,45 @@ def test_online_history_loads_only_the_rows_the_page_can_display(monkeypatch):
     assert summary is not None
     assert summary["summaries_inspected"] == 10_000
     assert summary["selected_count"] == 0
+
+
+def test_online_history_uses_combined_postgres_payload_and_count_read(monkeypatch):
+    calls: list[tuple[str, int | None]] = []
+
+    class Store:
+        def load_materialized_payloads_with_count(self, *, limit: int):
+            calls.append(("snapshot", limit))
+            return [], 233_036
+
+        def load_materialized_payloads(self, *, limit: int):
+            raise AssertionError("combined PostgreSQL read should be used")
+
+        def count_summaries(self):
+            raise AssertionError("combined PostgreSQL read should include the count")
+
+        def summarize_profile_backlog_health(self, *, now_iso: str):
+            calls.append(("backlog", None))
+            raise recent_history_inbox.RecentHistoryStoreError("not_configured")
+
+    monkeypatch.setattr(recent_history_inbox, "load_web_local_config", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "_history_store_from_config",
+        lambda _config: (Store(), "postgres"),
+    )
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "operator_readiness_summary_from_config",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "collector_summary_from_config",
+        lambda *_a, **_k: None,
+    )
+
+    summary = recent_history_inbox.load_recent_history_inbox_summary(_Settings())
+
+    assert summary is not None
+    assert summary["summaries_inspected"] == 233_036
+    assert calls == [("snapshot", recent_history_inbox.MAX_HISTORY_INBOX_ROWS), ("backlog", None)]
