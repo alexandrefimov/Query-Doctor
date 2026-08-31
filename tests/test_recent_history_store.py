@@ -781,6 +781,22 @@ def test_recent_history_store_loads_materialized_analysis_payloads(tmp_path):
     assert "sha256_deadbeef" not in rendered
 
 
+def test_recent_history_store_limits_materialized_payloads_to_newest_rows(tmp_path):
+    db_path = tmp_path / "recent-history.sqlite"
+    store = SqliteRecentHistoryStore(db_path)
+    store.upsert_summaries(
+        [
+            summary_history_record("query-old", recorded_at_iso="2026-07-03T10:00:00+00:00"),
+            summary_history_record("query-middle", recorded_at_iso="2026-07-03T11:00:00+00:00"),
+            summary_history_record("query-new", recorded_at_iso="2026-07-03T12:00:00+00:00"),
+        ]
+    )
+
+    payloads = store.load_materialized_payloads(limit=2)
+
+    assert [payload["query_id"] for payload in payloads] == ["query-new", "query-middle"]
+
+
 def test_recent_history_store_upserts_raw_free_analysis_cache(tmp_path):
     db_path = tmp_path / "recent-history.sqlite"
     store = SqliteRecentHistoryStore(db_path)

@@ -1,6 +1,6 @@
 # Validation Log
 
-Last updated: 2026-06-01
+Last updated: 2026-08-31
 
 This public log records only path-free validation baselines that are useful to
 contributors and release reviewers. It is not a local run journal. Detailed
@@ -27,6 +27,20 @@ Do not record:
 - raw profiles, raw SQL, raw metadata, raw process logs, or secrets;
 - local model bake-off results, latency tables, or provider-specific tuning
   notes.
+
+## 2026-08-31 Public Documentation And Release Baseline
+
+The active documentation set, public distribution boundary, and standalone
+release guard were re-reviewed against the current public tree. Active-doc,
+Markdown-link, public-doc, public-distribution, and staged-public-safety checks
+completed successfully. The focused agent/documentation tooling suite completed
+with 59 passing tests, and Ruff reported no findings for scripts and tests.
+
+The deterministic public-release preflight completed as
+`READY_WITH_WARNINGS`. Its warnings were limited to deliberate hostname-like
+and production-looking adversarial fixtures in tracked safety tests and their
+existing history. No private target, generated-file drift, or new support claim
+was accepted by this review.
 
 ## 2026-06-01 Public Documentation Boundary
 

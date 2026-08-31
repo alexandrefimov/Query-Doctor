@@ -591,13 +591,18 @@ class PostgresRecentHistoryStore:
             raise RecentHistoryStoreError("postgres_recent_history_load_failed") from exc
         return recent_summary_payloads_from_rows(rows)
 
-    def load_materialized_payloads(self) -> list[dict[str, object]]:
+    def load_materialized_payloads(
+        self,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, object]]:
         self.initialize()
         params = {
             "artifact_contract": PROFILE_ARTIFACT_DEFAULT_CONTRACT,
             "artifact_status": PROFILE_ARTIFACT_STATUS_AVAILABLE,
             "analyzer_contract": ANALYSIS_CACHE_DEFAULT_CONTRACT,
             "analysis_status": ANALYSIS_CACHE_STATUS_READY,
+            "limit": None if limit is None else max(0, int(limit)),
         }
         try:
             with self._connect() as connection:
@@ -918,12 +923,28 @@ WHERE
 """
 
 POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT = """
+WITH newest_summary_keys AS (
+    SELECT
+        engine,
+        source_kind,
+        source_key,
+        query_id,
+        COALESCE(end_time, start_time, recorded_at_iso) AS sort_time
+    FROM recent_query_summary
+    ORDER BY sort_time DESC, query_id
+    LIMIT %(limit)s
+)
 SELECT
     summary.payload_json,
     summary.profile_status,
     analysis_cache.payload_json,
     job.last_error_code
-FROM recent_query_summary AS summary
+FROM newest_summary_keys AS newest
+JOIN recent_query_summary AS summary
+    ON summary.engine = newest.engine
+    AND summary.source_kind = newest.source_kind
+    AND summary.source_key = newest.source_key
+    AND summary.query_id = newest.query_id
 LEFT JOIN recent_profile_job AS job
     ON job.engine = summary.engine
     AND job.source_kind = summary.source_kind
@@ -958,7 +979,7 @@ LEFT JOIN recent_analysis_cache AS analysis_cache
     AND analysis_cache.analyzer_contract = %(analyzer_contract)s
     AND analysis_cache.status = %(analysis_status)s
 ORDER BY
-    COALESCE(summary.end_time, summary.start_time, summary.recorded_at_iso) DESC,
+    newest.sort_time DESC,
     summary.query_id
 """
 

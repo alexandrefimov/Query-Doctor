@@ -60,3 +60,39 @@ def test_reading_outside_a_render_still_loads_every_time(monkeypatch):
     recent_history_inbox.recent_history_inbox_summary_from_settings(settings)
 
     assert counter["calls"] == 2
+
+
+def test_online_history_loads_only_the_rows_the_page_can_display(monkeypatch):
+    class Store:
+        def load_materialized_payloads(self, *, limit: int):
+            assert limit == recent_history_inbox.MAX_HISTORY_INBOX_ROWS
+            return []
+
+        def count_summaries(self):
+            return 10_000
+
+        def summarize_profile_backlog_health(self, *, now_iso: str):
+            raise recent_history_inbox.RecentHistoryStoreError("not_configured")
+
+    monkeypatch.setattr(recent_history_inbox, "load_web_local_config", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "_history_store_from_config",
+        lambda _config: (Store(), "postgres"),
+    )
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "operator_readiness_summary_from_config",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        recent_history_inbox,
+        "collector_summary_from_config",
+        lambda *_a, **_k: None,
+    )
+
+    summary = recent_history_inbox.load_recent_history_inbox_summary(_Settings())
+
+    assert summary is not None
+    assert summary["summaries_inspected"] == 10_000
+    assert summary["selected_count"] == 0
