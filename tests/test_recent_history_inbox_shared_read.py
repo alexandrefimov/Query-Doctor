@@ -9,7 +9,7 @@ class _Settings:
 
 
 def _counting_loader(counter: dict[str, int]):
-    def loader(settings: object) -> dict[str, object]:
+    def loader(settings: object, *, history_view: str) -> dict[str, object]:
         counter["calls"] += 1
         return {"rows": []}
 
@@ -64,8 +64,9 @@ def test_reading_outside_a_render_still_loads_every_time(monkeypatch):
 
 def test_online_history_loads_only_the_rows_the_page_can_display(monkeypatch):
     class Store:
-        def load_materialized_payloads(self, *, limit: int):
+        def load_materialized_payloads(self, *, limit: int, details_ready_only: bool):
             assert limit == recent_history_inbox.MAX_HISTORY_INBOX_ROWS
+            assert details_ready_only is True
             return []
 
         def count_summaries(self):
@@ -113,8 +114,9 @@ def test_online_history_uses_combined_postgres_payload_and_count_read(monkeypatc
             *,
             limit: int,
             prepare_schema: bool,
+            details_ready_only: bool,
         ):
-            calls.append(("snapshot", limit, prepare_schema))
+            calls.append(("snapshot", limit, prepare_schema, details_ready_only))
             return [], 233_036
 
         def load_materialized_payloads(self, *, limit: int):
@@ -154,7 +156,7 @@ def test_online_history_uses_combined_postgres_payload_and_count_read(monkeypatc
     assert summary is not None
     assert summary["summaries_inspected"] == 233_036
     assert calls == [
-        ("snapshot", recent_history_inbox.MAX_HISTORY_INBOX_ROWS, False),
+        ("snapshot", recent_history_inbox.MAX_HISTORY_INBOX_ROWS, False, True),
         ("backlog", None, False),
     ]
 
@@ -166,9 +168,11 @@ def test_online_history_missing_postgres_schema_is_safely_unavailable(monkeypatc
             *,
             limit: int,
             prepare_schema: bool,
+            details_ready_only: bool,
         ):
             assert limit == recent_history_inbox.MAX_HISTORY_INBOX_ROWS
             assert prepare_schema is False
+            assert details_ready_only is True
             raise recent_history_inbox.RecentHistoryStoreError(
                 "postgres_recent_history_materialized_load_failed"
             )

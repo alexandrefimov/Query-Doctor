@@ -5490,7 +5490,17 @@ def test_web_online_history_details_route_uses_materialized_analysis_cache(
         source_key="cm:cluster:impala",
         recorded_at_iso="2026-07-03T10:05:00+00:00",
     )
-    store.upsert_summaries([replace(record, profile_status=PROFILE_STATUS_ANALYZED)])
+    store.upsert_summaries(
+        [
+            replace(record, profile_status=PROFILE_STATUS_ANALYZED),
+            replace(
+                record,
+                query_id="query-newer-unprocessed",
+                recorded_at_iso="2026-07-03T11:05:00+00:00",
+                profile_status="not_collected",
+            ),
+        ]
+    )
     store.store_analysis_cache_records(
         [
             RecentAnalysisCacheRecord(
@@ -5552,9 +5562,27 @@ def test_web_online_history_details_route_uses_materialized_analysis_cache(
         module.WebSettings(config=config, repo_dir=REPO_DIR, no_llm=True),
         module.WebJobStore(),
     )
+    all_recent_page = route_get_request(
+        "/?history_view=all_recent&query_group=all",
+        module.WebSettings(config=config, repo_dir=REPO_DIR, no_llm=True),
+        module.WebJobStore(),
+    )
+    all_recent_details = route_get_request(
+        "/batch/case/recent-case-002",
+        module.WebSettings(config=config, repo_dir=REPO_DIR, no_llm=True),
+        module.WebJobStore(),
+    )
 
     assert response is not None
     assert response.status == 200
+    assert all_recent_page is not None
+    assert all_recent_page.status == 200
+    assert 'aria-label="Online history view"' in all_recent_page.body
+    assert "Details ready" in all_recent_page.body
+    assert "All recent" in all_recent_page.body
+    assert 'data-href="/batch/case/recent-case-002"' in all_recent_page.body
+    assert all_recent_details is not None
+    assert all_recent_details.status == 200
     body = response.body
     assert "query-online-details" in body
     assert "runtime signal" in body
@@ -5750,7 +5778,7 @@ def test_web_online_history_end_to_end_smoke_keeps_worker_and_readiness_raw_free
     assert action_context.report_allowed is False
     assert action_context.optimizer_allowed is False
     assert action_context.source_sql_available is False
-    assert "Online history ready" in page_body
+    assert "Details ready" in page_body
     assert "online-history-smoke-query" in page_body
     assert 'data-href="/batch/case/case-001"' in page_body
     assert (
@@ -5759,8 +5787,8 @@ def test_web_online_history_end_to_end_smoke_keeps_worker_and_readiness_raw_free
     )
     assert '<span class="query-inbox-metric"><strong>operator collector</strong>' in page_body
     assert '<span class="query-inbox-metric"><strong>collector observed</strong>' in page_body
-    assert '<span class="query-inbox-metric"><strong>collector freshness</strong>' in page_body
-    assert '<span class="query-inbox-metric"><strong>last planning</strong>' in page_body
+    assert '<span class="query-inbox-metric"><strong>collector freshness</strong>' not in page_body
+    assert '<span class="query-inbox-metric"><strong>last planning</strong>' not in page_body
     assert (
         '<span class="query-inbox-metric"><strong>profile loop</strong>'
         "<span>1 analyzed</span></span>" in page_body

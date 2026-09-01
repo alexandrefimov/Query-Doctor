@@ -29,7 +29,13 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanSummaryView,
 )
 from query_doctor.web.query_inbox_time_range import normalize_query_inbox_time_range
-from query_doctor.web.recent_history_inbox import recent_history_inbox_summary_from_settings
+from query_doctor.web.recent_history_inbox import (
+    DEFAULT_HISTORY_VIEW,
+    HISTORY_VIEW_ALL_RECENT,
+    HISTORY_VIEW_DETAILS_READY,
+    normalize_history_view,
+    recent_history_inbox_summary_from_settings,
+)
 from query_doctor.web.ui.recent_scan_groups import (
     DEFAULT_RESULT_SORT,
     QUERY_GROUPS,
@@ -133,6 +139,7 @@ class QueryInboxStatus:
     scope_filter_groups: tuple["QueryInboxScopeFilterGroup", ...] = ()
     result_filter_toggles: tuple[ResultFilterToggle, ...] = ()
     result_rows: tuple[RecentScanCaseRowView, ...] = ()
+    history_view: str = ""
 
 
 @dataclass(frozen=True)
@@ -186,16 +193,20 @@ def query_inbox_status_from_settings(
     *,
     job: Any | None = None,
     scope_filters: QueryInboxScopeFilters | None = None,
+    history_view: str = DEFAULT_HISTORY_VIEW,
 ) -> QueryInboxStatus:
     if _job_is_running(job):
         return query_inbox_status_from_view(None, job=job)
-    history_summary = _history_summary_if_requested(settings, scope_filters)
+    history_summary = _history_summary_if_requested(settings, scope_filters, history_view)
     if history_summary is not None:
         return query_inbox_status_from_summary(history_summary, scope_filters=scope_filters)
     summary_path = getattr(settings, "batch_summary", None)
     corpus_summary = getattr(settings, "corpus_summary", None)
     if summary_path is None and not isinstance(corpus_summary, dict):
-        history_summary = recent_history_inbox_summary_from_settings(settings)
+        history_summary = recent_history_inbox_summary_from_settings(
+            settings,
+            history_view=history_view,
+        )
         if history_summary is not None:
             return query_inbox_status_from_summary(history_summary, scope_filters=scope_filters)
         return query_inbox_status_from_view(None)
@@ -236,12 +247,16 @@ def query_inbox_refresh_form_values_from_settings(
     settings: Any,
     *,
     scope_filters: QueryInboxScopeFilters | None = None,
+    history_view: str = DEFAULT_HISTORY_VIEW,
 ) -> dict[str, object] | None:
-    summary = _history_summary_if_requested(settings, scope_filters)
+    summary = _history_summary_if_requested(settings, scope_filters, history_view)
     if summary is None:
         summary = _summary_payload_from_settings(settings)
     if summary is None:
-        history_summary = recent_history_inbox_summary_from_settings(settings)
+        history_summary = recent_history_inbox_summary_from_settings(
+            settings,
+            history_view=history_view,
+        )
         if history_summary is not None:
             summary = history_summary
     if summary is None:
@@ -459,17 +474,36 @@ def query_inbox_status_from_summary(
     )
     if _safe_string(summary.get("mode")).lower() == "recent-history-online":
         online_metrics = _online_history_status_metrics(summary, now=now)
+        history_view = normalize_history_view(summary.get("history_view"))
         return replace(
             status,
-            title="Online history ready" if status.state != "empty" else "Online history empty",
-            message=(
-                "Retained raw-free query summaries are available from the Recent history store. "
-                "Rows without materialized case artifacts stay read-only until a scan or profile "
-                "worker materializes Details."
+            title=(
+                "Details ready"
+                if history_view == HISTORY_VIEW_DETAILS_READY
+                else "All recent queries"
             )
             if status.state != "empty"
-            else "Recent history storage is configured, but no retained query summaries are available yet.",
+            else (
+                "No Details ready"
+                if history_view == HISTORY_VIEW_DETAILS_READY
+                else "Online history empty"
+            ),
+            message=(
+                "Showing the newest raw-free analyses with compatible Details. Every result row "
+                "opens the analyst decision page."
+                if history_view == HISTORY_VIEW_DETAILS_READY
+                else "Showing the newest retained summaries and their analysis state. Use Details "
+                "ready to work only with openable analyses."
+            )
+            if status.state != "empty"
+            else (
+                "No compatible analyzed cases are ready yet. Check All recent for queued, running, "
+                "failed, or unselected summaries."
+                if history_view == HISTORY_VIEW_DETAILS_READY
+                else "Recent history storage is configured, but no retained query summaries are available yet."
+            ),
             metrics=tuple((*status.metrics, *online_metrics)),
+            history_view=history_view,
         )
     return status
 
@@ -630,6 +664,12 @@ def render_query_inbox_status(
     normalized_result_sort = normalize_result_sort(result_sort)
     if normalized_result_sort != DEFAULT_RESULT_SORT:
         preset_query[RESULT_SORT_PARAM] = normalized_result_sort
+    history_views = _render_online_history_view_switch(
+        status,
+        active_group=active_group,
+        only_with_spills=only_with_spills,
+        extra_query=preset_query,
+    )
     metrics = "".join(
         '<span class="query-inbox-metric">'
         f"<strong>{html.escape(label)}</strong>"
@@ -685,10 +725,52 @@ def render_query_inbox_status(
         f'<span class="badge {html.escape(status.badge_class, quote=True)}">{html.escape(status.state)}</span>'
         "</div>"
         f'<div class="query-inbox-metrics" aria-label="Query Inbox summary">{metrics}</div>'
+        f"{history_views}"
         f"{scope}"
         f"{active_filters}"
         f"{controls}"
         "</section>"
+    )
+
+
+def _render_online_history_view_switch(
+    status: QueryInboxStatus,
+    *,
+    active_group: str,
+    only_with_spills: bool,
+    extra_query: Mapping[str, str],
+) -> str:
+    if not status.history_view:
+        return ""
+    active_view = normalize_history_view(status.history_view)
+    links: list[str] = []
+    for view, label in (
+        (HISTORY_VIEW_DETAILS_READY, "Details ready"),
+        (HISTORY_VIEW_ALL_RECENT, "All recent"),
+    ):
+        query = dict(extra_query)
+        query["query_group"] = normalize_query_group(active_group)
+        if only_with_spills:
+            query["only_with_spills"] = "on"
+        if view == DEFAULT_HISTORY_VIEW:
+            query.pop("history_view", None)
+        else:
+            query["history_view"] = view
+        active = view == active_view
+        classes = "query-inbox-preset"
+        attrs = ""
+        if active:
+            classes += " query-inbox-preset--active"
+            attrs = ' aria-current="page"'
+        href = f"/?{urlencode(query)}#recent-results"
+        links.append(
+            f'<a class="{classes}" href="{html.escape(href, quote=True)}"{attrs}>'
+            f"{html.escape(label)}</a>"
+        )
+    return (
+        '<nav class="query-inbox-presets query-inbox-history-views" '
+        'aria-label="Online history view">'
+        f'{"".join(links)}</nav>'
     )
 
 
@@ -1386,10 +1468,11 @@ def _summary_payload_from_settings(settings: Any) -> Mapping[str, Any] | None:
 def _history_summary_if_requested(
     settings: Any,
     scope_filters: QueryInboxScopeFilters | None,
+    history_view: str = DEFAULT_HISTORY_VIEW,
 ) -> Mapping[str, Any] | None:
     if _normalized_scope_filters(scope_filters).source != "history":
         return None
-    return recent_history_inbox_summary_from_settings(settings)
+    return recent_history_inbox_summary_from_settings(settings, history_view=history_view)
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -2002,6 +2085,8 @@ def _online_history_status_metrics(
 def _online_history_row_summary(summary: Mapping[str, Any]) -> str:
     retained = _safe_metric_count(summary.get("summaries_inspected"))
     shown = _safe_metric_count(summary.get("selected_count"))
+    if normalize_history_view(summary.get("history_view")) == HISTORY_VIEW_DETAILS_READY:
+        return f"{shown} details ready shown / {retained} retained"
     if retained <= 0 or shown <= 0 or retained == shown:
         return ""
     return f"{retained} retained / {shown} shown"
@@ -2012,6 +2097,8 @@ def _online_history_collector_freshness_metrics(
 ) -> list[tuple[str, str]]:
     freshness = _mapping(summary.get("history_collector_freshness"))
     if not freshness:
+        return []
+    if _safe_string(freshness.get("scope")) == HISTORY_VIEW_DETAILS_READY:
         return []
     status = _safe_string(freshness.get("status")).lower()
     if status not in {"fresh", "stale", "empty", "unknown"}:

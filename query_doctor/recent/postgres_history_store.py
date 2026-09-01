@@ -601,6 +601,7 @@ class PostgresRecentHistoryStore:
         self,
         *,
         limit: int | None = None,
+        details_ready_only: bool = False,
     ) -> list[dict[str, object]]:
         self.initialize()
         params = {
@@ -608,6 +609,8 @@ class PostgresRecentHistoryStore:
             "artifact_status": PROFILE_ARTIFACT_STATUS_AVAILABLE,
             "analyzer_contract": ANALYSIS_CACHE_DEFAULT_CONTRACT,
             "analysis_status": ANALYSIS_CACHE_STATUS_READY,
+            "analyzed_profile_status": PROFILE_STATUS_ANALYZED,
+            "details_ready_only": bool(details_ready_only),
             "limit": None if limit is None else max(0, int(limit)),
         }
         try:
@@ -626,12 +629,15 @@ class PostgresRecentHistoryStore:
         *,
         limit: int | None = None,
         prepare_schema: bool = True,
+        details_ready_only: bool = False,
     ) -> tuple[list[dict[str, object]], int]:
         params = {
             "artifact_contract": PROFILE_ARTIFACT_DEFAULT_CONTRACT,
             "artifact_status": PROFILE_ARTIFACT_STATUS_AVAILABLE,
             "analyzer_contract": ANALYSIS_CACHE_DEFAULT_CONTRACT,
             "analysis_status": ANALYSIS_CACHE_STATUS_READY,
+            "analyzed_profile_status": PROFILE_STATUS_ANALYZED,
+            "details_ready_only": bool(details_ready_only),
             "limit": None if limit is None else max(0, int(limit)),
         }
         try:
@@ -969,12 +975,51 @@ WHERE
 POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT = """
 WITH newest_summary_keys AS (
     SELECT
-        engine,
-        source_kind,
-        source_key,
-        query_id,
-        COALESCE(end_time, start_time, recorded_at_iso) AS sort_time
-    FROM recent_query_summary
+        summary.engine,
+        summary.source_kind,
+        summary.source_key,
+        summary.query_id,
+        COALESCE(summary.end_time, summary.start_time, summary.recorded_at_iso) AS sort_time
+    FROM recent_query_summary AS summary
+    WHERE
+        NOT %(details_ready_only)s
+        OR (
+            summary.profile_status = %(analyzed_profile_status)s
+            AND EXISTS (
+                SELECT 1
+                FROM recent_profile_artifact AS ready_artifact
+                JOIN recent_analysis_cache AS ready_cache
+                    ON ready_cache.engine = ready_artifact.engine
+                    AND ready_cache.source_kind = ready_artifact.source_kind
+                    AND ready_cache.source_key = ready_artifact.source_key
+                    AND ready_cache.query_id = ready_artifact.query_id
+                    AND ready_cache.profile_fingerprint = ready_artifact.profile_fingerprint
+                    AND ready_cache.analyzer_contract = %(analyzer_contract)s
+                    AND ready_cache.status = %(analysis_status)s
+                WHERE
+                    ready_artifact.engine = summary.engine
+                    AND ready_artifact.source_kind = summary.source_kind
+                    AND ready_artifact.source_key = summary.source_key
+                    AND ready_artifact.query_id = summary.query_id
+                    AND ready_artifact.artifact_contract = %(artifact_contract)s
+                    AND ready_artifact.status = %(artifact_status)s
+                    AND ready_artifact.profile_fingerprint = (
+                        SELECT candidate.profile_fingerprint
+                        FROM recent_profile_artifact AS candidate
+                        WHERE
+                            candidate.engine = summary.engine
+                            AND candidate.source_kind = summary.source_kind
+                            AND candidate.source_key = summary.source_key
+                            AND candidate.query_id = summary.query_id
+                            AND candidate.artifact_contract = %(artifact_contract)s
+                            AND candidate.status = %(artifact_status)s
+                        ORDER BY
+                            candidate.recorded_at_iso DESC,
+                            candidate.profile_fingerprint DESC
+                        LIMIT 1
+                    )
+            )
+        )
     ORDER BY sort_time DESC, query_id
     LIMIT %(limit)s
 )

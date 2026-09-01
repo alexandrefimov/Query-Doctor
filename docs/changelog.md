@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -30,12 +30,15 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
   safe unavailable state. The web request now opens only the two read
   connections for materialized rows/count and fail-soft backlog health.
 
-- Online History now materializes only the newest 500 retained summaries that
-  the page can display. The database applies that bound before joining profile
-  jobs, artifact metadata, and analysis-cache payloads, so that expensive
-  materialization and sanitization work no longer grows with the full retention
-  window. The page still reports the separate total retained-row count, while
-  profile-loop and Details-ready counters describe the displayed window.
+- Online History now opens on a bounded `Details ready` view that selects the
+  newest compatible analyzed cases across retained history before rendering.
+  This keeps actionable cases visible even when newer unprocessed summaries
+  would otherwise fill the bounded page. A separate `All recent` view keeps the
+  newest-summary workflow and shows explicit queued, analyzing, failed,
+  unselected, or Details-unavailable actions instead of empty cells. Both views
+  stay bounded in the database, preserve raw-free projection, and use distinct
+  opaque case references so their Details links resolve against the same view
+  that produced them.
 
 - Direct-Impala query summaries now keep the metrics the coordinator already
   serves. `/queries?json` carries `rows_fetched`, `bytes_read`, `bytes_sent`,

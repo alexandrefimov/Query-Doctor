@@ -41,6 +41,9 @@ from query_doctor.web.operator_readiness_status import operator_readiness_summar
 MAX_HISTORY_INBOX_ROWS = 500
 MATERIALIZED_ANALYSIS_FIELDS = ANALYSIS_CACHE_SUMMARY_FIELDS
 COLLECTOR_FRESHNESS_STALE_AFTER_MINUTES = 120
+HISTORY_VIEW_DETAILS_READY = "details_ready"
+HISTORY_VIEW_ALL_RECENT = "all_recent"
+DEFAULT_HISTORY_VIEW = HISTORY_VIEW_DETAILS_READY
 
 
 _SHARED_INBOX_SUMMARY: ContextVar[dict[object, object] | None] = ContextVar(
@@ -71,21 +74,32 @@ def shared_recent_history_inbox_summary():
         _SHARED_INBOX_SUMMARY.reset(token)
 
 
-def recent_history_inbox_summary_from_settings(settings: WebSettings) -> dict[str, object] | None:
+def recent_history_inbox_summary_from_settings(
+    settings: WebSettings,
+    *,
+    history_view: str = DEFAULT_HISTORY_VIEW,
+) -> dict[str, object] | None:
+    normalized_view = normalize_history_view(history_view)
     memo = _SHARED_INBOX_SUMMARY.get()
     if memo is None:
-        return load_recent_history_inbox_summary(settings)
+        return load_recent_history_inbox_summary(settings, history_view=normalized_view)
 
     # Only the config path and the demo flag decide what is read.
-    key = (bool(settings.public_demo), str(settings.config))
+    key = (bool(settings.public_demo), str(settings.config), normalized_view)
     if key not in memo:
-        memo[key] = load_recent_history_inbox_summary(settings)
+        memo[key] = load_recent_history_inbox_summary(settings, history_view=normalized_view)
     return memo[key]
 
 
-def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object] | None:
+def load_recent_history_inbox_summary(
+    settings: WebSettings,
+    *,
+    history_view: str = DEFAULT_HISTORY_VIEW,
+) -> dict[str, object] | None:
     if settings.public_demo:
         return None
+    normalized_view = normalize_history_view(history_view)
+    details_ready_only = normalized_view == HISTORY_VIEW_DETAILS_READY
     try:
         config_values = load_web_local_config(settings.config, cwd=Path.cwd())
         store, backend = _history_store_from_config(config_values)
@@ -97,11 +111,18 @@ def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object
                 payloads, retained_count = load_with_count(
                     limit=MAX_HISTORY_INBOX_ROWS,
                     prepare_schema=False,
+                    details_ready_only=details_ready_only,
                 )
             else:
-                payloads, retained_count = load_with_count(limit=MAX_HISTORY_INBOX_ROWS)
+                payloads, retained_count = load_with_count(
+                    limit=MAX_HISTORY_INBOX_ROWS,
+                    details_ready_only=details_ready_only,
+                )
         else:
-            payloads = store.load_materialized_payloads(limit=MAX_HISTORY_INBOX_ROWS)
+            payloads = store.load_materialized_payloads(
+                limit=MAX_HISTORY_INBOX_ROWS,
+                details_ready_only=details_ready_only,
+            )
             retained_count = store.count_summaries()
         operator_readiness = operator_readiness_summary_from_config(
             config_values,
@@ -125,7 +146,7 @@ def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object
         except (OSError, RecentHistoryStoreError):
             profile_backlog_health = None
     except (OSError, ValueError, RecentHistoryStoreError):
-        return recent_history_unavailable_summary()
+        return recent_history_unavailable_summary(history_view=normalized_view)
     return recent_history_summary_from_payloads(
         payloads,
         backend=backend,
@@ -133,6 +154,7 @@ def load_recent_history_inbox_summary(settings: WebSettings) -> dict[str, object
         operator_readiness=operator_readiness,
         collector_run=collector_run,
         profile_backlog_health=profile_backlog_health,
+        history_view=normalized_view,
     )
 
 
@@ -145,9 +167,11 @@ def recent_history_summary_from_payloads(
     collector_run: Mapping[str, object] | None = None,
     profile_backlog_health: Mapping[str, object] | None = None,
     now: datetime | None = None,
+    history_view: str = HISTORY_VIEW_ALL_RECENT,
 ) -> dict[str, object]:
+    normalized_view = normalize_history_view(history_view)
     cases = [
-        _history_case(index, payload)
+        _history_case(index, payload, history_view=normalized_view)
         for index, payload in enumerate(payloads[:MAX_HISTORY_INBOX_ROWS], start=1)
         if isinstance(payload, Mapping)
     ]
@@ -163,15 +187,25 @@ def recent_history_summary_from_payloads(
         displayed_count=len(cases),
         now=now,
     )
+    if normalized_view == HISTORY_VIEW_DETAILS_READY:
+        collector_freshness["scope"] = HISTORY_VIEW_DETAILS_READY
     warnings: list[str] = []
     if retained > len(cases):
-        warnings.append(
-            f"Online history retained {retained} summary rows; showing the newest {len(cases)} rows."
-        )
+        if normalized_view == HISTORY_VIEW_DETAILS_READY:
+            warnings.append(
+                f"Online history retained {retained} summary rows; showing the newest "
+                f"{len(cases)} rows with Details ready."
+            )
+        else:
+            warnings.append(
+                f"Online history retained {retained} summary rows; showing the newest "
+                f"{len(cases)} rows."
+            )
     summary: dict[str, object] = {
         "mode": "recent-history-online",
         "query_profile_source": "history",
         "source_visibility": "safe",
+        "history_view": normalized_view,
         "selected_count": len(cases),
         "summaries_inspected": retained,
         "triage_profile_limit": len(cases),
@@ -226,11 +260,15 @@ def recent_history_summary_from_payloads(
     return summary
 
 
-def recent_history_unavailable_summary() -> dict[str, object]:
+def recent_history_unavailable_summary(
+    *,
+    history_view: str = DEFAULT_HISTORY_VIEW,
+) -> dict[str, object]:
     return {
         "mode": "recent-history-online",
         "query_profile_source": "history",
         "source_visibility": "safe",
+        "history_view": normalize_history_view(history_view),
         "selected_count": 0,
         "summaries_inspected": 0,
         "warnings": [
@@ -264,7 +302,12 @@ def _history_store_from_config(
     return PostgresRecentHistoryStore.from_env(dsn_env, env=dict(os.environ)), backend
 
 
-def _history_case(index: int, payload: Mapping[str, object]) -> dict[str, object]:
+def _history_case(
+    index: int,
+    payload: Mapping[str, object],
+    *,
+    history_view: str,
+) -> dict[str, object]:
     duration_ms = _nonnegative_int(payload.get("duration_ms"))
     duration_sec = round(duration_ms / 1000, 3) if duration_ms is not None else None
     suspicion_level = _safe_string(payload.get("suspicion_level"))
@@ -278,6 +321,8 @@ def _history_case(index: int, payload: Mapping[str, object]) -> dict[str, object
     )
     analysis_payload = _analysis_cache_payload(payload.get("analysis_cache_payload"))
     materialized = profile_status == PROFILE_STATUS_ANALYZED and bool(analysis_payload)
+    if profile_status == PROFILE_STATUS_ANALYZED and not materialized:
+        analysis_status = "details_unavailable"
     case = {
         "candidate_rank": index,
         "triage_rank": index,
@@ -305,10 +350,19 @@ def _history_case(index: int, payload: Mapping[str, object]) -> dict[str, object
     }
     if materialized:
         case["case_index"] = index
+        if history_view == HISTORY_VIEW_ALL_RECENT:
+            case["case_ref"] = f"recent-case-{index:03d}"
         case.update(_project_analysis_cache_payload(analysis_payload))
     if failure_category:
         case["failure_category"] = failure_category
     return case
+
+
+def normalize_history_view(value: object) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized == HISTORY_VIEW_ALL_RECENT:
+        return HISTORY_VIEW_ALL_RECENT
+    return HISTORY_VIEW_DETAILS_READY
 
 
 def _normalized_profile_status(value: object) -> str:

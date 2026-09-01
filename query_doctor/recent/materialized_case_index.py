@@ -309,6 +309,11 @@ def _case_dicts(value: Any) -> tuple[Mapping[str, Any], ...]:
 
 def _case_ref(value: Any) -> str:
     text = str(value or "").strip().lower()
+    if text.startswith("recent-case-"):
+        suffix = text.removeprefix("recent-case-")
+        if suffix.isdigit() and int(suffix) > 0:
+            return f"recent-case-{int(suffix):03d}"
+        return ""
     if text.startswith("case-"):
         suffix = text.removeprefix("case-")
         if suffix.isdigit() and int(suffix) > 0:

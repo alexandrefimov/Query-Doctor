@@ -6,7 +6,11 @@ import html
 from dataclasses import replace
 from typing import Any
 
-from query_doctor.web.recent_history_inbox import shared_recent_history_inbox_summary
+from query_doctor.web.recent_history_inbox import (
+    DEFAULT_HISTORY_VIEW,
+    normalize_history_view,
+    shared_recent_history_inbox_summary,
+)
 from query_doctor.web.ui.home import render_no_reports_note, render_run_panel, render_trust_strip
 from query_doctor.web.ui.layout import (
     render_app_footer,
@@ -162,17 +166,21 @@ def render_batch_page(
     workload_group_signal: str = "all",
     inbox_scope_filters: QueryInboxScopeFilters | None = None,
     result_filters: RecentScanResultFilters | None = None,
+    history_view: str = DEFAULT_HISTORY_VIEW,
 ) -> str:
     with shared_recent_history_inbox_summary(), shared_recent_scan_summary_views():
         effective_form_values = form_values
         if effective_form_values is None and job is not None:
             effective_form_values = getattr(job, "batch_form_values", None)
         scope_filters = inbox_scope_filters or QueryInboxScopeFilters()
+        normalized_history_view = normalize_history_view(history_view)
         scope_query = query_inbox_scope_filter_query(scope_filters)
         normalized_result_filters = normalize_recent_scan_result_filters(result_filters)
         normalized_result_sort = normalize_result_sort(result_sort)
         result_query = recent_scan_result_filter_query(normalized_result_filters)
         result_extra_query = {**scope_query, **result_query}
+        if normalized_history_view != DEFAULT_HISTORY_VIEW:
+            result_extra_query["history_view"] = normalized_history_view
         if normalized_result_sort != DEFAULT_RESULT_SORT:
             result_extra_query[RESULT_SORT_PARAM] = normalized_result_sort
         display_settings = _history_display_settings(settings, scope_filters)
@@ -192,6 +200,7 @@ def render_batch_page(
                 workload_group_name=workload_group_name,
                 workload_group_signal=workload_group_signal,
                 extra_query=result_extra_query,
+                history_view=normalized_history_view,
             )
         result_html = None
         if (
@@ -213,6 +222,7 @@ def render_batch_page(
                 workload_group_name=workload_group_name,
                 workload_group_signal=workload_group_signal,
                 extra_query=result_extra_query,
+                history_view=normalized_history_view,
             )
         has_existing_results = bool(batch_card) and job is None and error is None
         if effective_form_values is None and (
@@ -221,12 +231,18 @@ def render_batch_page(
             effective_form_values = query_inbox_refresh_form_values_from_settings(
                 display_settings,
                 scope_filters=scope_filters,
+                history_view=normalized_history_view,
             )
         if scope_query:
             effective_form_values = dict(effective_form_values or {})
             effective_form_values.update(scope_query)
         inbox_status = render_query_inbox_status(
-            query_inbox_status_from_settings(settings, job=job, scope_filters=scope_filters),
+            query_inbox_status_from_settings(
+                settings,
+                job=job,
+                scope_filters=scope_filters,
+                history_view=normalized_history_view,
+            ),
             active_group=query_group,
             only_with_spills=only_with_spills,
             scope_filters=scope_filters,
