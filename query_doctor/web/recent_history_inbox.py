@@ -248,7 +248,10 @@ def recent_history_summary_from_payloads(
                 "from_time": from_time,
                 "to_time": to_time,
             },
-            "cases": cases,
+            # Preserve an in-memory marker that these rows already crossed the
+            # browser-display projection in _history_case(). JSON reloads turn
+            # the tuple back into a list, which remains fail-closed downstream.
+            "cases": tuple(cases),
         },
     }
     if operator_readiness is not None:

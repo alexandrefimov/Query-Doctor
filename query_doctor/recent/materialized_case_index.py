@@ -214,6 +214,10 @@ def materialized_case_entries(summary: Mapping[str, Any]) -> tuple[dict[str, Any
     existing = summary.get("materialized_case_index")
     if isinstance(existing, Mapping) and existing.get("schema_version") == SCHEMA_VERSION:
         cases = existing.get("cases")
+        if isinstance(cases, tuple):
+            # Online History stores already-projected in-memory rows as a tuple.
+            # Serialized indexes reload as lists and are sanitized again below.
+            return tuple(dict(case) for case in cases if isinstance(case, Mapping))
         if isinstance(cases, list):
             return tuple(_project_case(case) for case in _case_dicts(cases))
     index = build_materialized_case_index(summary)
