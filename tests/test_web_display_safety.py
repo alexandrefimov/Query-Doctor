@@ -1,7 +1,61 @@
-from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.safety import browser_display
+from query_doctor.safety.browser_display import (
+    redact_browser_display_text,
+    shared_browser_display_redactions,
+)
 from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.ui.pages import render_error_panel
+
+
+def test_browser_display_redaction_cache_is_request_local(monkeypatch):
+    calls = 0
+    original = browser_display.redact_credentials_for_display
+
+    def counted(text, *, env=None):
+        nonlocal calls
+        calls += 1
+        return original(text, env=env)
+
+    monkeypatch.setattr(browser_display, "redact_credentials_for_display", counted)
+
+    with shared_browser_display_redactions():
+        first = redact_browser_display_text(
+            "Coordinator: worker.example.org",
+            redact_infrastructure=True,
+        )
+        second = redact_browser_display_text(
+            "Coordinator: worker.example.org",
+            redact_infrastructure=True,
+        )
+
+    assert first == second
+    assert calls == 1
+
+    redact_browser_display_text(
+        "Coordinator: worker.example.org",
+        redact_infrastructure=True,
+    )
+    assert calls == 2
+
+
+def test_browser_display_redaction_cache_separates_options_and_explicit_environments():
+    with shared_browser_display_redactions():
+        visible = redact_browser_display_text("Coordinator: worker.example.org")
+        hidden = redact_browser_display_text(
+            "Coordinator: worker.example.org",
+            redact_infrastructure=True,
+        )
+        secret_hidden = redact_browser_display_text(
+            "request-secret",
+            env={"CM_PASSWORD": "request-secret"},
+        )
+        secret_visible = redact_browser_display_text("request-secret", env={})
+
+    assert "worker.example.org" in visible
+    assert "worker.example.org" not in hidden
+    assert "request-secret" not in secret_hidden
+    assert secret_visible == "request-secret"
 
 
 def test_browser_display_redaction_hides_credentials_and_local_paths():

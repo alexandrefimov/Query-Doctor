@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from query_doctor.cli import collect_cm_profiles as cm_collector
@@ -84,6 +86,23 @@ SAFE_PUBLIC_PROJECT_URL_RE = re.compile(
     r"|https://pypi\.org/project/query-doctor/"
 )
 
+MAX_SHARED_BROWSER_DISPLAY_REDACTIONS = 4096
+MAX_SHARED_BROWSER_DISPLAY_INPUT_CHARS = 2048
+_SHARED_BROWSER_DISPLAY_REDACTIONS: ContextVar[dict[tuple[object, ...], str] | None] = ContextVar(
+    "shared_browser_display_redactions", default=None
+)
+
+
+@contextmanager
+def shared_browser_display_redactions() -> Iterator[None]:
+    """Reuse exact browser projections within one request only."""
+
+    token = _SHARED_BROWSER_DISPLAY_REDACTIONS.set({})
+    try:
+        yield
+    finally:
+        _SHARED_BROWSER_DISPLAY_REDACTIONS.reset(token)
+
 
 def redact_browser_display_text(
     value: Any,
@@ -98,6 +117,21 @@ def redact_browser_display_text(
 ) -> str:
     # Central browser-visible boundary: opt into narrower redaction flags per surface.
     text = str(value)
+    cache = _SHARED_BROWSER_DISPLAY_REDACTIONS.get()
+    cache_key: tuple[object, ...] | None = None
+    if cache is not None and env is None and len(text) <= MAX_SHARED_BROWSER_DISPLAY_INPUT_CHARS:
+        cache_key = (
+            text,
+            redact_field_names,
+            redact_artifact_markers,
+            redact_model_names,
+            redact_sql_snippets,
+            redact_infrastructure,
+            max_chars,
+        )
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
     text = redact_credentials_for_display(text, env=env)
     text = redact_local_paths_for_display(text)
     if redact_infrastructure:
@@ -110,7 +144,14 @@ def redact_browser_display_text(
         text = redact_raw_artifact_markers_for_display(text)
     if redact_model_names:
         text = redact_model_names_for_display(text)
-    return text[:max_chars] if max_chars is not None else text
+    redacted = text[:max_chars] if max_chars is not None else text
+    if (
+        cache_key is not None
+        and cache is not None
+        and len(cache) < MAX_SHARED_BROWSER_DISPLAY_REDACTIONS
+    ):
+        cache[cache_key] = redacted
+    return redacted
 
 
 def redact_credentials_for_display(text: str, *, env: Mapping[str, str] | None = None) -> str:
