@@ -1125,6 +1125,7 @@ def postgres_materialized_payloads_select(details_ready_only: bool) -> str:
         return POSTGRES_RECENT_DETAILS_READY_PAYLOADS_SELECT
     return POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT
 
+
 POSTGRES_RECENT_PROFILE_JOB_INSERT = """
 INSERT INTO recent_profile_job (
     schema_version,
