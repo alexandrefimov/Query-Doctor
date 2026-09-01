@@ -770,7 +770,7 @@ def _render_online_history_view_switch(
     return (
         '<nav class="query-inbox-presets query-inbox-history-views" '
         'aria-label="Online history view">'
-        f'{"".join(links)}</nav>'
+        f"{''.join(links)}</nav>"
     )
 
 
