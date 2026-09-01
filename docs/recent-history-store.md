@@ -89,6 +89,8 @@ The default `Details ready` view selects the newest retained summaries that
 have both compatible analysis-cache data and profile-artifact metadata, then
 applies the bounded page limit. This keeps openable analyst cases visible even
 when a larger set of newer summaries is still waiting for profile analysis.
+The Postgres read chooses the latest available artifact key for each retained
+query once before joining its exact ready cache row; it remains DDL-free.
 `All recent` remains available as a separately bounded newest-summary view. It
 labels rows as queued, analyzing, failed, unselected, or Details unavailable
 when they cannot open a safe snapshot. Both views use only raw-free summary

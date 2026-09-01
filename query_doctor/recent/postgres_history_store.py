@@ -616,7 +616,10 @@ class PostgresRecentHistoryStore:
         try:
             with self._connect() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute(POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT, params)
+                    cursor.execute(
+                        postgres_materialized_payloads_select(details_ready_only),
+                        params,
+                    )
                     rows = cursor.fetchall()
         except Exception as exc:  # noqa: BLE001 - driver errors must stay path-free upstream.
             raise RecentHistoryStoreError(
@@ -646,7 +649,10 @@ class PostgresRecentHistoryStore:
                     if prepare_schema and not self._initialized:
                         for statement in POSTGRES_RECENT_QUERY_SUMMARY_DDL:
                             cursor.execute(statement)
-                    cursor.execute(POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT, params)
+                    cursor.execute(
+                        postgres_materialized_payloads_select(details_ready_only),
+                        params,
+                    )
                     rows = cursor.fetchall()
                     cursor.execute("SELECT COUNT(*) FROM recent_query_summary")
                     count_row = cursor.fetchone()
@@ -981,45 +987,6 @@ WITH newest_summary_keys AS (
         summary.query_id,
         COALESCE(summary.end_time, summary.start_time, summary.recorded_at_iso) AS sort_time
     FROM recent_query_summary AS summary
-    WHERE
-        NOT %(details_ready_only)s
-        OR (
-            summary.profile_status = %(analyzed_profile_status)s
-            AND EXISTS (
-                SELECT 1
-                FROM recent_profile_artifact AS ready_artifact
-                JOIN recent_analysis_cache AS ready_cache
-                    ON ready_cache.engine = ready_artifact.engine
-                    AND ready_cache.source_kind = ready_artifact.source_kind
-                    AND ready_cache.source_key = ready_artifact.source_key
-                    AND ready_cache.query_id = ready_artifact.query_id
-                    AND ready_cache.profile_fingerprint = ready_artifact.profile_fingerprint
-                    AND ready_cache.analyzer_contract = %(analyzer_contract)s
-                    AND ready_cache.status = %(analysis_status)s
-                WHERE
-                    ready_artifact.engine = summary.engine
-                    AND ready_artifact.source_kind = summary.source_kind
-                    AND ready_artifact.source_key = summary.source_key
-                    AND ready_artifact.query_id = summary.query_id
-                    AND ready_artifact.artifact_contract = %(artifact_contract)s
-                    AND ready_artifact.status = %(artifact_status)s
-                    AND ready_artifact.profile_fingerprint = (
-                        SELECT candidate.profile_fingerprint
-                        FROM recent_profile_artifact AS candidate
-                        WHERE
-                            candidate.engine = summary.engine
-                            AND candidate.source_kind = summary.source_kind
-                            AND candidate.source_key = summary.source_key
-                            AND candidate.query_id = summary.query_id
-                            AND candidate.artifact_contract = %(artifact_contract)s
-                            AND candidate.status = %(artifact_status)s
-                        ORDER BY
-                            candidate.recorded_at_iso DESC,
-                            candidate.profile_fingerprint DESC
-                        LIMIT 1
-                    )
-            )
-        )
     ORDER BY sort_time DESC, query_id
     LIMIT %(limit)s
 )
@@ -1071,6 +1038,92 @@ ORDER BY
     newest.sort_time DESC,
     summary.query_id
 """
+
+POSTGRES_RECENT_DETAILS_READY_PAYLOADS_SELECT = """
+WITH latest_available_artifacts AS (
+    SELECT DISTINCT ON (
+        artifact.engine,
+        artifact.source_kind,
+        artifact.source_key,
+        artifact.query_id
+    )
+        artifact.engine,
+        artifact.source_kind,
+        artifact.source_key,
+        artifact.query_id,
+        artifact.profile_fingerprint
+    FROM recent_profile_artifact AS artifact
+    WHERE
+        artifact.artifact_contract = %(artifact_contract)s
+        AND artifact.status = %(artifact_status)s
+    ORDER BY
+        artifact.engine,
+        artifact.source_kind,
+        artifact.source_key,
+        artifact.query_id,
+        artifact.recorded_at_iso DESC,
+        artifact.profile_fingerprint DESC
+),
+newest_summary_keys AS (
+    SELECT
+        summary.engine,
+        summary.source_kind,
+        summary.source_key,
+        summary.query_id,
+        artifact.profile_fingerprint,
+        COALESCE(summary.end_time, summary.start_time, summary.recorded_at_iso) AS sort_time
+    FROM latest_available_artifacts AS artifact
+    JOIN recent_analysis_cache AS analysis_cache
+        ON analysis_cache.engine = artifact.engine
+        AND analysis_cache.source_kind = artifact.source_kind
+        AND analysis_cache.source_key = artifact.source_key
+        AND analysis_cache.query_id = artifact.query_id
+        AND analysis_cache.profile_fingerprint = artifact.profile_fingerprint
+        AND analysis_cache.analyzer_contract = %(analyzer_contract)s
+        AND analysis_cache.status = %(analysis_status)s
+    JOIN recent_query_summary AS summary
+        ON summary.engine = artifact.engine
+        AND summary.source_kind = artifact.source_kind
+        AND summary.source_key = artifact.source_key
+        AND summary.query_id = artifact.query_id
+        AND summary.profile_status = %(analyzed_profile_status)s
+    ORDER BY sort_time DESC, summary.query_id
+    LIMIT %(limit)s
+)
+SELECT
+    summary.payload_json,
+    summary.profile_status,
+    analysis_cache.payload_json,
+    job.last_error_code
+FROM newest_summary_keys AS newest
+JOIN recent_query_summary AS summary
+    ON summary.engine = newest.engine
+    AND summary.source_kind = newest.source_kind
+    AND summary.source_key = newest.source_key
+    AND summary.query_id = newest.query_id
+LEFT JOIN recent_profile_job AS job
+    ON job.engine = summary.engine
+    AND job.source_kind = summary.source_kind
+    AND job.source_key = summary.source_key
+    AND job.query_id = summary.query_id
+JOIN recent_analysis_cache AS analysis_cache
+    ON analysis_cache.engine = newest.engine
+    AND analysis_cache.source_kind = newest.source_kind
+    AND analysis_cache.source_key = newest.source_key
+    AND analysis_cache.query_id = newest.query_id
+    AND analysis_cache.profile_fingerprint = newest.profile_fingerprint
+    AND analysis_cache.analyzer_contract = %(analyzer_contract)s
+    AND analysis_cache.status = %(analysis_status)s
+ORDER BY
+    newest.sort_time DESC,
+    summary.query_id
+"""
+
+
+def postgres_materialized_payloads_select(details_ready_only: bool) -> str:
+    if details_ready_only:
+        return POSTGRES_RECENT_DETAILS_READY_PAYLOADS_SELECT
+    return POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT
 
 POSTGRES_RECENT_PROFILE_JOB_INSERT = """
 INSERT INTO recent_profile_job (

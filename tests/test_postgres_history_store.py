@@ -13,6 +13,7 @@ from query_doctor.recent.postgres_history_store import (
     POSTGRES_RECENT_ANALYSIS_CACHE_SELECT,
     POSTGRES_RECENT_ANALYSIS_CACHE_UPSERT,
     POSTGRES_RECENT_ANALYSIS_CACHE_PRUNE,
+    POSTGRES_RECENT_DETAILS_READY_PAYLOADS_SELECT,
     POSTGRES_RECENT_MATERIALIZED_PAYLOADS_SELECT,
     POSTGRES_RECENT_PROFILE_BACKLOG_HEALTH,
     POSTGRES_RECENT_PROFILE_ARTIFACT_SELECT,
@@ -863,6 +864,44 @@ def test_postgres_history_store_loads_materialized_payloads_raw_free():
     }
     assert "WITH newest_summary_keys AS" in statement
     assert "LIMIT %(limit)s" in statement
+
+
+def test_postgres_details_ready_read_materializes_latest_artifacts_once():
+    connections: list[FakeConnection] = []
+
+    class DetailsReadyCursor(FakeCursor):
+        def execute(self, statement, params=None):
+            super().execute(statement, params)
+            if statement == "SELECT COUNT(*) FROM recent_query_summary":
+                self.rows = [(233_036,)]
+            else:
+                self.rows = []
+
+    class DetailsReadyConnection(FakeConnection):
+        def __init__(self):
+            self.cursor_obj = DetailsReadyCursor()
+
+    def connect(dsn):
+        assert dsn == "postgresql://query-doctor-history"
+        connection = DetailsReadyConnection()
+        connections.append(connection)
+        return connection
+
+    store = PostgresRecentHistoryStore("postgresql://query-doctor-history", connect=connect)
+
+    assert store.load_materialized_payloads_with_count(
+        limit=500,
+        prepare_schema=False,
+        details_ready_only=True,
+    ) == ([], 233_036)
+
+    statement, params = connections[0].cursor_obj.execute_calls[0]
+    assert statement == POSTGRES_RECENT_DETAILS_READY_PAYLOADS_SELECT
+    assert "WITH latest_available_artifacts AS" in statement
+    assert "DISTINCT ON" in statement
+    assert "SELECT candidate.profile_fingerprint" not in statement
+    assert params["details_ready_only"] is True
+    assert params["limit"] == 500
 
 
 def test_postgres_history_store_loads_materialized_payloads_and_count_together():

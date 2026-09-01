@@ -24,6 +24,12 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Postgres-backed `Details ready` reads now choose the latest available profile
+  artifact for each retained query once, then join those keys to compatible
+  ready analysis-cache rows. This removes two correlated artifact lookups from
+  the retained-summary scan while preserving the same bounded, raw-free,
+  DDL-free Online History result.
+
 - Postgres-backed Online History reads are now DDL-free. Schema creation stays
   with the explicit Postgres readiness command and the configured Helm
   initContainer, while a missing schema makes the browser show its existing
