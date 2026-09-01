@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections import OrderedDict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from query_doctor.case_metadata import QUERY_METADATA_FILENAMES
 from query_doctor.web.action_outcomes import (
+    WorkloadOutcomeMetric,
     action_outcomes_path,
     workload_outcome_metrics_by_fingerprint,
 )
@@ -65,6 +68,77 @@ _CACHE_LOCK = threading.Lock()
 _SUMMARY_VIEW_CACHE: OrderedDict[RecentScanSummaryViewCacheKey, RecentScanSummaryView] = (
     OrderedDict()
 )
+
+
+@dataclass(frozen=True)
+class _SharedRecentScanSummaryView:
+    source: object
+    workload_outcome_metrics: object | None
+    view: RecentScanSummaryView
+
+
+_SHARED_SUMMARY_VIEWS: ContextVar[dict[tuple[int, int], _SharedRecentScanSummaryView] | None] = (
+    ContextVar(
+        "recent_scan_shared_summary_views",
+        default=None,
+    )
+)
+
+
+@contextmanager
+def shared_recent_scan_summary_views():
+    """Reuse presenter work only within one page render."""
+
+    token = _SHARED_SUMMARY_VIEWS.set({})
+    try:
+        yield
+    finally:
+        _SHARED_SUMMARY_VIEWS.reset(token)
+
+
+def recent_scan_summary_view_for_render(
+    summary: dict[str, Any],
+    *,
+    cache_source: object | None = None,
+    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None = None,
+    reuse_existing_for_source: bool = False,
+) -> RecentScanSummaryView:
+    """Present a summary once per render without retaining it across requests."""
+
+    memo = _SHARED_SUMMARY_VIEWS.get()
+    if memo is None:
+        return present_recent_scan_summary(
+            summary,
+            workload_outcome_metrics=workload_outcome_metrics,
+        )
+
+    source = summary if cache_source is None else cache_source
+    if reuse_existing_for_source:
+        for cached in memo.values():
+            if cached.source is source:
+                return cached.view
+    normalized_metrics = workload_outcome_metrics or None
+    key = (
+        id(source),
+        0 if normalized_metrics is None else id(normalized_metrics),
+    )
+    cached = memo.get(key)
+    if cached is not None and cached.source is source:
+        if (
+            normalized_metrics is None and cached.workload_outcome_metrics is None
+        ) or cached.workload_outcome_metrics is normalized_metrics:
+            return cached.view
+
+    view = present_recent_scan_summary(
+        summary,
+        workload_outcome_metrics=workload_outcome_metrics,
+    )
+    memo[key] = _SharedRecentScanSummaryView(
+        source=source,
+        workload_outcome_metrics=normalized_metrics,
+        view=view,
+    )
+    return view
 
 
 def cached_recent_scan_summary_view(

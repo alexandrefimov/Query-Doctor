@@ -105,6 +105,151 @@ def test_query_inbox_uses_online_recent_history_store(tmp_path, monkeypatch):
     assert "private_table" not in body
 
 
+def test_online_history_page_presents_shared_summary_once(tmp_path, monkeypatch):
+    module = load_web_module()
+    from query_doctor.web.ui import query_inbox, recent_scan_results, recent_scan_view_cache
+
+    history_db = tmp_path / "recent-history.sqlite"
+    _write_single_recent_history_row(history_db)
+    config = tmp_path / "web-config.json"
+    config.write_text(
+        '{"recent_history_backend":"sqlite","recent_history_db":"recent-history.sqlite"}',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    original_presenter = recent_scan_view_cache.present_recent_scan_summary
+    call_count = 0
+
+    def counted_presenter(summary_payload, *, workload_outcome_metrics=None):
+        nonlocal call_count
+        call_count += 1
+        return original_presenter(
+            summary_payload,
+            workload_outcome_metrics=workload_outcome_metrics,
+        )
+
+    for presenter_module in (
+        recent_scan_view_cache,
+        recent_scan_results,
+        query_inbox,
+    ):
+        monkeypatch.setattr(
+            presenter_module,
+            "present_recent_scan_summary",
+            counted_presenter,
+            raising=False,
+        )
+    monkeypatch.setattr(
+        recent_scan_results,
+        "workload_outcome_metrics_by_fingerprint",
+        lambda: {"unmatched-workload": object()},
+    )
+
+    body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
+
+    assert call_count == 1
+    assert "Online history ready" in body
+
+    module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
+
+    assert call_count == 2
+
+
+def test_completed_online_history_job_reuses_outcome_enriched_summary_view(monkeypatch):
+    module = load_web_module()
+    from query_doctor.web.action_outcomes import (
+        SCHEMA_VERSION,
+        ActionOutcomeRecord,
+        summarize_workload_action_outcomes,
+    )
+    from query_doctor.web.ui import recent_scan_results, recent_scan_view_cache
+
+    workload_fingerprint = f"wf_{'a' * 24}"
+    summary = {
+        "mode": "recent-history-online",
+        "cases": [
+            {
+                "case_index": 1,
+                "query_id": "outcome-ready-query",
+                "user": "analyst",
+                "collection_status": "ok",
+                "analysis_status": "ok",
+                "metadata_status": "ok",
+                "score": 10,
+                "score_severity": "suspicious",
+                "duration_sec": 10,
+                "score_reasons": [],
+                "workload_fingerprint": workload_fingerprint,
+            }
+        ],
+        "selected_count": 1,
+        "summaries_inspected": 1,
+    }
+    metrics = summarize_workload_action_outcomes(
+        [
+            ActionOutcomeRecord(
+                schema_version=SCHEMA_VERSION,
+                recorded_at_iso="2026-07-03T10:05:00+00:00",
+                workload_fingerprint=workload_fingerprint,
+                case_fingerprint=f"cf_{'b' * 24}",
+                case_id_local="case-001",
+                recommendation_id="query_optimization_review.v1",
+                applied="yes",
+                outcome="improved",
+                verification_status="comparable_rerun",
+            )
+        ],
+        min_applied=1,
+    )
+    monkeypatch.setattr(
+        recent_scan_results,
+        "workload_outcome_metrics_by_fingerprint",
+        lambda: metrics,
+    )
+    original_presenter = recent_scan_view_cache.present_recent_scan_summary
+    presenter_metric_flags = []
+    presented_outcomes = []
+
+    def counted_presenter(summary_payload, *, workload_outcome_metrics=None):
+        presenter_metric_flags.append(bool(workload_outcome_metrics))
+        view = original_presenter(
+            summary_payload,
+            workload_outcome_metrics=workload_outcome_metrics,
+        )
+        presented_outcomes.append(view.rows[0].action_outcome_summary)
+        return view
+
+    monkeypatch.setattr(
+        recent_scan_view_cache,
+        "present_recent_scan_summary",
+        counted_presenter,
+    )
+    job = module.WebJobSnapshot(
+        job_id="0123456789abcdef0123456789abcdef",
+        query_id="",
+        report_mode="user",
+        status="ok",
+        stage_label="Complete",
+        progress=100,
+        kind="batch",
+    )
+
+    body = module.render_batch_page(
+        module.WebSettings(
+            config=Path(".query-doctor-cm.local.json"),
+            corpus_summary=summary,
+        ),
+        job=job,
+        query_group="all",
+    )
+
+    assert presenter_metric_flags == [True]
+    assert len(presented_outcomes) == 1
+    assert "1 recorded; 1 applied; 1 comparable reruns; improved 1" in presented_outcomes[0]
+    assert "outcome-ready-query" in body
+
+
 def test_query_inbox_online_history_shows_configured_collector_summary(tmp_path, monkeypatch):
     module = load_web_module()
     history_db = tmp_path / "recent-history.sqlite"

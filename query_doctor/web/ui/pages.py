@@ -42,6 +42,7 @@ from query_doctor.web.ui.recent_scan_groups import (
     normalize_result_sort,
 )
 from query_doctor.web.ui.recent_scan_results import render_batch_card
+from query_doctor.web.ui.recent_scan_view_cache import shared_recent_scan_summary_views
 from query_doctor.web.ui.recent_scan_result_filters import (
     RecentScanResultFilters,
     normalize_recent_scan_result_filters,
@@ -162,7 +163,7 @@ def render_batch_page(
     inbox_scope_filters: QueryInboxScopeFilters | None = None,
     result_filters: RecentScanResultFilters | None = None,
 ) -> str:
-    with shared_recent_history_inbox_summary():
+    with shared_recent_history_inbox_summary(), shared_recent_scan_summary_views():
         effective_form_values = form_values
         if effective_form_values is None and job is not None:
             effective_form_values = getattr(job, "batch_form_values", None)
@@ -179,6 +180,27 @@ def render_batch_page(
         batch_card = None
         if scope_matches and (job is None or job.status != "ok"):
             batch_card = render_batch_card(
+                display_settings,
+                query_group=query_group,
+                only_with_spills=only_with_spills,
+                result_filters=normalized_result_filters,
+                result_sort=normalized_result_sort,
+                results_page=results_page,
+                workload_admin_scope=workload_admin_scope,
+                workload_admin_signal=workload_admin_signal,
+                workload_group_scope=workload_group_scope,
+                workload_group_name=workload_group_name,
+                workload_group_signal=workload_group_signal,
+                extra_query=result_extra_query,
+            )
+        result_html = None
+        if (
+            scope_matches
+            and job is not None
+            and job.status == "ok"
+            and getattr(job, "kind", "") == "batch"
+        ):
+            result_html = render_batch_card(
                 display_settings,
                 query_group=query_group,
                 only_with_spills=only_with_spills,
@@ -222,22 +244,6 @@ def render_batch_page(
             ),
         ]
         if job is not None:
-            result_html = None
-            if scope_matches and job.status == "ok" and getattr(job, "kind", "") == "batch":
-                result_html = render_batch_card(
-                    display_settings,
-                    query_group=query_group,
-                    only_with_spills=only_with_spills,
-                    result_filters=normalized_result_filters,
-                    result_sort=normalized_result_sort,
-                    results_page=results_page,
-                    workload_admin_scope=workload_admin_scope,
-                    workload_admin_signal=workload_admin_signal,
-                    workload_group_scope=workload_group_scope,
-                    workload_group_name=workload_group_name,
-                    workload_group_signal=workload_group_signal,
-                    extra_query=result_extra_query,
-                )
             sections.append(render_job_panel(job, result_html_override=result_html))
         if batch_card:
             if has_existing_results:
