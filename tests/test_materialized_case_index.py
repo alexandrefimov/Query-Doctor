@@ -3,7 +3,9 @@ import json
 from query_doctor.recent.materialized_case_index import (
     SCHEMA_VERSION,
     build_materialized_case_index,
+    materialized_case_entries,
 )
+from query_doctor.web.recent_history_inbox import recent_history_summary_from_payloads
 from query_doctor.web.presenters.recent_scan import present_recent_scan_summary
 
 
@@ -130,3 +132,60 @@ def test_recent_scan_summary_prefers_materialized_case_index_rows():
     assert view.rows[0].query_id == "indexed-query"
     assert view.rows[0].score == 10
     assert view.rows[0].score_severity == "suspicious"
+
+
+def test_online_history_reuses_in_memory_materialized_cases_without_reprojection(monkeypatch):
+    from query_doctor.recent import materialized_case_index
+
+    summary = recent_history_summary_from_payloads(
+        [
+            {
+                "query_id": "query-safe",
+                "duration_ms": 60_000,
+                "profile_status": "analyzed",
+                "analysis_cache_payload": {
+                    "analysis_status": "ok",
+                    "collection_status": "ok",
+                    "score": 72,
+                    "score_reasons": ["bounded runtime signal"],
+                },
+            }
+        ],
+        backend="postgres",
+    )
+    calls = 0
+    original_project_case = materialized_case_index._project_case
+
+    def counted_project_case(case):
+        nonlocal calls
+        calls += 1
+        return original_project_case(case)
+
+    monkeypatch.setattr(materialized_case_index, "_project_case", counted_project_case)
+
+    assert isinstance(summary["materialized_case_index"]["cases"], tuple)
+    entries = materialized_case_entries(summary)
+
+    assert len(entries) == 1
+    assert entries[0]["score"] == 72
+    assert calls == 0
+
+
+def test_serialized_materialized_cases_still_reapply_browser_redaction():
+    summary = {
+        "materialized_case_index": {
+            "schema_version": SCHEMA_VERSION,
+            "cases": [
+                {
+                    "case_index": 1,
+                    "query_id": "query /tmp/private-case",
+                    "score_reasons": ["SELECT secret_value FROM private_table"],
+                }
+            ],
+        }
+    }
+
+    [entry] = materialized_case_entries(summary)
+
+    assert "/tmp/private-case" not in entry["query_id"]
+    assert "secret_value" not in entry["score_reasons"][0]
