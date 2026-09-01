@@ -77,11 +77,11 @@ class _SharedRecentScanSummaryView:
     view: RecentScanSummaryView
 
 
-_SHARED_SUMMARY_VIEWS: ContextVar[
-    dict[tuple[int, int], _SharedRecentScanSummaryView] | None
-] = ContextVar(
-    "recent_scan_shared_summary_views",
-    default=None,
+_SHARED_SUMMARY_VIEWS: ContextVar[dict[tuple[int, int], _SharedRecentScanSummaryView] | None] = (
+    ContextVar(
+        "recent_scan_shared_summary_views",
+        default=None,
+    )
 )
 
 
@@ -125,8 +125,7 @@ def recent_scan_summary_view_for_render(
     cached = memo.get(key)
     if cached is not None and cached.source is source:
         if (
-            normalized_metrics is None
-            and cached.workload_outcome_metrics is None
+            normalized_metrics is None and cached.workload_outcome_metrics is None
         ) or cached.workload_outcome_metrics is normalized_metrics:
             return cached.view
 
