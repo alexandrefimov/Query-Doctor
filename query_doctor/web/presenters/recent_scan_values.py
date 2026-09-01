@@ -154,6 +154,9 @@ def case_has_failure(case: dict[str, Any]) -> bool:
 
 
 def batch_case_id(case: dict[str, Any]) -> str | None:
+    case_ref = str(case.get("case_ref") or "").strip().lower()
+    if re.fullmatch(r"(?:recent-)?case-[0-9]{3,}", case_ref):
+        return case_ref
     value = case.get("case_index")
     try:
         parsed = int(value)

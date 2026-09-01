@@ -661,6 +661,7 @@ class SqliteRecentHistoryStore:
         self,
         *,
         limit: int | None = None,
+        details_ready_only: bool = False,
     ) -> list[dict[str, object]]:
         self.initialize()
         safe_limit = -1 if limit is None else max(0, int(limit))
@@ -668,15 +669,15 @@ class SqliteRecentHistoryStore:
             with self._connect() as connection:
                 rows = connection.execute(
                     SQLITE_RECENT_MATERIALIZED_PAYLOADS_SELECT,
-                    (
-                        safe_limit,
-                        PROFILE_ARTIFACT_DEFAULT_CONTRACT,
-                        PROFILE_ARTIFACT_STATUS_AVAILABLE,
-                        PROFILE_ARTIFACT_DEFAULT_CONTRACT,
-                        PROFILE_ARTIFACT_STATUS_AVAILABLE,
-                        ANALYSIS_CACHE_DEFAULT_CONTRACT,
-                        ANALYSIS_CACHE_STATUS_READY,
-                    ),
+                    {
+                        "limit": safe_limit,
+                        "details_ready_only": int(bool(details_ready_only)),
+                        "analyzed_profile_status": PROFILE_STATUS_ANALYZED,
+                        "artifact_contract": PROFILE_ARTIFACT_DEFAULT_CONTRACT,
+                        "artifact_status": PROFILE_ARTIFACT_STATUS_AVAILABLE,
+                        "analyzer_contract": ANALYSIS_CACHE_DEFAULT_CONTRACT,
+                        "analysis_status": ANALYSIS_CACHE_STATUS_READY,
+                    },
                 ).fetchall()
         except sqlite3.Error as exc:
             raise RecentHistoryStoreError("sqlite_recent_history_materialized_load_failed") from exc
@@ -984,14 +985,53 @@ WHERE
 SQLITE_RECENT_MATERIALIZED_PAYLOADS_SELECT = """
 WITH newest_summary_keys AS (
     SELECT
-        engine,
-        source_kind,
-        source_key,
-        query_id,
-        COALESCE(end_time, start_time, recorded_at_iso) AS sort_time
-    FROM recent_query_summary
+        summary.engine,
+        summary.source_kind,
+        summary.source_key,
+        summary.query_id,
+        COALESCE(summary.end_time, summary.start_time, summary.recorded_at_iso) AS sort_time
+    FROM recent_query_summary AS summary
+    WHERE
+        :details_ready_only = 0
+        OR (
+            summary.profile_status = :analyzed_profile_status
+            AND EXISTS (
+                SELECT 1
+                FROM recent_profile_artifact AS ready_artifact
+                JOIN recent_analysis_cache AS ready_cache
+                    ON ready_cache.engine = ready_artifact.engine
+                    AND ready_cache.source_kind = ready_artifact.source_kind
+                    AND ready_cache.source_key = ready_artifact.source_key
+                    AND ready_cache.query_id = ready_artifact.query_id
+                    AND ready_cache.profile_fingerprint = ready_artifact.profile_fingerprint
+                    AND ready_cache.analyzer_contract = :analyzer_contract
+                    AND ready_cache.status = :analysis_status
+                WHERE
+                    ready_artifact.engine = summary.engine
+                    AND ready_artifact.source_kind = summary.source_kind
+                    AND ready_artifact.source_key = summary.source_key
+                    AND ready_artifact.query_id = summary.query_id
+                    AND ready_artifact.artifact_contract = :artifact_contract
+                    AND ready_artifact.status = :artifact_status
+                    AND ready_artifact.profile_fingerprint = (
+                        SELECT candidate.profile_fingerprint
+                        FROM recent_profile_artifact AS candidate
+                        WHERE
+                            candidate.engine = summary.engine
+                            AND candidate.source_kind = summary.source_kind
+                            AND candidate.source_key = summary.source_key
+                            AND candidate.query_id = summary.query_id
+                            AND candidate.artifact_contract = :artifact_contract
+                            AND candidate.status = :artifact_status
+                        ORDER BY
+                            candidate.recorded_at_iso DESC,
+                            candidate.profile_fingerprint DESC
+                        LIMIT 1
+                    )
+            )
+        )
     ORDER BY sort_time DESC, query_id
-    LIMIT ?
+    LIMIT :limit
 )
 SELECT
     summary.payload_json,
@@ -1014,8 +1054,8 @@ LEFT JOIN recent_profile_artifact AS artifact
     AND artifact.source_kind = summary.source_kind
     AND artifact.source_key = summary.source_key
     AND artifact.query_id = summary.query_id
-    AND artifact.artifact_contract = ?
-    AND artifact.status = ?
+    AND artifact.artifact_contract = :artifact_contract
+    AND artifact.status = :artifact_status
     AND artifact.profile_fingerprint = (
         SELECT candidate.profile_fingerprint
         FROM recent_profile_artifact AS candidate
@@ -1024,8 +1064,8 @@ LEFT JOIN recent_profile_artifact AS artifact
             AND candidate.source_kind = summary.source_kind
             AND candidate.source_key = summary.source_key
             AND candidate.query_id = summary.query_id
-            AND candidate.artifact_contract = ?
-            AND candidate.status = ?
+            AND candidate.artifact_contract = :artifact_contract
+            AND candidate.status = :artifact_status
         ORDER BY candidate.recorded_at_iso DESC, candidate.profile_fingerprint DESC
         LIMIT 1
     )
@@ -1035,8 +1075,8 @@ LEFT JOIN recent_analysis_cache AS analysis_cache
     AND analysis_cache.source_key = summary.source_key
     AND analysis_cache.query_id = summary.query_id
     AND analysis_cache.profile_fingerprint = artifact.profile_fingerprint
-    AND analysis_cache.analyzer_contract = ?
-    AND analysis_cache.status = ?
+    AND analysis_cache.analyzer_contract = :analyzer_contract
+    AND analysis_cache.status = :analysis_status
 ORDER BY
     newest.sort_time DESC,
     summary.query_id

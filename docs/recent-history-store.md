@@ -1,6 +1,6 @@
 # Recent History Store
 
-Last reviewed: 2026-07-03
+Last reviewed: 2026-09-01
 
 This page defines the durable storage boundary for Recent summary history and
 profile-budget work. It is a storage contract, not an engine support claim.
@@ -81,24 +81,32 @@ not enqueue duplicate background jobs because they already collect and analyze
 their selected cases synchronously.
 
 When the local web UI is configured with the same history backend, Query Inbox
-can load retained summary payloads into a read-only Online History view.
+can load retained summary payloads into a read-only Online History surface.
 Postgres-backed web read does not create or update schema objects; run the
 Postgres readiness command first, or use the Helm initContainer that runs it.
 If the schema is not ready, the page degrades to its safe unavailable state.
-The view uses only the raw-free summary fields, caps the first rendered history
-projection, and does not expose raw SQL, profile text, local store paths, or
-raw artifact names. Rows without a materialized safe Details snapshot remain
-read-only until a scan or profile worker creates the corresponding snapshot.
+The default `Details ready` view selects the newest retained summaries that
+have both compatible analysis-cache data and profile-artifact metadata, then
+applies the bounded page limit. This keeps openable analyst cases visible even
+when a larger set of newer summaries is still waiting for profile analysis.
+`All recent` remains available as a separately bounded newest-summary view. It
+labels rows as queued, analyzing, failed, unselected, or Details unavailable
+when they cannot open a safe snapshot. Both views use only raw-free summary
+fields and do not expose raw SQL, profile text, local store paths, or raw
+artifact names.
 The view also overlays the current Recent profile worker lifecycle state from
 the history store, so pending, processing, retry-pending, analyzed, and failed
 states can appear in raw-free row status, Query Inbox profile-loop metrics,
 separate profile-state counts, normalized profile-worker error-code rollups,
 Details-ready counts, and coverage counts. When history retention exceeds the
-first rendered projection, the status banner also shows retained versus shown
-row counts. The same banner shows safe Recent summary collector freshness from
-the latest retained planning timestamp, so stale discover-only producers are
-visible separately from profile-worker backlog health without exposing Query
-IDs, source keys, local paths, or raw collector payloads.
+first rendered projection, the status banner distinguishes retained rows from
+either Details-ready rows shown or newest rows shown. The same banner shows
+safe Recent summary collector freshness from the latest retained planning
+timestamp in `All recent`. The filtered `Details ready` view does not infer
+collector freshness from older ready cases, so it cannot falsely label a healthy
+producer as stale. This keeps discover-only producer health separate from
+profile-worker backlog health without exposing Query IDs, source keys, local
+paths, or raw collector payloads.
 When the web config points `recent_history_collector_summary_json` at an
 already retained `query_doctor_recent_history_collector_v1` summary, the banner
 also projects only allowlisted producer run status, age, recorded-row, and

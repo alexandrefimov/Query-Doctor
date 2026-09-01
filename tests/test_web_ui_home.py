@@ -92,10 +92,13 @@ def test_query_inbox_uses_online_recent_history_store(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
 
-    body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
+    body = module.render_batch_page(
+        module.WebSettings(config=config, repo_dir=REPO_DIR),
+        history_view="all_recent",
+    )
 
-    assert "Online history ready" in body
-    assert "Retained raw-free query summaries" in body
+    assert "All recent queries" in body
+    assert "Showing the newest retained summaries" in body
     assert "Online history" in body
     assert "Rows 1-250 of 301; page 1 of 2" in body
     assert "query-301" in body
@@ -149,7 +152,7 @@ def test_online_history_page_presents_shared_summary_once(tmp_path, monkeypatch)
     body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
     assert call_count == 1
-    assert "Online history ready" in body
+    assert "No Details ready" in body
 
     module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
@@ -291,7 +294,7 @@ def test_query_inbox_online_history_shows_configured_collector_summary(tmp_path,
 
     body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
-    assert "Online history ready" in body
+    assert "No Details ready" in body
     assert (
         '<span class="query-inbox-metric"><strong>producer status</strong>'
         "<span>idle / 0 rows / 0 jobs</span></span>" in body
@@ -389,8 +392,8 @@ def test_query_inbox_online_history_smoke_reads_batch_collector_summary(
 
     body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
-    assert "Online history ready" in body
-    assert "Retained raw-free query summaries" in body
+    assert "No Details ready" in body
+    assert "Check All recent" in body
     assert (
         '<span class="query-inbox-metric"><strong>producer status</strong>'
         "<span>recorded / 1 rows / 1 jobs</span></span>" in body
@@ -474,7 +477,7 @@ def test_query_inbox_online_history_projects_producer_problem_states_raw_free(
 
     body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
-    assert "Online history ready" in body
+    assert "No Details ready" in body
     assert (
         '<span class="query-inbox-metric"><strong>producer status</strong>'
         f"<span>{expected_status}</span></span>" in body
@@ -515,7 +518,7 @@ def test_query_inbox_online_history_marks_unavailable_producer_summary_raw_free(
 
     body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
-    assert "Online history ready" in body
+    assert "No Details ready" in body
     assert (
         '<span class="query-inbox-metric"><strong>producer status</strong>'
         "<span>unavailable / 0 rows / 0 jobs</span></span>" in body
@@ -679,7 +682,7 @@ def test_query_inbox_online_history_shows_configured_operator_readiness(tmp_path
 
     body = module.render_batch_page(module.WebSettings(config=config, repo_dir=REPO_DIR))
 
-    assert "Online history ready" in body
+    assert "No Details ready" in body
     assert (
         '<span class="query-inbox-metric"><strong>operator readiness</strong>'
         "<span>ready</span></span>" in body
@@ -967,10 +970,11 @@ def test_query_inbox_history_filter_uses_history_with_latest_summary(tmp_path, m
         module.WebSettings(config=config, repo_dir=REPO_DIR, batch_summary=batch_summary),
         inbox_scope_filters=QueryInboxScopeFilters(source="history"),
         query_group="all",
+        history_view="all_recent",
     )
 
-    assert "Online history ready" in body
-    assert "Retained raw-free query summaries" in body
+    assert "All recent queries" in body
+    assert "Showing the newest retained summaries" in body
     assert "history-query" in body
     assert "No matching inbox scope" not in body
     assert "secret_column" not in body
@@ -1156,6 +1160,32 @@ def test_online_recent_history_collector_freshness_handles_empty_and_unknown():
     )
 
 
+def test_details_ready_view_does_not_infer_collector_freshness_from_ready_rows():
+    from query_doctor.web.ui.query_inbox import (
+        query_inbox_status_from_summary,
+        render_query_inbox_status,
+    )
+
+    summary = recent_history_summary_from_payloads(
+        [
+            {
+                "profile_status": "analyzed",
+                "recorded_at_iso": "2026-07-03T09:00:00+00:00",
+                "analysis_cache_payload": {"analysis_status": "analyzed"},
+            }
+        ],
+        backend="sqlite",
+        retained_count=20,
+        now=datetime(2026, 7, 3, 13, 30, tzinfo=timezone.utc),
+        history_view="details_ready",
+    )
+
+    status_body = render_query_inbox_status(query_inbox_status_from_summary(summary))
+    assert summary["history_collector_freshness"]["scope"] == "details_ready"
+    assert "collector freshness" not in status_body
+    assert "last planning" not in status_body
+
+
 def test_online_recent_history_projects_collector_run_summary_raw_free():
     from query_doctor.web.ui.query_inbox import (
         query_inbox_status_from_summary,
@@ -1291,7 +1321,7 @@ def test_online_recent_history_projects_profile_worker_states_raw_free():
     assert "query-retry" in body
     assert "query-failed" in body
     assert 'data-href="/batch/case/case-001"' not in body
-    assert 'data-href="/batch/case/case-002"' in body
+    assert 'data-href="/batch/case/recent-case-002"' in body
     assert 'data-href="/batch/case/case-003"' not in body
     assert 'data-href="/batch/case/case-004"' not in body
     assert 'data-href="/batch/case/case-005"' not in body
@@ -1376,11 +1406,37 @@ def test_online_recent_history_links_only_materialized_analyzed_rows_raw_free():
 
     body = render_batch_summary(summary, query_group="all", title="Online History")
 
-    assert 'data-href="/batch/case/case-001"' in body
-    assert '<a class="batch-row-action" href="/batch/case/case-001">Open Details</a>' in body
+    assert 'data-href="/batch/case/recent-case-001"' in body
+    assert '<a class="batch-row-action" href="/batch/case/recent-case-001">Open Details</a>' in body
     assert 'data-href="/batch/case/case-002"' not in body
     assert "secret_column" not in body
     assert "private_table" not in body
+
+
+def test_online_recent_history_all_recent_view_explains_non_openable_rows():
+    summary = recent_history_summary_from_payloads(
+        [
+            {
+                "query_id": "query-materialized",
+                "profile_status": "analyzed",
+                "analysis_cache_payload": {"score": 72, "analysis_status": "ok"},
+            },
+            {
+                "query_id": "query-analyzed-without-cache",
+                "profile_status": "analyzed",
+            },
+            {"query_id": "query-pending", "profile_status": "pending"},
+        ],
+        backend="sqlite",
+        retained_count=10_000,
+        history_view="all_recent",
+    )
+
+    body = render_batch_summary(summary, query_group="all", title="Online History")
+
+    assert 'data-href="/batch/case/recent-case-001"' in body
+    assert "Details unavailable" in body
+    assert "Queued" in body
 
 
 def test_package_layout_renderers_are_available():

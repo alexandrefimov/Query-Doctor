@@ -9,7 +9,10 @@ from dataclasses import replace
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebSettings
 from query_doctor.web.presenters.recent_scan import case_score_severity, present_recent_scan_summary
-from query_doctor.web.recent_history_inbox import recent_history_inbox_summary_from_settings
+from query_doctor.web.recent_history_inbox import (
+    HISTORY_VIEW_ALL_RECENT,
+    recent_history_inbox_summary_from_settings,
+)
 from query_doctor.web.trusted_artifacts import decorate_cases_with_optimizer_artifact_status
 from query_doctor.web.ui.recent_scan_results import (
     filter_rows_by_query_group,
@@ -127,7 +130,11 @@ def resolve_online_history_case_detail_settings(
     settings: WebSettings,
     case_id: str,
 ) -> tuple[WebSettings, dict[str, object] | None]:
-    summary = recent_history_inbox_summary_from_settings(settings)
+    history_view = HISTORY_VIEW_ALL_RECENT if case_id.startswith("recent-case-") else ""
+    summary = recent_history_inbox_summary_from_settings(
+        settings,
+        history_view=history_view,
+    )
     case = find_batch_case(summary, case_id) if summary is not None else None
     if case is None:
         return settings, None
@@ -204,7 +211,7 @@ def batch_case_detail_rank_fields(
 
 
 def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, object] | None:
-    if not re.fullmatch(r"case-[0-9]{3,}", case_id):
+    if not re.fullmatch(r"(?:recent-)?case-[0-9]{3,}", case_id):
         return None
     cases = summary.get("cases")
     if not isinstance(cases, list):
@@ -212,6 +219,8 @@ def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, objec
     for case in cases:
         if not isinstance(case, dict):
             continue
+        if str(case.get("case_ref") or "").strip().lower() == case_id:
+            return case
         try:
             index = int(case.get("case_index"))
         except (TypeError, ValueError):

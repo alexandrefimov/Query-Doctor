@@ -211,6 +211,7 @@ def route_get_request(
                 workload_group_signal=first_form_value(query, "workload_group_signal"),
                 inbox_scope_filters=query_inbox_scope_filters_from_mapping(query),
                 result_filters=recent_scan_result_filters_from_mapping(query),
+                history_view=first_form_value(query, "history_view"),
             ),
         )
     static_response = route_static_asset_get(parsed.path)

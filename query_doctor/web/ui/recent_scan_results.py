@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -47,7 +48,10 @@ from query_doctor.web.presenters.workload_action_contract import (
     top_owner_summary,
     workload_group_impact as workload_total_impact,
 )
-from query_doctor.web.recent_history_inbox import recent_history_inbox_summary_from_settings
+from query_doctor.web.recent_history_inbox import (
+    DEFAULT_HISTORY_VIEW,
+    recent_history_inbox_summary_from_settings,
+)
 from query_doctor.web.ui.recent_scan_view_cache import (
     cached_recent_scan_summary_view,
     recent_scan_summary_view_for_render,
@@ -115,11 +119,15 @@ def render_batch_card(
     extra_query: dict[str, str] | None = None,
     title: str = "Finished Queries",
     details_base_path: str = "/batch/case",
+    history_view: str = DEFAULT_HISTORY_VIEW,
 ) -> str:
     summary_path = getattr(settings, "batch_summary", None)
     corpus_summary = getattr(settings, "corpus_summary", None)
     if summary_path is None and not isinstance(corpus_summary, dict):
-        history_summary = recent_history_inbox_summary_from_settings(settings)
+        history_summary = recent_history_inbox_summary_from_settings(
+            settings,
+            history_view=history_view,
+        )
         if history_summary is None:
             return ""
         payload = history_summary
@@ -1635,7 +1643,20 @@ def details_action_cell(
     details_base_path: str = "/batch/case",
 ) -> str:
     if not view.case_id:
-        return '<td class="batch-cell--compact batch-cell--action"></td>'
+        status = str(view.analysis_status or "").strip().lower()
+        label, badge_class = {
+            "profile_not_collected": ("Not selected", "batch-status--neutral"),
+            "profile_pending": ("Queued", "batch-status--warning"),
+            "profile_processing": ("Analyzing", "batch-status--warning"),
+            "profile_retry_pending": ("Retry queued", "batch-status--warning"),
+            "details_unavailable": ("Details unavailable", "batch-status--warning"),
+            "failed": ("Analysis failed", "batch-severity--failed"),
+        }.get(status, ("Not ready", "batch-status--neutral"))
+        return (
+            '<td class="batch-cell--compact batch-cell--action">'
+            f'<span class="batch-mini-badge {badge_class}">{html.escape(label)}</span>'
+            "</td>"
+        )
     base_path = html.escape(details_base_path.rstrip("/"), quote=True)
     case_id = html.escape(view.case_id, quote=True)
     href = f"{base_path}/{case_id}"
@@ -1918,6 +1939,9 @@ def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> Saf
 
 
 def batch_case_id(case: dict[str, Any]) -> str | None:
+    case_ref = str(case.get("case_ref") or "").strip().lower()
+    if re.fullmatch(r"(?:recent-)?case-[0-9]{3,}", case_ref):
+        return case_ref
     value = case.get("case_index")
     try:
         parsed = int(value)

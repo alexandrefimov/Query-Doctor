@@ -797,6 +797,32 @@ def test_recent_history_store_limits_materialized_payloads_to_newest_rows(tmp_pa
     assert [payload["query_id"] for payload in payloads] == ["query-new", "query-middle"]
 
 
+def test_recent_history_store_details_ready_view_reaches_past_newer_unprocessed_rows(tmp_path):
+    db_path = tmp_path / "recent-history.sqlite"
+    store = SqliteRecentHistoryStore(db_path)
+    ready = replace(
+        summary_history_record("query-ready", recorded_at_iso="2026-07-03T10:00:00+00:00"),
+        profile_status=PROFILE_STATUS_ANALYZED,
+    )
+    newer_unprocessed = [
+        summary_history_record(
+            f"query-new-{index:03d}",
+            recorded_at_iso="2026-07-03T12:00:00+00:00",
+        )
+        for index in range(501)
+    ]
+    store.upsert_summaries([ready, *newer_unprocessed])
+    store.store_analysis_cache_records(
+        [analysis_cache_record({"score": 72}, query_id="query-ready")]
+    )
+    store.store_profile_artifact_records([profile_artifact_record(query_id="query-ready")])
+
+    payloads = store.load_materialized_payloads(limit=500, details_ready_only=True)
+
+    assert [payload["query_id"] for payload in payloads] == ["query-ready"]
+    assert payloads[0]["analysis_cache_payload"] == {"score": 72}
+
+
 def test_recent_history_store_upserts_raw_free_analysis_cache(tmp_path):
     db_path = tmp_path / "recent-history.sqlite"
     store = SqliteRecentHistoryStore(db_path)

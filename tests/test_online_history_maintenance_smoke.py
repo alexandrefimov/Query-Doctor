@@ -198,42 +198,50 @@ def test_online_history_maintenance_loop_smoke_is_raw_free(tmp_path, monkeypatch
     )
     monkeypatch.chdir(tmp_path)
     web = load_web_module()
-    body = web.render_batch_page(web.WebSettings(config=web_config, repo_dir=REPO_DIR, no_llm=True))
+    settings = web.WebSettings(config=web_config, repo_dir=REPO_DIR, no_llm=True)
+    body = web.render_batch_page(settings)
+    all_recent_body = web.render_batch_page(settings, history_view="all_recent")
 
-    assert "Online history ready" in body
+    assert "Details ready" in body
     assert SUCCESS_QUERY_ID in body
-    assert FAILED_QUERY_ID in body
+    assert FAILED_QUERY_ID not in body
     assert 'data-href="/batch/case/' in body
+    assert "All recent queries" in all_recent_body
+    assert SUCCESS_QUERY_ID in all_recent_body
+    assert FAILED_QUERY_ID in all_recent_body
     assert (
         '<span class="query-inbox-metric"><strong>profile loop</strong>'
-        "<span>1 analyzed / 1 failed</span></span>" in body
+        "<span>1 analyzed / 1 failed</span></span>" in all_recent_body
     )
-    assert '<span class="query-inbox-metric"><strong>collector freshness</strong>' in body
-    assert '<span class="query-inbox-metric"><strong>last planning</strong>' in body
+    assert (
+        '<span class="query-inbox-metric"><strong>collector freshness</strong>' in all_recent_body
+    )
+    assert '<span class="query-inbox-metric"><strong>last planning</strong>' in all_recent_body
     assert (
         '<span class="query-inbox-metric"><strong>profile worker</strong>'
-        "<span>2 claimed / 1 completed / 1 failed</span></span>" in body
+        "<span>2 claimed / 1 completed / 1 failed</span></span>" in all_recent_body
     )
     assert (
         '<span class="query-inbox-metric"><strong>profile backlog</strong>'
-        "<span>0 pending / 0 retry / 0 leased / 0 stale / 1 failed</span></span>" in body
+        "<span>0 pending / 0 retry / 0 leased / 0 stale / 1 failed</span></span>" in all_recent_body
     )
     assert (
         '<span class="query-inbox-metric"><strong>backlog next step</strong>'
         "<span>Run profile remediation dry-run before requeueing terminal failed profile jobs."
-        "</span></span>" in body
+        "</span></span>" in all_recent_body
     )
     assert (
         '<span class="query-inbox-metric"><strong>profile remediation</strong>'
-        "<span>dry_run / 1 matched / 1 selected / 0 requeued</span></span>" in body
+        "<span>dry_run / 1 matched / 1 selected / 0 requeued</span></span>" in all_recent_body
     )
     assert (
         '<span class="query-inbox-metric"><strong>remediation next step</strong>'
-        "<span>Review the bounded count, then rerun remediation with --apply.</span></span>" in body
+        "<span>Review the bounded count, then rerun remediation with --apply.</span></span>"
+        in all_recent_body
     )
     assert (
         '<span class="query-inbox-metric"><strong>details ready</strong>'
-        "<span>1/1 analyzed</span></span>" in body
+        "<span>1/1 analyzed</span></span>" in all_recent_body
     )
 
     _assert_raw_free_summary(worker_payload)
@@ -241,6 +249,7 @@ def test_online_history_maintenance_loop_smoke_is_raw_free(tmp_path, monkeypatch
     _assert_raw_free_summary(operator_payload)
     for unsafe in _unsafe_markers():
         assert unsafe not in body
+        assert unsafe not in all_recent_body
 
 
 def _batch_args(tmp_path: Path) -> list[str]:

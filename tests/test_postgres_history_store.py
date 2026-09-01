@@ -857,6 +857,8 @@ def test_postgres_history_store_loads_materialized_payloads_raw_free():
         "artifact_status": "available",
         "analyzer_contract": "profile_digest_analysis_json_v1",
         "analysis_status": "ready",
+        "analyzed_profile_status": "analyzed",
+        "details_ready_only": False,
         "limit": 500,
     }
     assert "WITH newest_summary_keys AS" in statement
