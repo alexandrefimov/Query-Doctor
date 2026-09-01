@@ -24,6 +24,11 @@ release notes remain in [release-notes-0.10.0.md](release-notes-0.10.0.md),
 
 ## Unreleased
 
+- Browser page rendering now reuses identical redaction results only within one
+  GET request. The bounded cache keeps the existing browser-safety projection,
+  does not cache explicit credential environments, and is discarded before the
+  next request.
+
 - Online History now reuses its already browser-safe in-memory case projection
   instead of redacting all 500 bounded rows a second time during rendering.
   Materialized indexes loaded from JSON remain untrusted and still pass through

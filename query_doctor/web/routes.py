@@ -10,6 +10,7 @@ from importlib.resources import files
 from typing import Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
+from query_doctor.safety.browser_display import shared_browser_display_redactions
 from query_doctor.web.batch_case_actions import (
     handle_batch_case_external_rewrite_validation,
     start_batch_case_llm_actions_job,
@@ -181,6 +182,15 @@ def report_download_filename(source_id: str) -> str:
 
 
 def route_get_request(
+    path: str,
+    settings: WebSettings,
+    store: WebJobStore,
+) -> WebRouteResponse | None:
+    with shared_browser_display_redactions():
+        return _route_get_request(path, settings, store)
+
+
+def _route_get_request(
     path: str,
     settings: WebSettings,
     store: WebJobStore,
